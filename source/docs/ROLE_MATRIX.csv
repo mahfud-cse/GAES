@@ -1,0 +1,12 @@
+Role,Organization Scope,Station/Program Scope,View,Add,Edit,Delete,Verify,Override,Download,Manage
+Super Admin,All,All,Yes,Yes,Yes,Yes,Yes,Yes,Yes,Yes
+Admin,Garuda Indonesia,All operational scope,Yes,Yes,Yes,Yes,Yes,Configured,Yes,Eligibility Rule and Reopen
+HO Admin,Garuda Indonesia,All stations,Yes,No,No,No,No,No,Yes,No
+BO Admin,Assigned Branch Office,Assigned station and Business/VIP,Yes,Yes,Yes,No,Yes,No,Yes,No
+Lounge Officer,Assigned Lounge,Assigned lounge,Yes,Yes,Yes,No,No,No,Yes,No
+Lounge Manager,Assigned Lounge,Exceptional Access,Yes,No,No,No,Yes,No,Yes,No
+HO Ancillary Coordinator,HO Ancillary,Membership/EMD/Paid Access,Yes,No,Yes,No,No,No,Yes,Configured
+HO Ancillary Verifier,HO Ancillary,Membership/EMD/Paid Access,Yes,No,No,No,Yes,No,Yes,No
+Airline Coordinator,Assigned Airline,Assigned airline/program,Yes,No,Yes,No,No,No,Yes,Configured
+Airline Verifier,Assigned Airline,Assigned airline passengers only,Yes,No,No,No,Yes,No,Yes,No
+Report Viewer,Configured Organization,Configured report scope,Yes,No,No,No,No,No,Yes,No

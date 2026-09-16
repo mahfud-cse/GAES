@@ -1,0 +1,59 @@
+ID,Scenario,Expected Result
+UAT-01,"Barcode ends Y/y/Ya/Yaa/Yaaa plus spaces",Eligible
+UAT-02,"Final token has no Y",Not Eligible
+UAT-03,"Reader appends control characters after Y",Eligible after normalization
+UAT-04,"Flight 01:00 scanned at 22:00 previous day",Date of Travel is next day
+UAT-05,"Delayed flight crosses midnight",Candidate D-1 is retained for verification
+UAT-06,"Passenger not found on passenger list",BO declines with code 07 or relevant code
+UAT-07,"Business Class visitor",Routed to BO verifier
+UAT-08,"GarudaMiles/EMD/Paid Access visitor",Routed to HO Ancillary
+UAT-09,"SkyTeam/partner member",Routed to partner airline verifier
+UAT-10,"Vendor submits evidence",Verifier receives inbox notification and re-review item
+UAT-11,"Open dispute exists for selected date",BO/vendor sign-off disabled
+UAT-12,"All records final",Final PDF enabled and only Accepted records are payable
+UAT-13,"User types CG in station filter",Dropdown narrows to registered station choices
+UAT-14,"CSV contains unknown station",Invalid row rejected before save
+UAT-15,"User changes own password",Old password required and new password saved
+UAT-16,"DOT not selected before scan",System blocks scan processing and requests Date of Travel
+UAT-17,"Same passenger flight and sequence with different DOT",Second record is accepted as a different visit
+UAT-18,"Flight departs at 01:00 and passenger scans at 22:00 previous day",Record uses selected next-day DOT
+UAT-19,"Final scan token is y, Ya, Yaa, Yaaa or followed by spaces",Eligibility returns Eligible
+UAT-20,"Final scan token has no valid Y pattern",Eligibility returns Not Eligible
+UAT-21,"Super Admin adds calculated table column",Preview and Visitor List show the derived value
+UAT-22,"Admin configures report fields",Only selected metadata and columns appear in PDF
+UAT-23,"Additional Info Cost/Price unchecked",PDF omits price and estimated total cost
+UAT-24,"Additional Info Cost/Price checked",PDF includes price and estimated total cost
+UAT-25,"Profile menu opened on smartphone",Menu appears and each action responds to touch
+UAT-26,"Language switched to English",All general interface labels change while common aviation terms remain unchanged
+UAT-27,"Searchable filter containing current value is clicked",Complete option list opens and typing narrows the list
+UAT-28,"Super Admin builds a free formula",Selected fields operators and functions produce a preview without a predefined formula
+UAT-29,"Manual input form is opened",Date of Travel and Cabin Class fields are vertically aligned
+UAT-30,"Browser tab is opened after v0.18.0 deployment",Garuda Indonesia wing favicon is visible without the generic application icon
+UAT-31,"Super Admin opens Tab & Table Builder",Menu tab field and table configuration is visible only to Super Admin
+UAT-32,"Super Admin hides a core or custom field",Field disappears from display while source data and dependent relationships remain intact
+UAT-33,"Super Admin changes ID and EN labels",Published configuration displays the correct label in each language
+UAT-34,"Super Admin reorders builder items",Order persists after navigation and browser refresh
+UAT-35,"User selects English",Page descriptions steps scan statuses placeholders and local date-time display in English while aviation terms remain unchanged
+UAT-36,"User selects Indonesia",General interface returns to Indonesian and the language button changes to EN
+UAT-37,"Master Lounge/Provider filter is clicked",Dropdown lists names from Master Lounge/Tenant and typing narrows the options
+UAT-38,"User opens Flight Information",Only Irregularity terminology is shown and Passenger Exceptional Access remains separate
+UAT-39,"User reviews Import Passenger List",The interface explains that manual CSV/XLSX import is used only when DCS integration is unavailable
+UAT-40,"Super Admin opens Manage Table in Verifier Review",Button is visible and show hide and reorder actions update the verification table
+UAT-41,"Verifier rejects a visitor",Dispute action appears only for authorized Lounge Officer or Lounge Manager within the assigned scope
+UAT-42,"Visitor filters are changed",Top KPI and table footer recalculate from Accepted payable records in the filtered result
+UAT-43,"Report filters include period station category lounge and search",Confirmed visitor count and total cost match only the final filtered report population
+UAT-44,"Authorized HO or monitoring user signs in",Dashboard opens and shows only widgets permitted for the account role
+UAT-45,"User changes Dashboard period area BO or provider filter",Every KPI chart ranking and provider cost recalculates from the filtered population
+UAT-46,"BO or authorized user imports Passenger Volume CSV/XLSX",Valid Business and Economy pax denominators are upserted and invalid rows are reported
+UAT-47,"Dashboard compares lounge Business pax with total Business pax",Utilization uses passenger-volume denominator and clearly shows numerator and denominator
+UAT-48,"Super Admin changes Dashboard access and widget role visibility",The selected role and widget permissions persist and are enforced after sign-in
+UAT-49,"Super Admin reorders or renames a Dashboard widget",Order and ID/EN titles persist after navigation and browser refresh
+UAT-50,"Super Admin disables bilingual mode",The EN/ID button is hidden for users and the active language returns to Indonesian
+UAT-51,"User selects a Dashboard KPI card",The related detail page opens and retains the active period area BO and provider scope
+UAT-52,"User selects a Visitor Composition segment",Visitor List opens with the selected passenger category and Dashboard scope
+UAT-53,"User reviews Lounge Utilization",Separate Business and Economy donut charts use their respective passenger-volume denominators
+UAT-54,"User opens Top 10 BO analysis",A table displays rank area contribution daily average average cost and total cost
+UAT-55,"User selects a BO or provider table link",The related Visitor List or Reports view opens with the selected entity filter
+UAT-56,"Super Admin opens Portal Management",All four submenu buttons are visible aligned clickable and responsive
+UAT-57,"Super Admin opens any Manage Table pop-up",Configuration rows and action buttons remain aligned without clipping at desktop and mobile widths
+UAT-58,"User views or edits any search and filter field",Placeholder selected and typed values remain regular weight with appropriate muted or dark color

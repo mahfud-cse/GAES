@@ -1,0 +1,29 @@
+Field,Description,Source,Required
+scan_timestamp_utc,Server timestamp in UTC,Server,Yes
+station_local_time,Transaction time converted to active station time zone,Master Station,Yes
+date_of_travel,Flight operating date,Barcode/Schedule/Manual,Yes
+date_source,"Barcode; Schedule; Manual",System,Yes
+raw_scan,Original reader output,Scanner,Conditional
+normalized_scan,Control characters and trailing spaces removed,System,Conditional
+eligibility,"Y when final token contains Y; otherwise N",System,Yes
+passenger_name,Passenger name from boarding pass,Barcode/Manual,Yes
+flight_number,Operating flight number,Barcode/Schedule,Yes
+route,Origin and destination,Barcode/Schedule,Yes
+checkin_sequence,Check-in sequence,Barcode,Yes
+category,Access entitlement category,Access Entitlement,Yes
+reference,Member/EMD/payment/agreement reference,User/API,Conditional
+verifier,Responsible verification party,System Rule,Yes
+verification_status,"Pending; Accepted; Rejected",Verifier,Yes
+dispute_code,Standard rejection code,Verifier,Conditional
+evidence_reference,Immutable evidence file reference,Document Storage,Conditional
+reconciliation_status,"Open; Final",System,Yes
+price_per_pax,Contract rate at transaction time,Master Lounge/Entitlement,Yes
+currency,Transaction currency,Master Lounge/Entitlement,Yes
+dashboard_period,Monitoring aggregation period in YYYY-MM,API/DCS/BO Import,Yes for dashboard
+dashboard_area,Configurable BO area grouping,Master Station/BO,Yes for dashboard
+dashboard_bo,Branch Office code,Master Station/BO,Yes for dashboard
+dashboard_provider,Lounge or provider name,Master Lounge/Tenant,Yes for dashboard
+business_pax,Total Business Class passenger denominator,DCS/API/BO Import,Yes for utilization
+economy_pax,Total Economy Class passenger denominator,DCS/API/BO Import,Yes for utilization
+business_lounge,Business Class passengers using lounge,Visitor/DCS/API,Yes for utilization
+dashboard_source,Origin of monitoring row such as API DCS or BO Import,System,Yes for dashboard
