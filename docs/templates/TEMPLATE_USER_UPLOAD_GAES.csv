@@ -1,0 +1,3 @@
+Full Name,Username,Email,Role,Organization,Verification Scope,Scope Type,Station Code,Status
+Branch Office CGK,bo.cgk,bo.cgk@company.example,BO Admin,Branch Office CGK,"Business Class,VIP/CIP/VVIP",Single Station,CGK,Aktif
+Ancillary Verifier,ancillary.verify,ancillary@company.example,HO Ancillary Verifier,"HO Ancillary","Platinum,Elite Plus,EMD,Paid Access",All Stations,ALL,Aktif

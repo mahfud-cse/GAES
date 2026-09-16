@@ -1,0 +1,34 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function active() { return signedIn() && profile().active == true; }
+    function roleIs(roles) { return active() && profile().role in roles; }
+    function sameStation(data) { return profile().station == 'ALL' || data.airport == profile().station || data.station == profile().station; }
+
+    match /usernames/{username} { allow read, write: if false; }
+    match /users/{uid} {
+      allow read: if active() && (request.auth.uid == uid || roleIs(['Super Admin']));
+      allow write: if false;
+    }
+    match /visitors/{id} {
+      allow read: if active() && (roleIs(['Super Admin','Admin','HO Admin','HO Ancillary Coordinator','Report Viewer']) || sameStation(resource.data));
+      allow create: if active() && sameStation(request.resource.data);
+      allow update: if active() && (roleIs(['Super Admin','Admin','BO Admin','Lounge Manager','HO Ancillary Verifier','Airline Verifier']) || sameStation(resource.data));
+      allow delete: if roleIs(['Super Admin','Admin']);
+    }
+    match /{master}/{id} {
+      allow read: if active() && master in ['lounges','flights','stations','entitlements','airlines','monitoringRows','integrationRuns'];
+      allow write: if master in ['lounges','flights','stations','entitlements','airlines','monitoringRows'] && roleIs(['Super Admin','Admin']);
+    }
+    match /roles/{id} { allow read: if active(); allow write: if roleIs(['Super Admin']); }
+    match /portalConfiguration/{id} { allow read: if active(); allow write: if roleIs(['Super Admin']); }
+    match /notifications/{id} {
+      allow read: if active() && resource.data.userId == request.auth.uid;
+      allow update: if active() && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt','active','updatedAt']);
+      allow create, delete: if false;
+    }
+    match /auditLogs/{id} { allow read: if roleIs(['Super Admin','Admin']); allow write: if false; }
+  }
+}
