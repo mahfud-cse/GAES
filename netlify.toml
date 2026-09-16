@@ -1,5 +1,6 @@
 [build]
   command = "npx next build"
+  publish = ".next"
   functions = "netlify/functions"
 
 [functions]
@@ -7,6 +8,9 @@
 
 [build.environment]
   NODE_VERSION = "22"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
 
 [[headers]]
   for = "/*"
