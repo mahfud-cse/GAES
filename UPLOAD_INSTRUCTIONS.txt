@@ -1,0 +1,28 @@
+GAES v0.22.1 - Netlify Functions Hotfix
+
+1. Buka repository GitHub yang terhubung ke Netlify.
+2. Upload folder "netlify" dari paket ini ke root repository.
+3. Saat diminta, izinkan semua 9 file lama di netlify/functions diganti.
+4. Commit satu kali.
+5. Tunggu automatic deploy Netlify selesai.
+
+Tidak perlu:
+- mengubah atau menghapus environment variables;
+- memasukkan ulang Firebase private key;
+- mengubah netlify.toml;
+- clear cache sebelum deploy.
+
+File yang harus terganti:
+- netlify/functions/_firebase-admin.mjs
+- netlify/functions/complete-password-change.mjs
+- netlify/functions/create-user.mjs
+- netlify/functions/create-visitor.mjs
+- netlify/functions/import-users.mjs
+- netlify/functions/manage-user.mjs
+- netlify/functions/resolve-username.mjs
+- netlify/functions/setup-superadmin.mjs
+- netlify/functions/sync-source-lounges.mjs
+
+Tujuan hotfix:
+Mengganti Lambda compatibility handler lama dengan Netlify Functions Web API
+modern agar gabungan environment variables tidak terkena batas 4 KB AWS Lambda.

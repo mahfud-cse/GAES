@@ -22,22 +22,33 @@ export const targetAuth = () => getAuth(targetApp());
 export const targetDb = () => getFirestore(targetApp());
 export const sourceDb = () => getFirestore(sourceApp());
 
-export async function requireUser(event, roles = []) {
-  const token = event.headers.authorization?.replace(/^Bearer\s+/i, "");
-  if (!token) throw Object.assign(new Error("Authentication required."), { status: 401 });
+export function httpError(status, message, code) {
+  return Object.assign(new Error(message), { status, code });
+}
+
+export async function requireUser(request, roles = []) {
+  const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  if (!token) throw httpError(401, "Authentication required.");
   const decoded = await targetAuth().verifyIdToken(token);
   const profile = await targetDb().collection("users").doc(decoded.uid).get();
   const data = profile.data() || {};
   if (!data.active || (roles.length && !roles.includes(data.role))) {
-    throw Object.assign(new Error("User does not have permission."), { status: 403 });
+    throw httpError(403, "User does not have permission.");
   }
   return { decoded, profile: data };
 }
 
-export const json = (statusCode, value) => ({
-  statusCode,
+export const json = (status, value) => new Response(JSON.stringify(value), {
+  status,
   headers: { "content-type": "application/json; charset=utf-8" },
-  body: JSON.stringify(value),
 });
 
-export const failure = (error) => json(error.status || 500, { error: error.message || "Server error." });
+export const failure = (error) => json(error.status || 500, {
+  ...(error.code ? { code: error.code } : {}),
+  error: error.message || "Server error.",
+});
+
+// Netlify also discovers this shared module in the functions directory. The
+// default Web API export keeps it out of Lambda compatibility mode without
+// exposing configuration values.
+export default async () => json(404, { error: "Not found." });
