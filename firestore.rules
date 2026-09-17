@@ -9,7 +9,7 @@ service cloud.firestore {
 
     match /usernames/{username} { allow read, write: if false; }
     match /users/{uid} {
-      allow read: if active() && (request.auth.uid == uid || roleIs(['Super Admin']));
+      allow read: if active() && (request.auth.uid == uid || roleIs(['Super Admin','Admin']));
       allow write: if false;
     }
     match /visitors/{id} {

@@ -23,4 +23,5 @@ export const firebaseApp = firebaseConfigured
 
 export const auth = firebaseApp ? getAuth(firebaseApp) : null;
 export const db = firebaseApp ? getFirestore(firebaseApp) : null;
-export const storage = firebaseApp ? getStorage(firebaseApp) : null;
+export const storageEnabled = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_ENABLED === "true";
+export const storage = firebaseApp && storageEnabled ? getStorage(firebaseApp) : null;

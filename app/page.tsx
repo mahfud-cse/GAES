@@ -7,14 +7,16 @@ import {
 import * as XLSX from "xlsx";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, updatePassword, type User } from "firebase/auth";
+import Link from "next/link";
+import { browserLocalPersistence, EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, setPersistence, signInWithEmailAndPassword, signOut, updatePassword, type User } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db, firebaseConfigured } from "../lib/firebase/client";
-import { createManagedUser, createVisitor, importManagedUsers, resolveUsername, syncSourceLounges, updateManagedUser } from "../lib/firebase/api";
+import { completePasswordChange, createManagedUser, createVisitor, importManagedUsers, resolveUsername, syncSourceLounges, updateManagedUser } from "../lib/firebase/api";
 import { removeRecord, saveRecord, subscribeCollection } from "../lib/firebase/repository";
 import { uploadEvidence } from "../lib/firebase/evidence";
 
 type Eligibility = "Y" | "N" | "";
+type MainTab = "dashboard" | "dashboard-detail" | "access" | "reconciliation" | "flights" | "master";
 type Visitor = {
   id: string;
   date: string;
@@ -220,6 +222,7 @@ type Account = {
   organization: string;
   verificationScopes: string[];
   status: "Aktif" | "Nonaktif";
+  mustChangePassword?: boolean;
 };
 type Station = {
   code: string;
@@ -619,12 +622,11 @@ function parse(raw: string) {
 export default function Home() {
   const [currentAccount, setCurrentAccount] = useState<Account | null>(null),
     [firebaseUser, setFirebaseUser] = useState<User | null>(null),
+    [authReady, setAuthReady] = useState(!auth || !db),
     [loginUser, setLoginUser] = useState(""),
     [loginPassword, setLoginPassword] = useState(""),
     [loginError, setLoginError] = useState("");
-  const [tab, setTab] = useState<
-      "dashboard" | "dashboard-detail" | "access" | "reconciliation" | "flights" | "master"
-    >("access"),
+  const [tab, setTab] = useState<MainTab>("access"),
     [lounges, setLounges] = useState<Lounge[]>([]),
     [visitors, setVisitors] = useState<Visitor[]>([]),
     [flights, setFlights] = useState<Flight[]>([]);
@@ -764,12 +766,14 @@ export default function Home() {
       status: "Aktif",
     });
   const [showUserForm, setShowUserForm] = useState(false),
+    [savingUser, setSavingUser] = useState(false),
     [editingUser, setEditingUser] = useState<string | null>(null),
     [userDraft, setUserDraft] = useState<Omit<Account, "id">>({
       name: "", username: "", email: "", password: "", role: "BO Admin", station: "CGK", scope: "Station CGK", organization: "Branch Office CGK", verificationScopes: ["Business Class", "VIP/CIP/VVIP"], status: "Aktif",
     }),
     [showPartnershipForm, setShowPartnershipForm] = useState(false),
     [editingPartnership, setEditingPartnership] = useState<string | null>(null),
+    [entitlementNotice, setEntitlementNotice] = useState(""),
     [partnershipDraft, setPartnershipDraft] = useState<Omit<Partnership, "id">>({
       type: "Partnership", name: "", reference: "", status: "Aktif", allowedRoles: ["Super Admin", "Admin"], verifierOrganization: "", eligibleTiers: "", effectiveStart: localDate(), effectiveEnd: "", stationScope: "ALL", payer: "", priceRule: "", companionRule: "", apiReferenceFields: "", version: 1,
     });
@@ -799,7 +803,13 @@ export default function Home() {
     [evidenceFile, setEvidenceFile] = useState<File | null>(null),
     [evidenceType, setEvidenceType] = useState<Visitor["evidenceType"]>("Boarding Pass"),
     [stationDraft, setStationDraft] = useState<Station>({ code: "", name: "", timeZone: "Asia/Jakarta", utcLabel: "UTC+7", status: "Aktif" }),
+    [editingStation, setEditingStation] = useState<string | null>(null),
     [showStationForm, setShowStationForm] = useState(false),
+    [stationNotice, setStationNotice] = useState(""),
+    [airlineDraft, setAirlineDraft] = useState<Airline>({ code: "", name: "", verifierOrganization: "", status: "Active" }),
+    [editingAirline, setEditingAirline] = useState<string | null>(null),
+    [showAirlineForm, setShowAirlineForm] = useState(false),
+    [airlineNotice, setAirlineNotice] = useState(""),
     [userUploadNotice, setUserUploadNotice] = useState(""),
     [sidebarCollapsed, setSidebarCollapsed] = useState(false),
     [actionDialog, setActionDialog] = useState<null | { kind: "ok" | "error" | "warn"; text: string }>(null),
@@ -874,18 +884,53 @@ export default function Home() {
     if (!auth || !db) return;
     const activeAuth = auth, activeDb = db;
     return onAuthStateChanged(activeAuth, async (user) => {
-      setFirebaseUser(user);
-      if (!user) { setCurrentAccount(null); return; }
-      const profile = await getDoc(doc(activeDb, "users", user.uid));
-      if (!profile.exists() || profile.data().active !== true) { await signOut(activeAuth); return; }
-      const data = profile.data();
-      const account = { id: user.uid, password: "", status: "Aktif", ...data } as Account;
-      setCurrentAccount(account);
-      setRole(account.role);
-      setStation(account.station === "ALL" ? "CGK" : account.station);
-      setTab(dashboardAllowedRoles.includes(account.role) ? "dashboard" : "access");
+      try {
+        setFirebaseUser(user);
+        if (!user) { setCurrentAccount(null); return; }
+        const profile = await getDoc(doc(activeDb, "users", user.uid));
+        if (!profile.exists() || profile.data().active !== true) { await signOut(activeAuth); return; }
+        const data = profile.data();
+        const account = { id: user.uid, password: "", status: "Aktif", ...data } as Account;
+        setCurrentAccount(account);
+        setRole(account.role);
+        setStation(account.station === "ALL" ? "CGK" : account.station);
+        const params = new URLSearchParams(window.location.search);
+        const requested = params.get("view") as MainTab | null;
+        const allowedTabs: MainTab[] = ["access", "reconciliation", ...(account.role !== "Lounge Officer" ? ["flights" as MainTab] : []), ...(["Super Admin", "Admin", "HO Admin", "HO Ancillary Coordinator", "HO Ancillary Verifier"].includes(account.role) ? ["master" as MainTab] : []), ...(dashboardAllowedRoles.includes(account.role) ? ["dashboard" as MainTab, "dashboard-detail" as MainTab] : [])];
+        setTab(requested && allowedTabs.includes(requested) ? requested : dashboardAllowedRoles.includes(account.role) ? "dashboard" : "access");
+        if (params.get("master")) setMasterTab(params.get("master")!);
+        if (params.get("recon")) setReconTab(params.get("recon")!);
+        if (params.get("flight")) setFlightTab(params.get("flight")!);
+        if (account.mustChangePassword) { setShowProfile(true); setProfileNotice("Silakan ganti password sementara sebelum melanjutkan."); }
+      } finally {
+        setAuthReady(true);
+      }
     });
   }, [dashboardAllowedRoles]);
+  useEffect(() => {
+    if (!currentAccount) return;
+    const syncLocation = () => {
+      const params = new URLSearchParams(window.location.search);
+      params.set("view", tab);
+      if (tab === "master") params.set("master", masterTab); else params.delete("master");
+      if (tab === "reconciliation") params.set("recon", reconTab); else params.delete("recon");
+      if (tab === "flights") params.set("flight", flightTab); else params.delete("flight");
+      window.history.replaceState({ view: tab }, "", `${window.location.pathname}?${params.toString()}`);
+    };
+    syncLocation();
+  }, [currentAccount, tab, masterTab, reconTab, flightTab]);
+  useEffect(() => {
+    const restoreLocation = () => {
+      const params = new URLSearchParams(window.location.search);
+      const requested = params.get("view") as MainTab | null;
+      if (requested && ["dashboard", "dashboard-detail", "access", "reconciliation", "flights", "master"].includes(requested)) setTab(requested);
+      if (params.get("master")) setMasterTab(params.get("master")!);
+      if (params.get("recon")) setReconTab(params.get("recon")!);
+      if (params.get("flight")) setFlightTab(params.get("flight")!);
+    };
+    window.addEventListener("popstate", restoreLocation);
+    return () => window.removeEventListener("popstate", restoreLocation);
+  }, []);
   useEffect(() => {
     if (!firebaseUser) return;
     const stops = [
@@ -1012,6 +1057,7 @@ export default function Home() {
     try {
       const identity = loginUser.trim().toLowerCase();
       const email = identity.includes("@") ? identity : (await resolveUsername(identity)).email;
+      await setPersistence(auth, browserLocalPersistence);
       await signInWithEmailAndPassword(auth, email, loginPassword);
       setLoginError(""); setLoginPassword(""); setFlightFilter("Semua");
     } catch { setLoginError("Email/username atau password tidak sesuai."); }
@@ -1935,26 +1981,34 @@ export default function Home() {
     setShowLoungeForm(false);
     setEditingLounge(null);
     setLoungeNotice("Data lounge/tenant berhasil disimpan.");
+    setActionDialog({ kind: "ok", text: `Lounge/Tenant berhasil ${editingLounge ? "diperbarui" : "ditambahkan"}.` });
   }
   async function saveUser(e: FormEvent) {
     e.preventDefault();
-    if (!userDraft.name || !userDraft.username || !userDraft.email || !firebaseUser) return;
-    if (userDraft.station !== "ALL" && !stations.some((s) => s.code === userDraft.station)) return;
-    const normalizedDraft = { ...userDraft, scope: userDraft.station === "ALL" ? "Seluruh Station" : `Station ${userDraft.station}` };
+    if (savingUser) return;
+    if (!userDraft.name || !userDraft.username || !userDraft.email || !firebaseUser) { setUserUploadNotice("Nama, username, dan email wajib diisi."); return; }
+    if (!editingUser && userDraft.password.length < 8) { setUserUploadNotice("Password sementara minimal 8 karakter."); return; }
+    if (userDraft.station !== "ALL" && !stations.some((s) => s.code === userDraft.station)) { setUserUploadNotice("Station yang dipilih tidak valid."); return; }
+    if (role !== "Super Admin" && userDraft.role === "Super Admin") { setUserUploadNotice("Hanya Super Admin yang dapat membuat akun Super Admin."); return; }
+    const roleScope = roleProfileSeed.find((item) => item.role === userDraft.role)?.scope || "Configured authority";
+    const normalizedDraft = { ...userDraft, scope: `${roleScope} · ${userDraft.station === "ALL" ? "Seluruh Station" : `Station ${userDraft.station}`}` };
+    setSavingUser(true);
     try {
       if (editingUser) {
         await updateManagedUser(firebaseUser, { ...normalizedDraft, uid: editingUser });
         setUserUploadNotice("Akun berhasil diperbarui.");
+        setActionDialog({ kind: "ok", text: "User berhasil diperbarui." });
       } else {
-        const created = await createManagedUser(firebaseUser, normalizedDraft);
-        if (auth) await sendPasswordResetEmail(auth, created.email);
-        setUserUploadNotice("Akun berhasil dibuat. Pengguna menerima tautan set/reset password melalui email.");
+        await createManagedUser(firebaseUser, normalizedDraft);
+        setUserUploadNotice("Akun berhasil dibuat. Sampaikan password sementara dan minta pengguna menggantinya saat login pertama.");
+        setActionDialog({ kind: "ok", text: "User berhasil ditambahkan. Sampaikan password sementara kepada pengguna." });
       }
       setShowUserForm(false); setEditingUser(null);
     } catch (error) { setUserUploadNotice(error instanceof Error ? error.message : "Akun tidak dapat dibuat."); }
+    finally { setSavingUser(false); }
   }
   function downloadUserTemplate() {
-    const body = "Full Name,Username,Role,Organization,Verification Scope,Scope Type,Station Code,Email,Status\nBranch Office CGK,bo.cgk,BO Admin,Branch Office CGK,\"Business Class,VIP/CIP/VVIP\",Single Station,CGK,bo.cgk@garuda-indonesia.com,Aktif\nAncillary Verifier,ancillary.verify,HO Ancillary Verifier,HO Ancillary,\"Platinum,Elite Plus,EMD,Paid Access\",All Stations,ALL,ancillary@garuda-indonesia.com,Aktif";
+    const body = "Full Name,Username,Temporary Password,Role,Organization,Verification Scope,Scope Type,Station Code,Email,Status\nBranch Office CGK,bo.cgk,ChangeMe123!,BO Admin,Branch Office CGK,\"Business Class,VIP/CIP/VVIP\",Single Station,CGK,bo.cgk@garuda-indonesia.com,Aktif\nAncillary Verifier,ancillary.verify,ChangeMe123!,HO Ancillary Verifier,HO Ancillary,\"Platinum,Elite Plus,EMD,Paid Access\",All Stations,ALL,ancillary@garuda-indonesia.com,Aktif";
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([body], { type: "text/csv" }));
     a.download = "template-upload-akun.csv";
@@ -1969,19 +2023,17 @@ export default function Home() {
       const errors: string[] = [];
       const incoming: Account[] = [];
       rows.forEach((r, index) => {
-        const name = String(r["Full Name"] || "").trim(), username = String(r.Username || "").trim(), email = String(r.Email || "").trim(),
+        const name = String(r["Full Name"] || "").trim(), username = String(r.Username || "").trim(), email = String(r.Email || "").trim(), password = String(r["Temporary Password"] || ""),
           accountRole = String(r.Role || "") as Account["role"], stationCode = String(r["Station Code"] || "").trim().toUpperCase(),
           status = (String(r.Status || "Aktif") === "Nonaktif" ? "Nonaktif" : "Aktif") as Account["status"];
-        if (!name || !username || !email.includes("@") || !validRoles.includes(accountRole) || (stationCode !== "ALL" && !stations.some((s) => s.code === stationCode)) || accounts.some((a) => a.username.toLowerCase() === username.toLowerCase()) || incoming.some((a) => a.username.toLowerCase() === username.toLowerCase())) {
+        if (!name || !username || !email.includes("@") || password.length < 8 || !validRoles.includes(accountRole) || (role !== "Super Admin" && accountRole === "Super Admin") || (stationCode !== "ALL" && !stations.some((s) => s.code === stationCode)) || accounts.some((a) => a.username.toLowerCase() === username.toLowerCase()) || incoming.some((a) => a.username.toLowerCase() === username.toLowerCase())) {
           errors.push(`Baris ${index + 2}: nama, username, role, station, atau duplikasi tidak valid.`);
           return;
         }
-        incoming.push({ id: crypto.randomUUID(), name, username, email, role: accountRole, station: stationCode, scope: stationCode === "ALL" ? "Seluruh Station" : `Station ${stationCode}`, organization: String(r.Organization || "Garuda Indonesia"), verificationScopes: String(r["Verification Scope"] || "").split(",").map((x) => x.trim()).filter(Boolean), status, password: "" });
+        incoming.push({ id: crypto.randomUUID(), name, username, email, role: accountRole, station: stationCode, scope: `${roleProfileSeed.find((item) => item.role === accountRole)?.scope || "Configured authority"} · ${stationCode === "ALL" ? "Seluruh Station" : `Station ${stationCode}`}`, organization: String(r.Organization || "Garuda Indonesia"), verificationScopes: String(r["Verification Scope"] || "").split(",").map((x) => x.trim()).filter(Boolean), status, password });
       });
       if (incoming.length && firebaseUser) {
         const result = await importManagedUsers(firebaseUser, incoming);
-        const activeAuth = auth;
-        if (activeAuth) await Promise.allSettled(incoming.filter((item) => item.email).map((item) => sendPasswordResetEmail(activeAuth, item.email!)));
         errors.push(...result.errors.map((item) => `Baris ${item.row}: ${item.error}`));
         setUserUploadNotice(`${result.created} akun berhasil dibuat.${errors.length ? ` ${errors.length} baris gagal divalidasi.` : ""}`);
       } else setUserUploadNotice(`0 akun dibuat.${errors.length ? ` ${errors.length} baris gagal divalidasi.` : ""}`);
@@ -1989,15 +2041,85 @@ export default function Home() {
       setUserUploadNotice("File akun tidak dapat dibaca.");
     }
   }
+  function downloadStationTemplate() {
+    const body = "IATA Code,Station Name,Time Zone,UTC Label,Status\nCGK,Soekarno-Hatta,Asia/Jakarta,UTC+7,Aktif";
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([body], { type: "text/csv" })); a.download = "template-master-station.csv"; a.click(); URL.revokeObjectURL(a.href);
+  }
+  async function uploadStations(file: File) {
+    try {
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: "" });
+      const incoming = rows.map((r) => ({
+        code: String(r["IATA Code"] || "").trim().toUpperCase(),
+        name: String(r["Station Name"] || "").trim(),
+        timeZone: String(r["Time Zone"] || "Asia/Jakarta").trim(),
+        utcLabel: String(r["UTC Label"] || "UTC+7").trim(),
+        status: (String(r.Status || "Aktif") === "Nonaktif" ? "Nonaktif" : "Aktif") as Station["status"],
+      })).filter((item) => /^[A-Z]{3}$/.test(item.code) && item.name);
+      if (!incoming.length) throw new Error("Tidak ada data station yang valid.");
+      await Promise.all(incoming.map((item) => saveRecord("stations", { ...item, id: item.code })));
+      setStationNotice(`${incoming.length} station berhasil diunggah.`);
+    } catch (error) { setStationNotice(error instanceof Error ? error.message : "File station tidak dapat dibaca."); }
+  }
   async function saveStation(e: FormEvent) {
     e.preventDefault();
     const code = stationDraft.code.trim().toUpperCase();
-    if (!/^[A-Z]{3}$/.test(code) || !stationDraft.name || stations.some((s) => s.code === code)) return;
+    if (!/^[A-Z]{3}$/.test(code) || !stationDraft.name || (!editingStation && stations.some((s) => s.code === code))) { setStationNotice("Kode IATA tiga huruf dan nama station wajib valid."); return; }
     const record = { ...stationDraft, id: code, code };
     await saveRecord("stations", record);
-    setStations((xs) => [...xs, record]);
+    setStations((xs) => editingStation ? xs.map((item) => item.code === editingStation ? record : item) : [...xs, record]);
     setShowStationForm(false);
+    setEditingStation(null);
     setStationDraft({ code: "", name: "", timeZone: "Asia/Jakarta", utcLabel: "UTC+7", status: "Aktif" });
+    setStationNotice(`Station ${code} berhasil ${editingStation ? "diperbarui" : "ditambahkan"}.`);
+    setActionDialog({ kind: "ok", text: `Station ${code} berhasil ${editingStation ? "diperbarui" : "ditambahkan"}.` });
+  }
+  function downloadAirlineTemplate() {
+    const body = "2-Letter Code,Airline,Verifier Organization,Status\nGA,Garuda Indonesia,Garuda Indonesia,Active";
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([body], { type: "text/csv" })); a.download = "template-master-airline.csv"; a.click(); URL.revokeObjectURL(a.href);
+  }
+  async function uploadAirlines(file: File) {
+    try {
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: "" });
+      const incoming = rows.map((r) => ({
+        code: String(r["2-Letter Code"] || "").trim().toUpperCase(),
+        name: String(r.Airline || "").trim(),
+        verifierOrganization: String(r["Verifier Organization"] || "").trim(),
+        status: (String(r.Status || "Active") === "Inactive" ? "Inactive" : "Active") as Airline["status"],
+      })).filter((item) => /^[A-Z0-9]{2}$/.test(item.code) && item.name);
+      if (!incoming.length) throw new Error("Tidak ada data airline yang valid.");
+      await Promise.all(incoming.map((item) => saveRecord("airlines", { ...item, id: item.code })));
+      setAirlineNotice(`${incoming.length} airline berhasil diunggah.`);
+    } catch (error) { setAirlineNotice(error instanceof Error ? error.message : "File airline tidak dapat dibaca."); }
+  }
+  async function saveAirline(e: FormEvent) {
+    e.preventDefault();
+    const code = airlineDraft.code.trim().toUpperCase();
+    if (!/^[A-Z0-9]{2}$/.test(code) || !airlineDraft.name || (!editingAirline && airlines.some((item) => item.code === code))) { setAirlineNotice("Kode airline dua karakter dan nama airline wajib valid."); return; }
+    const record = { ...airlineDraft, code };
+    await saveRecord("airlines", { ...record, id: code });
+    setAirlines((rows) => editingAirline ? rows.map((item) => item.code === editingAirline ? record : item) : [...rows, record]);
+    setShowAirlineForm(false); setEditingAirline(null);
+    setAirlineDraft({ code: "", name: "", verifierOrganization: "", status: "Active" });
+    setAirlineNotice(`Airline ${code} berhasil ${editingAirline ? "diperbarui" : "ditambahkan"}.`);
+    setActionDialog({ kind: "ok", text: `Airline ${code} berhasil ${editingAirline ? "diperbarui" : "ditambahkan"}.` });
+  }
+  function downloadEntitlementTemplate() {
+    const body = "Type,Name,Reference,Status,Verifier Organization,Eligible Tier,Effective Start,Effective End,Station Scope,Payer,Price Rule,Companion Rule,API Reference Fields\nMembership,GarudaMiles Platinum,Membership policy,Aktif,HO Ancillary,Platinum,2026-01-01,2026-12-31,ALL,Garuda Indonesia,Lounge unit price,1 companion,memberNumber|tier|status";
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([body], { type: "text/csv" })); a.download = "template-access-entitlement.csv"; a.click(); URL.revokeObjectURL(a.href);
+  }
+  async function uploadEntitlements(file: File) {
+    try {
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: "" });
+      const incoming: Partnership[] = rows.map((r) => ({
+        id: crypto.randomUUID(), type: String(r.Type || "Partnership"), name: String(r.Name || "").trim(), reference: String(r.Reference || "").trim(), status: String(r.Status || "Aktif"), allowedRoles: ["Super Admin", "Admin"], verifierOrganization: String(r["Verifier Organization"] || ""), eligibleTiers: String(r["Eligible Tier"] || ""), effectiveStart: String(r["Effective Start"] || ""), effectiveEnd: String(r["Effective End"] || ""), stationScope: String(r["Station Scope"] || "ALL"), payer: String(r.Payer || ""), priceRule: String(r["Price Rule"] || ""), companionRule: String(r["Companion Rule"] || ""), apiReferenceFields: String(r["API Reference Fields"] || "").replaceAll("|", ","), version: 1,
+      })).filter((item) => item.name && item.reference);
+      if (!incoming.length) throw new Error("Tidak ada data entitlement yang valid.");
+      await Promise.all(incoming.map((item) => saveRecord("entitlements", item)));
+      setEntitlementNotice(`${incoming.length} access entitlement berhasil diunggah.`);
+    } catch (error) { setEntitlementNotice(error instanceof Error ? error.message : "File entitlement tidak dapat dibaca."); }
   }
   async function savePartnership(e: FormEvent) {
     e.preventDefault();
@@ -2009,6 +2131,11 @@ export default function Home() {
     else setPartnerships((xs) => [...xs, record]);
     setShowPartnershipForm(false);
     setEditingPartnership(null);
+    setEntitlementNotice(`Produk/Agreement berhasil ${editingPartnership ? "diperbarui" : "ditambahkan"}.`);
+    setActionDialog({ kind: "ok", text: `Produk/Agreement berhasil ${editingPartnership ? "diperbarui" : "ditambahkan"}.` });
+  }
+  if (!authReady) {
+    return <main className="loginPage"><section className="sessionLoader" aria-live="polite"><img src="/garuda-indonesia-logo.png" alt="Garuda Indonesia" /><span>Memulihkan sesi...</span></section></main>;
   }
   if (!currentAccount) {
     return (
@@ -2016,7 +2143,7 @@ export default function Home() {
         <section className="loginPanel">
           <form className="loginCard" onSubmit={login}>
           <div className="loginBrand">
-            <img src="/garuda-indonesia-logo.svg" alt="Garuda Indonesia" />
+            <img src="/garuda-indonesia-logo.png" alt="Garuda Indonesia" />
             <h1>Garuda Access Entitlement System</h1>
           </div>
             <h2>Sign In</h2>
@@ -2053,7 +2180,7 @@ export default function Home() {
         <div className="brand">
           <div className="officialLogo">
             <img
-              src="/garuda-indonesia-logo.svg"
+              src="/garuda-indonesia-logo.png"
               alt="Garuda Indonesia"
             />
           </div>
@@ -2084,36 +2211,36 @@ export default function Home() {
           <button className="sidebarToggle" type="button" onClick={() => setSidebarCollapsed((value) => !value)} aria-label={sidebarCollapsed ? "Buka sidebar" : "Tutup sidebar"}>{sidebarCollapsed ? "›" : "‹"}</button>
           <p>LOUNGE/TENANT</p>
           <nav>
-            {canSeeDashboard && <button className={tab === "dashboard" || tab === "dashboard-detail" ? "active" : ""} onClick={() => setTab("dashboard")}>
+            {canSeeDashboard && <Link href="/?view=dashboard" className={tab === "dashboard" || tab === "dashboard-detail" ? "active" : ""} onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); setTab("dashboard"); } }}>
               <i>DB</i><span>Dashboard</span>
-            </button>}
-            <button
+            </Link>}
+            <Link href="/?view=access"
               className={tab === "access" ? "active" : ""}
-              onClick={() => setTab("access")}
+              onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); setTab("access"); } }}
             >
               <i>LA</i><span>Lounge/Tenant Access</span>
-            </button>
-            <button
+            </Link>
+            <Link href="/?view=reconciliation"
               className={tab === "reconciliation" ? "active" : ""}
-              onClick={() => setTab("reconciliation")}
+              onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); setTab("reconciliation"); } }}
             >
               <i>VR</i><span>Visitor &amp; Reconciliation</span>
-            </button>
+            </Link>
             {role !== "Lounge Officer" && (
-              <button
+              <Link href="/?view=flights"
                 className={tab === "flights" ? "active" : ""}
-                onClick={() => setTab("flights")}
+                onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); setTab("flights"); } }}
               >
                 <i>FI</i><span>Flight Information</span>
-              </button>
+              </Link>
             )}
             {isGlobalAdmin && (
-              <button
+              <Link href="/?view=master"
                 className={tab === "master" ? "active" : ""}
-                onClick={() => setTab("master")}
+                onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); setTab("master"); } }}
               >
                 <i>MD</i><span>Master Data</span>
-              </button>
+              </Link>
             )}
           </nav>
         </aside>
@@ -3048,17 +3175,17 @@ export default function Home() {
                 />
                 {canManageMaster && (
                   <div>
-                    <button onClick={() => setMasterTableTarget("Master Lounge/Tenant")}>Manage Table</button>
+                    <button onClick={() => setMasterTableTarget("Master Lounge/Tenant")}>Kelola Tabel</button>
                     <button onClick={async () => {
                       if (!firebaseUser) return;
                       try { const result = await syncSourceLounges(firebaseUser); setLoungeNotice(`${result.imported} data lounge/tenant berhasil disinkronkan dari Ground Experience Portal.`); }
                       catch (error) { setLoungeNotice(error instanceof Error ? error.message : "Sinkronisasi gagal."); }
-                    }}>Sync Source Firebase</button>
+                    }}>Sinkronisasi Data</button>
                     <button onClick={downloadLoungeTemplate}>
                       Unduh Template CSV
                     </button>
                     <label className="uploadButton">
-                      Upload CSV
+                      Upload Data
                       <input
                         type="file"
                         accept=".csv,.xlsx,.xls"
@@ -3193,19 +3320,22 @@ export default function Home() {
             <article className="card tableCard">
               <div className="actionTitle miniHead">
                 <div><h2>Master Station</h2><span>Sumber resmi pilihan station, authority akun, dan local time.</span></div>
-                {canManageMaster && <div className="rowAct"><button onClick={() => setMasterTableTarget("Master Station")}>Manage Table</button><button className="primary" onClick={() => setShowStationForm(true)}>+ Tambah Station</button></div>}
+                {canManageMaster && <div className="rowAct"><button onClick={() => setMasterTableTarget("Master Station")}>Kelola Tabel</button><button onClick={downloadStationTemplate}>Unduh Template</button><label className="uploadButton">Upload Data<input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadStations(file); e.target.value = ""; }} /></label><button className="primary" onClick={() => { setEditingStation(null); setStationDraft({ code: "", name: "", timeZone: "Asia/Jakarta", utcLabel: "UTC+7", status: "Aktif" }); setShowStationForm(true); }}>+ Tambah Station</button></div>}
               </div>
+              {stationNotice && <Notice n={{ kind: stationNotice.includes("berhasil") ? "ok" : "warn", text: stationNotice }} close={() => setStationNotice("")} />}
               <MasterFilterBar query={masterQuery} setQuery={setMasterQuery} value={masterSelect} setValue={setMasterSelect} options={[...new Set(stations.map((x) => x.utcLabel))]} value2={masterSelect2} setValue2={setMasterSelect2} options2={[...new Set(stations.map((x) => x.status))]} placeholder="Kode / nama station" label1="UTC Zone" label2="Station Status" searchLabel="Search Station" count={stations.filter((s) => `${s.code} ${s.name}`.toLowerCase().includes(masterQuery.toLowerCase()) && (masterSelect === "Semua" || s.utcLabel === masterSelect) && (masterSelect2 === "Semua" || s.status === masterSelect2)).length} />
               <div className="tableWrap"><table><thead><tr><th>Kode</th><th>Nama Station</th><th>Time Zone</th><th>UTC</th><th>Status</th><th>Aksi</th></tr></thead><tbody>
-                {stations.filter((s) => `${s.code} ${s.name}`.toLowerCase().includes(masterQuery.toLowerCase()) && (masterSelect === "Semua" || s.utcLabel === masterSelect) && (masterSelect2 === "Semua" || s.status === masterSelect2)).map((s) => <tr key={s.code}><td><b>{s.code}</b></td><td>{s.name}</td><td>{s.timeZone}</td><td>{s.utcLabel}</td><td><mark className={s.status === "Aktif" ? "green" : "red"}>{s.status}</mark></td><td>{canManageMaster ? <button className="del" disabled={accounts.some((a) => a.station === s.code) || lounges.some((l) => l.airport === s.code)} onClick={() => askDelete("Hapus station?", `${s.code} · ${s.name}`, () => setStations((xs) => xs.filter((x) => x.code !== s.code)))}>Hapus</button> : "View only"}</td></tr>)}
+                {stations.filter((s) => `${s.code} ${s.name}`.toLowerCase().includes(masterQuery.toLowerCase()) && (masterSelect === "Semua" || s.utcLabel === masterSelect) && (masterSelect2 === "Semua" || s.status === masterSelect2)).map((s) => <tr key={s.code}><td><b>{s.code}</b></td><td>{s.name}</td><td>{s.timeZone}</td><td>{s.utcLabel}</td><td><mark className={s.status === "Aktif" ? "green" : "red"}>{s.status}</mark></td><td>{canManageMaster ? <div className="rowAct"><button onClick={() => { setEditingStation(s.code); setStationDraft({ ...s }); setShowStationForm(true); }}>Update</button><button className="del" disabled={accounts.some((a) => a.station === s.code) || lounges.some((l) => l.airport === s.code)} onClick={() => askDelete("Hapus station?", `${s.code} · ${s.name}`, async () => { await removeRecord("stations", s.code); setStations((xs) => xs.filter((x) => x.code !== s.code)); setStationNotice(`Station ${s.code} berhasil dihapus.`); })}>Hapus</button></div> : "View only"}</td></tr>)}
               </tbody></table></div>
               <div className="info">Station yang sudah digunakan oleh akun atau lounge tidak dapat dihapus. Nonaktifkan terlebih dahulu setelah relasinya diselesaikan.</div>
             </article>
           )}
           {tab === "master" && masterTab === "Master Airline" && (
             <article className="card tableCard">
-              <div className="actionTitle miniHead"><div><h2>Master Airline</h2><span>Two-character IATA code for export, display, and verifier-organization routing.</span></div>{canManageMaster && <div className="rowAct"><button onClick={() => setMasterTableTarget("Master Airline")}>Manage Table</button><button className="primary" onClick={() => setAirlines((rows) => [...rows, { code: "XX", name: "New Airline", verifierOrganization: "Unassigned", status: "Inactive" }])}>+ Add Airline</button></div>}</div>
-              <div className="tableWrap"><table><thead><tr><th>2-Letter Code</th><th>Airline</th><th>Verifier Organization</th><th>Status</th><th>Action</th></tr></thead><tbody>{airlines.map((airline) => <tr key={`${airline.code}-${airline.name}`}><td><b>{airline.code}</b></td><td>{airline.name}</td><td>{airline.verifierOrganization}</td><td><mark className={airline.status === "Active" ? "green" : "red"}>{airline.status}</mark></td><td>{canManageMaster ? <div className="rowAct"><button onClick={() => setAirlines((rows) => rows.map((x) => x.code === airline.code ? { ...x, status: x.status === "Active" ? "Inactive" : "Active" } : x))}>Toggle Status</button><button className="del" onClick={() => askDelete("Delete airline?", `${airline.code} · ${airline.name}`, () => setAirlines((rows) => rows.filter((x) => x.code !== airline.code)))}>Delete</button></div> : "View only"}</td></tr>)}</tbody></table></div>
+              <div className="actionTitle miniHead"><div><h2>Master Airline</h2><span>Two-character IATA code for export, display, and verifier-organization routing.</span></div>{canManageMaster && <div className="rowAct"><button onClick={() => setMasterTableTarget("Master Airline")}>Kelola Tabel</button><button onClick={downloadAirlineTemplate}>Unduh Template</button><label className="uploadButton">Upload Data<input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadAirlines(file); e.target.value = ""; }} /></label><button className="primary" onClick={() => { setEditingAirline(null); setAirlineDraft({ code: "", name: "", verifierOrganization: "", status: "Active" }); setShowAirlineForm(true); }}>+ Add Airline</button></div>}</div>
+              {airlineNotice && <Notice n={{ kind: airlineNotice.includes("berhasil") ? "ok" : "warn", text: airlineNotice }} close={() => setAirlineNotice("")} />}
+              <MasterFilterBar query={masterQuery} setQuery={setMasterQuery} value={masterSelect} setValue={setMasterSelect} options={[...new Set(airlines.map((x) => x.verifierOrganization))]} value2={masterSelect2} setValue2={setMasterSelect2} options2={[...new Set(airlines.map((x) => x.status))]} placeholder="Kode / nama airline" label1="Verifier Organization" label2="Airline Status" searchLabel="Search Airline" count={airlines.filter((item) => `${item.code} ${item.name}`.toLowerCase().includes(masterQuery.toLowerCase()) && (masterSelect === "Semua" || item.verifierOrganization === masterSelect) && (masterSelect2 === "Semua" || item.status === masterSelect2)).length} />
+              <div className="tableWrap"><table><thead><tr><th>2-Letter Code</th><th>Airline</th><th>Verifier Organization</th><th>Status</th><th>Action</th></tr></thead><tbody>{airlines.filter((item) => `${item.code} ${item.name}`.toLowerCase().includes(masterQuery.toLowerCase()) && (masterSelect === "Semua" || item.verifierOrganization === masterSelect) && (masterSelect2 === "Semua" || item.status === masterSelect2)).map((airline) => <tr key={`${airline.code}-${airline.name}`}><td><b>{airline.code}</b></td><td>{airline.name}</td><td>{airline.verifierOrganization}</td><td><mark className={airline.status === "Active" ? "green" : "red"}>{airline.status}</mark></td><td>{canManageMaster ? <div className="rowAct"><button onClick={() => { setEditingAirline(airline.code); setAirlineDraft({ ...airline }); setShowAirlineForm(true); }}>Update</button><button onClick={async () => { const updated = { ...airline, status: airline.status === "Active" ? "Inactive" as const : "Active" as const }; await saveRecord("airlines", { ...updated, id: airline.code }); setAirlines((rows) => rows.map((x) => x.code === airline.code ? updated : x)); setAirlineNotice(`Status ${airline.code} berhasil diperbarui.`); }}>Toggle Status</button><button className="del" onClick={() => askDelete("Delete airline?", `${airline.code} · ${airline.name}`, async () => { await removeRecord("airlines", airline.code); setAirlines((rows) => rows.filter((x) => x.code !== airline.code)); setAirlineNotice(`Airline ${airline.code} berhasil dihapus.`); })}>Delete</button></div> : "View only"}</td></tr>)}</tbody></table></div>
               <div className="info"><b>Export rule</b><br />Operating Airline Code is derived from exactly the first two alphanumeric characters immediately before the numeric flight number. The master is used to validate the code and route partner verification; it is not required merely to split ORG/DEST.</div>
             </article>
           )}
@@ -3213,7 +3343,7 @@ export default function Home() {
             <article className="card tableCard">
               <div className="actionTitle miniHead">
                 <h2>User &amp; Role</h2>
-                {canManageMaster && <div className="rowAct"><button onClick={() => setMasterTableTarget("User & Role")}>Manage Table</button>{role === "Super Admin" && <button onClick={() => setShowManageRole(true)}>Manage Role</button>}<button onClick={downloadUserTemplate}>Template CSV</button><label className="uploadButton">Upload CSV<input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadUsers(f); e.target.value = ""; }} /></label><button className="primary" onClick={() => {
+                {canManageMaster && <div className="rowAct"><button onClick={() => setMasterTableTarget("User & Role")}>Kelola Tabel</button>{role === "Super Admin" && <button onClick={() => setShowManageRole(true)}>Kelola Role</button>}<button onClick={downloadUserTemplate}>Unduh Template</button><label className="uploadButton">Upload Data<input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadUsers(f); e.target.value = ""; }} /></label><button className="primary" onClick={() => {
                   setEditingUser(null);
                   setUserDraft({ name: "", username: "", email: "", password: "", role: "BO Admin", station: "CGK", scope: "Station CGK", organization: "Branch Office CGK", verificationScopes: ["Business Class", "VIP/CIP/VVIP"], status: "Aktif" });
                   setShowUserForm(true);
@@ -3285,11 +3415,12 @@ export default function Home() {
                 title="Access Entitlement"
                 right={`${filteredPartnerships.length} DATA`}
               />
-              {canManageMaster && <div className="masterAction rowAct"><button onClick={() => setMasterTableTarget("Access Entitlement")}>Manage Table</button><button onClick={() => setShowEligibilityRules(true)}>Manage Eligibility Rules</button><button onClick={() => setShowIntegrationStatus(true)}>Integration Status</button><button className="primary" onClick={() => {
+              {canManageMaster && <div className="masterAction rowAct"><button onClick={() => setMasterTableTarget("Access Entitlement")}>Kelola Tabel</button><button onClick={downloadEntitlementTemplate}>Unduh Template</button><label className="uploadButton">Upload Data<input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadEntitlements(file); e.target.value = ""; }} /></label><button onClick={() => setShowEligibilityRules(true)}>Kelola Eligibility Rules</button><button onClick={() => setShowIntegrationStatus(true)}>Status Integrasi</button><button className="primary" onClick={() => {
                 setEditingPartnership(null);
                 setPartnershipDraft({ type: "Partnership", name: "", reference: "", status: "Aktif", allowedRoles: ["Super Admin", "Admin"], verifierOrganization: "", eligibleTiers: "", effectiveStart: localDate(), effectiveEnd: "", stationScope: "ALL", payer: "", priceRule: "", companionRule: "", apiReferenceFields: "", version: 1 });
                 setShowPartnershipForm(true);
               }}>+ Tambah Produk / Agreement</button></div>}
+              {entitlementNotice && <Notice n={{ kind: entitlementNotice.includes("berhasil") ? "ok" : "warn", text: entitlementNotice }} close={() => setEntitlementNotice("")} />}
               <MasterFilterBar
                 query={masterQuery}
                 setQuery={setMasterQuery}
@@ -3321,7 +3452,7 @@ export default function Home() {
                         setPartnershipDraft({ type: p.type, name: p.name, reference: p.reference, status: p.status, allowedRoles: p.allowedRoles, verifierOrganization: p.verifierOrganization, eligibleTiers: p.eligibleTiers, effectiveStart: p.effectiveStart, effectiveEnd: p.effectiveEnd, stationScope: p.stationScope, payer: p.payer, priceRule: p.priceRule, companionRule: p.companionRule, apiReferenceFields: p.apiReferenceFields, version: p.version });
                         setShowPartnershipForm(true);
                       }}>Update</button>
-                      <button className="del" onClick={() => askDelete("Hapus access entitlement?", `${p.type} · ${p.name}`, () => setPartnerships((xs) => xs.filter((x) => x.id !== p.id)))}>Hapus</button>
+                      <button className="del" onClick={() => askDelete("Hapus access entitlement?", `${p.type} · ${p.name}`, async () => { await removeRecord("entitlements", p.id); setPartnerships((xs) => xs.filter((x) => x.id !== p.id)); setEntitlementNotice(`${p.name} berhasil dihapus.`); })}>Hapus</button>
                     </div>}
                   </div>
                 ))}
@@ -3947,7 +4078,7 @@ export default function Home() {
         </div>
       )}
       {showProfile && (
-        <div className="back" onMouseDown={() => setShowProfile(false)}>
+        <div className="back" onMouseDown={() => { if (!currentAccount.mustChangePassword) setShowProfile(false); }}>
           <form className="modal" onMouseDown={(e) => e.stopPropagation()} onSubmit={async (e) => {
             e.preventDefault();
             if (newPasswordValue.length < 8 || newPasswordValue !== confirmPasswordValue) { setProfileNotice("Password baru minimal 8 karakter dan konfirmasinya harus sama."); return; }
@@ -3955,14 +4086,16 @@ export default function Home() {
             try {
               await reauthenticateWithCredential(firebaseUser, EmailAuthProvider.credential(firebaseUser.email, oldPassword));
               await updatePassword(firebaseUser, newPasswordValue);
+              await completePasswordChange(firebaseUser);
+              setCurrentAccount((account) => account ? { ...account, mustChangePassword: false } : account);
               setOldPassword(""); setNewPasswordValue(""); setConfirmPasswordValue(""); setProfileNotice("Password berhasil diperbarui.");
             } catch { setProfileNotice("Password lama tidak sesuai atau sesi perlu login ulang."); }
           }}>
-            <div className="modalHead"><div><span>PROFIL SAYA</span><h2>Ganti Password</h2></div><button type="button" onClick={() => setShowProfile(false)}>×</button></div>
+            <div className="modalHead"><div><span>PROFIL SAYA</span><h2>Ganti Password</h2></div>{!currentAccount.mustChangePassword && <button type="button" onClick={() => setShowProfile(false)}>×</button>}</div>
             <div className="profileIdentity"><b>{currentAccount.name}</b><span>{currentAccount.role} · {currentAccount.scope}</span></div>
             <div className="form"><label className="full">Password lama<input type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} /></label><label>Password baru<input type="password" value={newPasswordValue} onChange={(e) => setNewPasswordValue(e.target.value)} /></label><label>Konfirmasi password baru<input type="password" value={confirmPasswordValue} onChange={(e) => setConfirmPasswordValue(e.target.value)} /></label></div>
             {profileNotice && <div className={profileNotice.includes("berhasil") ? "notice ok compactNotice" : "notice error compactNotice"}>{profileNotice}</div>}
-            <div className="modalActions"><button type="button" onClick={() => setShowProfile(false)}>Batal</button><button className="primary">Simpan &amp; Konfirmasi</button></div>
+            <div className="modalActions">{!currentAccount.mustChangePassword && <button type="button" onClick={() => setShowProfile(false)}>Batal</button>}<button className="primary">Simpan &amp; Konfirmasi</button></div>
           </form>
         </div>
       )}
@@ -3990,9 +4123,23 @@ export default function Home() {
       {showStationForm && canManageMaster && (
         <div className="back" onMouseDown={() => setShowStationForm(false)}>
           <form className="modal" onMouseDown={(e) => e.stopPropagation()} onSubmit={saveStation}>
-            <div className="modalHead"><div><span>MASTER STATION</span><h2>Tambah Station</h2></div><button type="button" onClick={() => setShowStationForm(false)}>×</button></div>
-            <div className="form"><label>Kode IATA<input maxLength={3} value={stationDraft.code} onChange={(e) => setStationDraft({ ...stationDraft, code: e.target.value.toUpperCase() })} placeholder="CGK" /></label><label>Nama Station<input value={stationDraft.name} onChange={(e) => setStationDraft({ ...stationDraft, name: e.target.value })} /></label><label>Time Zone<select value={stationDraft.timeZone} onChange={(e) => { const [timeZone, utcLabel] = e.target.value.split("|"); setStationDraft({ ...stationDraft, timeZone, utcLabel }); }}><option value="Asia/Jakarta|UTC+7">Asia/Jakarta — UTC+7</option><option value="Asia/Makassar|UTC+8">Asia/Makassar — UTC+8</option><option value="Asia/Jayapura|UTC+9">Asia/Jayapura — UTC+9</option></select></label><label>Status<select value={stationDraft.status} onChange={(e) => setStationDraft({ ...stationDraft, status: e.target.value as Station["status"] })}><option>Aktif</option><option>Nonaktif</option></select></label></div>
+            <div className="modalHead"><div><span>MASTER STATION</span><h2>{editingStation ? "Update" : "Tambah"} Station</h2></div><button type="button" onClick={() => setShowStationForm(false)}>×</button></div>
+            <div className="form"><label>Kode IATA<input maxLength={3} value={stationDraft.code} readOnly={Boolean(editingStation)} onChange={(e) => setStationDraft({ ...stationDraft, code: e.target.value.toUpperCase() })} placeholder="CGK" /></label><label>Nama Station<input value={stationDraft.name} onChange={(e) => setStationDraft({ ...stationDraft, name: e.target.value })} /></label><label>Time Zone<select value={`${stationDraft.timeZone}|${stationDraft.utcLabel}`} onChange={(e) => { const [timeZone, utcLabel] = e.target.value.split("|"); setStationDraft({ ...stationDraft, timeZone, utcLabel }); }}><option value="Asia/Jakarta|UTC+7">Asia/Jakarta — UTC+7</option><option value="Asia/Makassar|UTC+8">Asia/Makassar — UTC+8</option><option value="Asia/Jayapura|UTC+9">Asia/Jayapura — UTC+9</option></select></label><label>Status<select value={stationDraft.status} onChange={(e) => setStationDraft({ ...stationDraft, status: e.target.value as Station["status"] })}><option>Aktif</option><option>Nonaktif</option></select></label></div>
             <div className="modalActions"><button type="button" onClick={() => setShowStationForm(false)}>Batal</button><button className="primary">Simpan &amp; Konfirmasi</button></div>
+          </form>
+        </div>
+      )}
+      {showAirlineForm && canManageMaster && (
+        <div className="back" onMouseDown={() => setShowAirlineForm(false)}>
+          <form className="modal" onMouseDown={(e) => e.stopPropagation()} onSubmit={saveAirline}>
+            <div className="modalHead"><div><span>MASTER AIRLINE</span><h2>{editingAirline ? "Update" : "Tambah"} Airline</h2></div><button type="button" onClick={() => setShowAirlineForm(false)}>×</button></div>
+            <div className="form">
+              <label>2-Letter Code<input maxLength={2} value={airlineDraft.code} readOnly={Boolean(editingAirline)} onChange={(e) => setAirlineDraft({ ...airlineDraft, code: e.target.value.toUpperCase() })} placeholder="GA" /></label>
+              <label>Status<select value={airlineDraft.status} onChange={(e) => setAirlineDraft({ ...airlineDraft, status: e.target.value as Airline["status"] })}><option>Active</option><option>Inactive</option></select></label>
+              <label className="full">Nama Airline<input value={airlineDraft.name} onChange={(e) => setAirlineDraft({ ...airlineDraft, name: e.target.value })} placeholder="Garuda Indonesia" /></label>
+              <label className="full">Verifier Organization<input value={airlineDraft.verifierOrganization} onChange={(e) => setAirlineDraft({ ...airlineDraft, verifierOrganization: e.target.value })} placeholder="Garuda Indonesia / Partner Airline" /></label>
+            </div>
+            <div className="modalActions"><button type="button" onClick={() => setShowAirlineForm(false)}>Batal</button><button className="primary">Simpan &amp; Konfirmasi</button></div>
           </form>
         </div>
       )}
@@ -4116,14 +4263,15 @@ export default function Home() {
               <label>Nama<input value={userDraft.name} onChange={(e) => setUserDraft({ ...userDraft, name: e.target.value })} /></label>
               <label>Username<input value={userDraft.username} onChange={(e) => setUserDraft({ ...userDraft, username: e.target.value })} /></label>
               <label>Email<input type="email" value={userDraft.email || ""} onChange={(e) => setUserDraft({ ...userDraft, email: e.target.value })} placeholder="nama@perusahaan.com" /></label>
-              <label>Role<select value={userDraft.role} onChange={(e) => setUserDraft({ ...userDraft, role: e.target.value as Account["role"] })}>{roleProfileSeed.map((x) => <option key={x.role}>{x.role}</option>)}</select></label>
+              {!editingUser && <label>Password Sementara<input type="password" autoComplete="new-password" value={userDraft.password} onChange={(e) => setUserDraft({ ...userDraft, password: e.target.value })} placeholder="Minimal 8 karakter" /></label>}
+              <label>Role<select value={userDraft.role} onChange={(e) => { const nextRole = e.target.value as Account["role"]; const globalRole = ["Super Admin", "Admin", "HO Admin", "HO Ancillary Coordinator", "HO Ancillary Verifier", "Report Viewer"].includes(nextRole); setUserDraft({ ...userDraft, role: nextRole, station: globalRole ? "ALL" : userDraft.station, scope: roleProfileSeed.find((item) => item.role === nextRole)?.scope || "Configured authority" }); }}>{roleProfileSeed.filter((x) => role === "Super Admin" || x.role !== "Super Admin").map((x) => <option key={x.role}>{x.role}</option>)}</select></label>
               <label>Station<select value={userDraft.station} onChange={(e) => setUserDraft({ ...userDraft, station: e.target.value, scope: e.target.value === "ALL" ? "Seluruh Station" : `Station ${e.target.value}` })}><option value="ALL">ALL — Seluruh Station</option>{stations.filter((s) => s.status === "Aktif").map((s) => <option key={s.code} value={s.code}>{s.code} — {s.name}</option>)}</select></label>
-              <label>Authority<input value={userDraft.station === "ALL" ? "Seluruh Station" : `Station ${userDraft.station}`} readOnly /></label>
+              <label className="full">Authority<textarea value={`${roleProfileSeed.find((item) => item.role === userDraft.role)?.scope || "Configured authority"} · ${userDraft.station === "ALL" ? "Seluruh Station" : `Station ${userDraft.station}`}`} readOnly /></label>
               <label>Organization / Unit<input value={userDraft.organization} onChange={(e) => setUserDraft({ ...userDraft, organization: e.target.value })} placeholder="HO Ancillary / Korean Air / Lounge CGK" /></label>
               <label className="full">Verification Scope<input value={userDraft.verificationScopes.join(", ")} onChange={(e) => setUserDraft({ ...userDraft, verificationScopes: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} placeholder="Program, airline, category" /></label>
               <label>Status<select value={userDraft.status} onChange={(e) => setUserDraft({ ...userDraft, status: e.target.value as Account["status"] })}><option>Aktif</option><option>Nonaktif</option></select></label>
             </div>
-            <div className="modalActions"><button type="button" onClick={() => setShowUserForm(false)}>Batal</button><button className="primary">Simpan &amp; Konfirmasi</button></div>
+            <div className="modalActions"><button type="button" onClick={() => setShowUserForm(false)} disabled={savingUser}>Batal</button><button className="primary" disabled={savingUser}>{savingUser ? "Menyimpan..." : "Simpan & Konfirmasi"}</button></div>
           </form>
         </div>
       )}

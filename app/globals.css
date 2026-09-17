@@ -461,6 +461,18 @@
   gap: 18px;
   align-items: center;
 }
+.sessionLoader {
+  width: min(360px, 100%);
+  padding: 28px;
+  border-radius: 18px;
+  background: #ffffffee;
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  color: #55727d;
+  box-shadow: 0 24px 55px #00192355;
+}
+.sessionLoader img { width: min(280px, 90%); height: auto; }
 .loginBrand {
   padding: 24px 28px;
   border: 1px solid #ffffff38;
@@ -975,7 +987,10 @@ textarea {
 }
 button {
   cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background-color .15s ease, color .15s ease;
 }
+button:not(:disabled):hover, .uploadButton:hover { transform: translateY(-1px); filter: brightness(.98); }
+button:disabled { cursor: not-allowed; opacity: .58; }
 .top {
   height: 76px;
   padding: 0 32px;
@@ -1052,9 +1067,9 @@ aside {
 }
 .sidebarToggle { position: absolute; right: -14px; top: 14px; z-index: 5; width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 50%; background: #fff; color: #087f98; display: grid; place-items: center; cursor: pointer; }
 .sidebarCollapsed aside { padding-inline: 10px; }
-.sidebarCollapsed aside > p, .sidebarCollapsed aside nav button span { display: none; }
-.sidebarCollapsed aside nav button { justify-content: center; padding-inline: 8px; }
-.sidebarCollapsed aside nav button i { color: #087f98; font-size: 10px; font-weight: 700; }
+.sidebarCollapsed aside > p, .sidebarCollapsed aside nav a span { display: none; }
+.sidebarCollapsed aside nav a { justify-content: center; padding-inline: 8px; }
+.sidebarCollapsed aside nav a i { color: #087f98; font-size: 10px; font-weight: 700; }
 aside > p {
   font-size: 10px;
   letter-spacing: 2px;
@@ -1065,7 +1080,7 @@ nav {
   display: grid;
   gap: 7px;
 }
-nav button {
+nav a {
   border: 0;
   background: none;
   border-radius: 10px;
@@ -1076,13 +1091,15 @@ nav button {
   gap: 12px;
   align-items: center;
   font-size: 13px;
+  text-decoration: none;
+  transition: background-color .15s ease, color .15s ease, box-shadow .15s ease;
 }
-nav button i {
+nav a i {
   font-style: normal;
   font-size: 9px;
   color: #9aafb7;
 }
-nav button:hover {
+nav a:hover {
   background: #f3f8f9;
 }
 nav .active {
@@ -1684,6 +1701,7 @@ td small {
   box-shadow: 0 20px 70px #00151f66;
   max-height: calc(100vh - 40px);
   overflow: auto;
+  overscroll-behavior: contain;
 }
 .actionDialog { width: min(470px, 100%); text-align: center; }
 .actionDialog p { color: #53727e; line-height: 1.55; }
@@ -1779,12 +1797,12 @@ td small {
     display: flex;
     overflow: auto;
   }
-  nav button {
+  nav a {
     min-width: max-content;
     padding: 10px;
     font-size: 10px;
   }
-  nav button i {
+  nav a i {
     display: none;
   }
   .content {

@@ -1,8 +1,8 @@
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { storage } from "./client";
+import { storage, storageEnabled } from "./client";
 
 export async function uploadEvidence(visitorId: string, file: File) {
-  if (!storage) throw new Error("Firebase Storage belum dikonfigurasi.");
+  if (!storageEnabled || !storage) throw new Error("Firebase Storage belum diaktifkan. Fitur lampiran sementara belum tersedia pada paket saat ini.");
   const safeName = file.name.replace(/[^A-Za-z0-9._-]/g, "_");
   const target = ref(storage, `evidence/${visitorId}/${Date.now()}-${safeName}`);
   await uploadBytes(target, file, { contentType: file.type });

@@ -24,6 +24,9 @@ export const createManagedUser = (user: User, payload: unknown) =>
 export const updateManagedUser = (user: User, payload: unknown) =>
   call<{ uid: string }>("manage-user", user, payload);
 
+export const completePasswordChange = (user: User) =>
+  call<{ uid: string }>("complete-password-change", user, {});
+
 export const importManagedUsers = (user: User, users: unknown[]) =>
   call<{ created: number; errors: Array<{ row: number; error: string }> }>("import-users", user, { users });
 

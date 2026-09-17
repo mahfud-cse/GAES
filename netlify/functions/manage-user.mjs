@@ -3,7 +3,7 @@ import { failure, json, requireUser, targetAuth, targetDb } from "./_firebase-ad
 export async function handler(event) {
   try {
     if (event.httpMethod !== "POST") return json(405, { error: "Method not allowed." });
-    const actor = await requireUser(event, ["Super Admin"]);
+    const actor = await requireUser(event, ["Super Admin", "Admin"]);
     const input = JSON.parse(event.body || "{}");
     const uid = String(input.uid || "");
     if (!uid || uid === actor.decoded.uid) return json(400, { error: "Target akun tidak valid." });
@@ -11,6 +11,7 @@ export async function handler(event) {
     const current = await db.collection("users").doc(uid).get();
     if (!current.exists) return json(404, { error: "Akun tidak ditemukan." });
     const before = current.data();
+    if (actor.profile.role !== "Super Admin" && (before.role === "Super Admin" || input.role === "Super Admin")) return json(403, { error: "Admin tidak dapat mengelola Super Admin." });
     const username = String(input.username || before.username).trim().toLowerCase();
     const email = String(input.email || before.email).trim().toLowerCase();
     const active = input.status !== "Nonaktif";

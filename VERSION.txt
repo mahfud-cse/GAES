@@ -1,3 +1,1 @@
-Garuda Lounge Access
-Version: 0.20.0
-Release date: 2026-09-13
+Garuda Access Entitlement System v0.22.0

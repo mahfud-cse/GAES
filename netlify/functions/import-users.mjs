@@ -4,7 +4,7 @@ import { handler as createUser } from "./create-user.mjs";
 export async function handler(event) {
   try {
     if (event.httpMethod !== "POST") return json(405, { error: "Method not allowed." });
-    await requireUser(event, ["Super Admin"]);
+    await requireUser(event, ["Super Admin", "Admin"]);
     const users = JSON.parse(event.body || "{}").users;
     if (!Array.isArray(users) || users.length > 200) return json(400, { error: "Maksimal 200 akun per upload." });
     let created = 0;
