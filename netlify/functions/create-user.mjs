@@ -1,13 +1,45 @@
-import { failure, httpError, json, requireUser, targetAuth, targetDb } from "./_firebase-admin.mjs";
+import {
+  failure,
+  httpError,
+  json,
+  requireUser,
+  targetAuth,
+  targetDb,
+} from "./_firebase-admin.mjs";
 
-const allowedRoles = new Set(["Super Admin", "Admin", "HO Admin", "BO Admin", "Lounge Officer", "Lounge Manager", "HO Ancillary Coordinator", "HO Ancillary Verifier", "Airline Coordinator", "Airline Verifier", "Report Viewer"]);
+const allowedRoles = new Set([
+  "Super Admin",
+  "Admin",
+  "HO Admin",
+  "BO Admin",
+  "Lounge Officer",
+  "Lounge Manager",
+  "HO Ancillary Coordinator",
+  "HO Ancillary Verifier",
+  "Airline Coordinator",
+  "Airline Verifier",
+  "Report Viewer",
+]);
 
 export async function createUserRecord(input, actor) {
-  const username = String(input.username || "").trim().toLowerCase();
-  const email = String(input.email || "").trim().toLowerCase();
+  const username = String(input.username || "")
+    .trim()
+    .toLowerCase();
+  const email = String(input.email || "")
+    .trim()
+    .toLowerCase();
   const password = String(input.password || "");
-  if (!input.name || !email.includes("@") || password.length < 8 || !/^[a-z0-9._-]{3,40}$/.test(username) || !allowedRoles.has(input.role)) {
-    throw httpError(400, "Nama, email, username, password, atau role tidak valid.");
+  if (
+    !input.name ||
+    !email.includes("@") ||
+    password.length < 8 ||
+    !/^[a-z0-9._-]{3,40}$/.test(username) ||
+    !allowedRoles.has(input.role)
+  ) {
+    throw httpError(
+      400,
+      "Nama, email, username, password, atau role tidak valid.",
+    );
   }
   if (actor.profile.role !== "Super Admin" && input.role === "Super Admin") {
     throw httpError(403, "Hanya Super Admin yang dapat membuat Super Admin.");
@@ -15,9 +47,11 @@ export async function createUserRecord(input, actor) {
 
   const db = targetDb();
   const usernameRef = db.collection("usernames").doc(username);
-  if ((await usernameRef.get()).exists) throw httpError(409, "Username sudah digunakan.");
+  if ((await usernameRef.get()).exists)
+    throw httpError(409, "Username sudah digunakan.");
 
-  const record = await targetAuth().createUser({
+  const auth = targetAuth();
+  const record = await auth.createUser({
     email,
     password,
     displayName: input.name,
@@ -32,7 +66,9 @@ export async function createUserRecord(input, actor) {
     station: input.station || "ALL",
     scope: input.scope || "Seluruh Station",
     organization: input.organization || "Garuda Indonesia",
-    verificationScopes: Array.isArray(input.verificationScopes) ? input.verificationScopes : [],
+    verificationScopes: Array.isArray(input.verificationScopes)
+      ? input.verificationScopes
+      : [],
     active: input.status !== "Nonaktif",
     mustChangePassword: true,
     createdAt: new Date(),
@@ -47,13 +83,22 @@ export async function createUserRecord(input, actor) {
     actorId: actor.decoded.uid,
     createdAt: new Date(),
   });
-  await batch.commit();
+  try {
+    await batch.commit();
+  } catch (error) {
+    // Auth and Firestore cannot share a transaction. Remove the newly-created
+    // Auth account when its profile cannot be committed so the username/email
+    // can be retried safely by the administrator.
+    await auth.deleteUser(record.uid).catch(() => undefined);
+    throw error;
+  }
   return { uid: record.uid, email, username };
 }
 
 export default async (request) => {
   try {
-    if (request.method !== "POST") return json(405, { error: "Method not allowed." });
+    if (request.method !== "POST")
+      return json(405, { error: "Method not allowed." });
     const actor = await requireUser(request, ["Super Admin", "Admin"]);
     const result = await createUserRecord(await request.json(), actor);
     return json(201, result);

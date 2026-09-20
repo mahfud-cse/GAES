@@ -1,6 +1,10 @@
 import type { User } from "firebase/auth";
 
-async function call<T>(path: string, user: User | null, body: unknown): Promise<T> {
+async function call<T>(
+  path: string,
+  user: User | null,
+  body: unknown,
+): Promise<T> {
   const token = user ? await user.getIdToken() : "";
   const response = await fetch(`/.netlify/functions/${path}`, {
     method: "POST",
@@ -13,16 +17,16 @@ async function call<T>(path: string, user: User | null, body: unknown): Promise<
   const raw = await response.text();
   let payload: Record<string, unknown> = {};
   try {
-    payload = raw ? JSON.parse(raw) as Record<string, unknown> : {};
+    payload = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
   } catch {
     payload = {};
   }
   if (!response.ok) {
     const message = String(
       payload.error ||
-      payload.message ||
-      (raw && !raw.trim().startsWith("<") ? raw : "") ||
-      `Permintaan tidak dapat diproses (HTTP ${response.status}).`,
+        payload.message ||
+        (raw && !raw.trim().startsWith("<") ? raw : "") ||
+        `Permintaan tidak dapat diproses (HTTP ${response.status}).`,
     );
     throw new Error(message);
   }
@@ -33,7 +37,11 @@ export const resolveUsername = (username: string) =>
   call<{ email: string }>("resolve-username", null, { username });
 
 export const createManagedUser = (user: User, payload: unknown) =>
-  call<{ uid: string; email: string; username: string }>("create-user", user, payload);
+  call<{ uid: string; email: string; username: string }>(
+    "create-user",
+    user,
+    payload,
+  );
 
 export const updateManagedUser = (user: User, payload: unknown) =>
   call<{ uid: string }>("manage-user", user, payload);
@@ -42,10 +50,14 @@ export const completePasswordChange = (user: User) =>
   call<{ uid: string }>("complete-password-change", user, {});
 
 export const importManagedUsers = (user: User, users: unknown[]) =>
-  call<{ created: number; errors: Array<{ row: number; error: string }> }>("import-users", user, { users });
+  call<{ created: number; errors: Array<{ row: number; error: string }> }>(
+    "import-users",
+    user,
+    { users },
+  );
 
 export const syncSourceLounges = (user: User) =>
-  call<{ imported: number }>("sync-source-lounges", user, {});
+  call<{ imported: number; skipped: number }>("sync-source-lounges", user, {});
 
 export const createVisitor = (user: User, visitor: unknown) =>
   call<{ id: string; lateScan: boolean }>("create-visitor", user, { visitor });

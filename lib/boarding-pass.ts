@@ -17,7 +17,11 @@ function clean(raw: string) {
 }
 
 function eligibleFromTail(value: string): "Y" | "N" {
-  const finalToken = value.split(/\s+/).filter(Boolean).at(-1) || "";
+  const finalToken =
+    value
+      .split(/[\s|;,]+/)
+      .filter(Boolean)
+      .at(-1) || "";
   return /^YA*$/i.test(finalToken) ? "Y" : "N";
 }
 
@@ -43,13 +47,15 @@ function parseIataBcbp(normalized: string): BoardingPassResult | null {
   const seq = text.slice(52, 57).trim();
 
   if (
-    !Number.isInteger(legs) || legs < 1 ||
+    !Number.isInteger(legs) ||
+    legs < 1 ||
     !/^[A-Z]{3}$/.test(origin) ||
     !/^[A-Z]{3}$/.test(destination) ||
     !/^[A-Z0-9]{2,3}$/.test(carrier) ||
     !/^\d{1,5}$/.test(flightNumber) ||
     !/^\d{3}$/.test(julianDay)
-  ) return null;
+  )
+    return null;
 
   const ticket = text.match(/2A(\d{13,14})/)?.[1] || "";
   return {
@@ -70,11 +76,17 @@ function parseIataBcbp(normalized: string): BoardingPassResult | null {
 function parseLabelled(normalized: string): BoardingPassResult | null {
   const text = normalized.toUpperCase();
   const fields: Record<string, string> = {};
-  text.split(/[|;,\n]+/).map((item) => item.trim()).filter(Boolean).forEach((item) => {
-    const divider = item.search(/[:=]/);
-    if (divider < 1) return;
-    fields[item.slice(0, divider).toLowerCase().replace(/\s/g, "")] = item.slice(divider + 1).trim();
-  });
+  text
+    .split(/[|;,\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .forEach((item) => {
+      const divider = item.search(/[:=]/);
+      if (divider < 1) return;
+      fields[item.slice(0, divider).toLowerCase().replace(/\s/g, "")] = item
+        .slice(divider + 1)
+        .trim();
+    });
   const name = fields.name || fields.nama || fields.passenger || "";
   const flight = fields.flight || fields.penerbangan || "";
   const route = fields.route || fields.rute || "";
@@ -98,9 +110,19 @@ function parseLabelled(normalized: string): BoardingPassResult | null {
 export function parseBoardingPass(raw: string): BoardingPassResult {
   const normalized = clean(raw);
   const parsed = parseIataBcbp(normalized) || parseLabelled(normalized);
-  return parsed || {
-    recognized: false,
-    name: "", flight: "", route: "", cabin: "", seat: "", seq: "",
-    ticket: "", julianDay: "", eligible: eligibleFromTail(normalized), normalized,
-  };
+  return (
+    parsed || {
+      recognized: false,
+      name: "",
+      flight: "",
+      route: "",
+      cabin: "",
+      seat: "",
+      seq: "",
+      ticket: "",
+      julianDay: "",
+      eligible: eligibleFromTail(normalized),
+      normalized,
+    }
+  );
 }

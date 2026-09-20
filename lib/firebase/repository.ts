@@ -27,31 +27,58 @@ export type GaesCollection =
   | "monitoringRows";
 
 function clean<T extends Record<string, unknown>>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
+  const sanitized = Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined),
+  );
+  return JSON.parse(JSON.stringify(sanitized)) as T;
 }
 
 export function subscribeCollection<T>(
   name: GaesCollection,
   callback: (rows: T[]) => void,
   sortField?: string,
+  onError?: (error: Error) => void,
 ) {
   if (!db) return () => undefined;
   const base = collection(db, name);
   const source = sortField ? query(base, orderBy(sortField)) : base;
-  return onSnapshot(source, (snapshot) => {
-    callback(snapshot.docs.map((item: QueryDocumentSnapshot<DocumentData>) => ({
-      id: item.id,
-      ...item.data(),
-    })) as T[]);
-  });
+  return onSnapshot(
+    source,
+    (snapshot) => {
+      try {
+        callback(
+          snapshot.docs.map((item: QueryDocumentSnapshot<DocumentData>) => ({
+            id: item.id,
+            ...item.data(),
+          })) as T[],
+        );
+      } catch (error) {
+        onError?.(
+          error instanceof Error
+            ? error
+            : new Error("Data tidak dapat diproses."),
+        );
+      }
+    },
+    (error) => onError?.(error),
+  );
 }
 
-export async function saveRecord<T extends { id: string }>(name: GaesCollection, value: T) {
+export async function saveRecord<T extends { id: string }>(
+  name: GaesCollection,
+  value: T,
+) {
   if (!db) throw new Error("Firebase belum dikonfigurasi.");
-  await setDoc(doc(db, name, value.id), {
-    ...clean(value),
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
+  if (!String(value.id || "").trim())
+    throw new Error("ID data wajib tersedia.");
+  await setDoc(
+    doc(db, name, value.id),
+    {
+      ...clean(value),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
 }
 
 export async function removeRecord(name: GaesCollection, id: string) {

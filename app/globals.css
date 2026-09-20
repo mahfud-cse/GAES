@@ -455,6 +455,26 @@
     linear-gradient(115deg, #031e2de8 0%, #063f53cc 48%, #06384b8a 100%),
     url("/first-class-lounge-cgk.jpg") center / cover no-repeat fixed;
 }
+.recoveryPage {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #eef5f7;
+}
+.recoveryCard {
+  width: min(520px, 100%);
+  padding: 32px;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 18px 55px #123e4b20;
+  display: grid;
+  gap: 14px;
+  color: #173b47;
+}
+.recoveryCard img { width: min(260px, 80%); height: 64px; object-fit: contain; }
+.recoveryCard span { color: #b24c45; font-size: 11px; font-weight: 700; letter-spacing: 1.4px; }
+.recoveryCard h1, .recoveryCard p { margin: 0; }
 .loginPanel {
   width: min(460px, 100%);
   display: grid;

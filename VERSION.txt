@@ -1,1 +1,1 @@
-Garuda Access Entitlement System v0.22.2
+Garuda Access Entitlement System v0.22.3
