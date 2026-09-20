@@ -1248,18 +1248,23 @@ textarea {
 .camera:not(.on) video {
   display: none;
 }
-.camera > div {
-  width: 64%;
-  height: 48%;
-  border: 2px solid #58d4d8;
+.camera .scanGuide {
+  position: absolute;
+  inset: 16px;
+  z-index: 1;
   border-radius: 12px;
   opacity: 0.35;
-  z-index: 1;
+  background:
+    linear-gradient(#58d4d8, #58d4d8) left top / 28px 2px no-repeat,
+    linear-gradient(#58d4d8, #58d4d8) left top / 2px 28px no-repeat,
+    linear-gradient(#58d4d8, #58d4d8) right top / 28px 2px no-repeat,
+    linear-gradient(#58d4d8, #58d4d8) right top / 2px 28px no-repeat,
+    linear-gradient(#58d4d8, #58d4d8) left bottom / 28px 2px no-repeat,
+    linear-gradient(#58d4d8, #58d4d8) left bottom / 2px 28px no-repeat,
+    linear-gradient(#58d4d8, #58d4d8) right bottom / 28px 2px no-repeat,
+    linear-gradient(#58d4d8, #58d4d8) right bottom / 2px 28px no-repeat;
 }
-.camera.on > div {
-  opacity: 1;
-  box-shadow: 0 0 0 999px #08233166;
-}
+.camera.on .scanGuide { opacity: 1; }
 .camera span {
   position: absolute;
   bottom: 16px;

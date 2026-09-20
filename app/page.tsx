@@ -1,12 +1,6 @@
 "use client";
 import { FormEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
-import {
-  BrowserMultiFormatReader,
-  type IScannerControls,
-} from "@zxing/browser";
-import * as XLSX from "xlsx";
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
+import type { IScannerControls } from "@zxing/browser";
 import Link from "next/link";
 import { browserLocalPersistence, EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, setPersistence, signInWithEmailAndPassword, signOut, updatePassword, type User } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
@@ -14,9 +8,11 @@ import { auth, db, firebaseConfigured } from "../lib/firebase/client";
 import { completePasswordChange, createManagedUser, createVisitor, importManagedUsers, resolveUsername, syncSourceLounges, updateManagedUser } from "../lib/firebase/api";
 import { removeRecord, saveRecord, subscribeCollection } from "../lib/firebase/repository";
 import { uploadEvidence } from "../lib/firebase/evidence";
+import { parseBoardingPass } from "../lib/boarding-pass";
 
 type Eligibility = "Y" | "N" | "";
 type MainTab = "dashboard" | "dashboard-detail" | "access" | "reconciliation" | "flights" | "master";
+type InlineNotice = { kind: "ok" | "warn" | "error"; text: string };
 type Visitor = {
   id: string;
   date: string;
@@ -569,56 +565,6 @@ async function imageDataUrl(path: string) {
     reader.readAsDataURL(blob);
   });
 }
-function parse(raw: string) {
-  const normalized = raw.replace(/[\u0000-\u001F\u007F]/g, "").trimEnd(),
-    text = normalized.toUpperCase(),
-    leg = text.match(
-      /([A-Z]{3})([A-Z]{3})([A-Z0-9]{2})\s*(\d{4,5})\s*(\d{3})([A-Z])([0-9]{3}[A-Z])([0-9]{4,5})/,
-    ),
-    ticket = text.match(/2A(\d{13,14})/),
-    finalToken = text.split(/\s+/).filter(Boolean).at(-1) || "",
-    tailEligible = /^YA*$/i.test(finalToken);
-  if (text.startsWith("M1") && leg) {
-    const rawName = text.slice(2, leg.index).trim().split(/\s+/)[0],
-      names = rawName.split("/");
-    return {
-      name: names.length > 1 ? `${names[1]} ${names[0]}` : rawName,
-      flight: `${leg[3]}${Number(leg[4])}`,
-      route: `${leg[1]}–${leg[2]}`,
-      cabin: leg[6],
-      seat: leg[7].replace(/^0+/, ""),
-      seq: String(Number(leg[8])),
-      ticket: ticket?.[1] || "",
-      julianDay: leg[5],
-      eligible: (tailEligible ? "Y" : "N") as Eligibility,
-      normalized,
-    };
-  }
-  const p = text
-      .split(/[|;,\n]+/)
-      .map((x) => x.trim())
-      .filter(Boolean),
-    k: Record<string, string> = {};
-  p.forEach((x) => {
-    const y = x.split(/[:=]/);
-    if (y.length > 1)
-      k[y[0].toLowerCase().replace(/\s/g, "")] = y.slice(1).join(":").trim();
-  });
-  const eligibility = (k.eligible || k.eligibility || finalToken).trim().toUpperCase();
-  return {
-    name: k.name || k.nama || k.passenger || p[0] || "",
-    flight: (k.flight || k.penerbangan || p[1] || "").toUpperCase(),
-    route: k.route || k.rute || "",
-    cabin: k.cabin || k.kelas || "",
-    seat: k.seat || k.kursi || "",
-    seq: k.sequence || k.seq || k.urutan || p[2] || "",
-    ticket: k.ticket || k.tiket || "",
-    julianDay: k.julianday || k.dateofflight || "",
-    eligible: (/^YA*$/i.test(eligibility) ? "Y" : "N") as Eligibility,
-    normalized,
-  };
-}
-
 export default function Home() {
   const [currentAccount, setCurrentAccount] = useState<Account | null>(null),
     [firebaseUser, setFirebaseUser] = useState<User | null>(null),
@@ -754,7 +700,7 @@ export default function Home() {
     [companionMembership, setCompanionMembership] = useState("");
   const [showLoungeForm, setShowLoungeForm] = useState(false),
     [editingLounge, setEditingLounge] = useState<string | null>(null),
-    [loungeNotice, setLoungeNotice] = useState(""),
+    [loungeNotice, setLoungeNotice] = useState<InlineNotice | null>(null),
     [loungeDraft, setLoungeDraft] = useState<Omit<Lounge, "id">>({
       airport: "",
       name: "",
@@ -810,7 +756,7 @@ export default function Home() {
     [editingAirline, setEditingAirline] = useState<string | null>(null),
     [showAirlineForm, setShowAirlineForm] = useState(false),
     [airlineNotice, setAirlineNotice] = useState(""),
-    [userUploadNotice, setUserUploadNotice] = useState(""),
+    [userUploadNotice, setUserUploadNotice] = useState<InlineNotice | null>(null),
     [sidebarCollapsed, setSidebarCollapsed] = useState(false),
     [actionDialog, setActionDialog] = useState<null | { kind: "ok" | "error" | "warn"; text: string }>(null),
     [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(new Set());
@@ -834,6 +780,7 @@ export default function Home() {
   const video = useRef<HTMLVideoElement>(null),
     stream = useRef<MediaStream | null>(null),
     controls = useRef<IScannerControls | null>(null),
+    scanLock = useRef(false),
     buffer = useRef(""),
     keyTime = useRef(0),
     translatedNodesRef = useRef(new WeakMap<Text, string>()),
@@ -1002,6 +949,7 @@ export default function Home() {
 
   async function uploadPassengerVolume(file: File) {
     try {
+      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: "" });
       const numberValue = (value: unknown) => Number(String(value).replace(/[^0-9.-]/g, "")) || 0;
@@ -1194,8 +1142,17 @@ export default function Home() {
       setNotice({ kind: "error", text: "Pilih Date of Travel pada Langkah 1 sebelum melakukan scan." });
       return;
     }
-    const data = parse(value);
+    const data = parseBoardingPass(value);
     setRaw(value);
+    if (!data.recognized) {
+      setPass(emptyPass);
+      setRejected(null);
+      setNotice({
+        kind: "warn",
+        text: "Barcode berhasil dibaca, tetapi format boarding pass belum dikenali.",
+      });
+      return;
+    }
     const [origin, destination] = data.route
       .split("–")
       .map((x) => x.trim().toUpperCase());
@@ -1307,6 +1264,8 @@ export default function Home() {
       controls.current?.stop();
       controls.current = null;
       stream.current?.getTracks().forEach((t) => t.stop());
+      stream.current = null;
+      scanLock.current = false;
       setCamera(false);
       setScanStatus("");
       return;
@@ -1314,9 +1273,26 @@ export default function Home() {
     if (!video.current) return;
     try {
       setCamera(true);
+      scanLock.current = false;
       setScanStatus("Menyiapkan kamera...");
       setNotice(null);
-      const reader = new BrowserMultiFormatReader();
+      const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] = await Promise.all([
+        import("@zxing/browser"),
+        import("@zxing/library"),
+      ]);
+      const hints = new Map();
+      hints.set(DecodeHintType.TRY_HARDER, true);
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+        BarcodeFormat.QR_CODE,
+        BarcodeFormat.CODE_128,
+        BarcodeFormat.PDF_417,
+        BarcodeFormat.AZTEC,
+        BarcodeFormat.DATA_MATRIX,
+        BarcodeFormat.CODE_39,
+        BarcodeFormat.EAN_13,
+        BarcodeFormat.EAN_8,
+      ]);
+      const reader = new BrowserMultiFormatReader(hints);
       controls.current = await reader.decodeFromConstraints(
         {
           video: {
@@ -1327,10 +1303,13 @@ export default function Home() {
         },
         video.current,
         (result, error, ctrl) => {
-          if (result) {
+          if (result && !scanLock.current) {
+            scanLock.current = true;
             const value = result.getText();
             ctrl.stop();
             controls.current = null;
+            stream.current?.getTracks().forEach((track) => track.stop());
+            stream.current = null;
             setCamera(false);
             setScanStatus("");
             read(value, "kamera browser");
@@ -1346,6 +1325,9 @@ export default function Home() {
     } catch {
       controls.current?.stop();
       controls.current = null;
+      stream.current?.getTracks().forEach((track) => track.stop());
+      stream.current = null;
+      scanLock.current = false;
       setCamera(false);
       setScanStatus("");
       setNotice({
@@ -1637,6 +1619,7 @@ export default function Home() {
   }
   async function uploadFlights(file: File) {
     try {
+      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), {
           type: "array",
           cellDates: true,
@@ -1729,6 +1712,7 @@ export default function Home() {
   }
   async function previewPassengerList(file: File) {
     try {
+      const XLSX = await import("xlsx");
       const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
       const keys = Object.keys(rows[0] || {}).map((x) => x.toLowerCase());
@@ -1820,6 +1804,10 @@ export default function Home() {
   async function pdf() {
     const reportRows = payableShown.filter((v) => v.reconciliationStatus === "Final" && (reportLoungeFilter === "Semua" || v.lounge === reportLoungeFilter));
     if (!reportRows.length) return;
+    const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+      import("jspdf"),
+      import("jspdf-autotable"),
+    ]);
     const isIndonesia = reportRows.every((v) => stations.some((s) => s.code === v.airport));
     const doc = new jsPDF({ orientation: reportConfig.columns.length > 8 ? "landscape" : "portrait", unit: "mm", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -1888,7 +1876,7 @@ export default function Home() {
         doc.setTextColor(0);
       },
     });
-    const lastY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY || y;
+    const lastY = (doc as typeof doc & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY || y;
     let signY = Math.max(lastY + 15, doc.internal.pageSize.getHeight() - 55);
     if (signY > doc.internal.pageSize.getHeight() - 42) { doc.addPage(); signY = 35; }
     doc.setFontSize(8.5);
@@ -1930,6 +1918,7 @@ export default function Home() {
   }
   async function uploadLounges(file: File) {
     try {
+      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array" }),
         rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
           wb.Sheets[wb.SheetNames[0]],
@@ -1954,19 +1943,15 @@ export default function Home() {
         throw new Error("Tidak ada data lounge yang valid.");
       await Promise.all(incoming.map((item) => saveRecord("lounges", item)));
       setLounges((x) => [...x, ...incoming]);
-      setLoungeNotice(`${incoming.length} lounge/tenant berhasil ditambahkan.`);
+      setLoungeNotice({ kind: "ok", text: `${incoming.length} lounge/tenant berhasil ditambahkan.` });
     } catch (e) {
-      setLoungeNotice(
-        e instanceof Error ? e.message : "File tidak dapat dibaca.",
-      );
+      setLoungeNotice({ kind: "error", text: e instanceof Error ? e.message : "File tidak dapat dibaca." });
     }
   }
   async function saveLounge(e: FormEvent) {
     e.preventDefault();
     if (!loungeDraft.airport || !loungeDraft.name || !loungeDraft.end) {
-      setLoungeNotice(
-        "Airport, nama lounge, dan tanggal berakhir wajib diisi.",
-      );
+      setLoungeNotice({ kind: "warn", text: "Airport, nama lounge, dan tanggal berakhir wajib diisi." });
       return;
     }
     const record = { ...loungeDraft, id: editingLounge || crypto.randomUUID() };
@@ -1980,31 +1965,29 @@ export default function Home() {
     else setLounges((xs) => [...xs, record]);
     setShowLoungeForm(false);
     setEditingLounge(null);
-    setLoungeNotice("Data lounge/tenant berhasil disimpan.");
+    setLoungeNotice({ kind: "ok", text: "Data lounge/tenant berhasil disimpan." });
     setActionDialog({ kind: "ok", text: `Lounge/Tenant berhasil ${editingLounge ? "diperbarui" : "ditambahkan"}.` });
   }
   async function saveUser(e: FormEvent) {
     e.preventDefault();
     if (savingUser) return;
-    if (!userDraft.name || !userDraft.username || !userDraft.email || !firebaseUser) { setUserUploadNotice("Nama, username, dan email wajib diisi."); return; }
-    if (!editingUser && userDraft.password.length < 8) { setUserUploadNotice("Password sementara minimal 8 karakter."); return; }
-    if (userDraft.station !== "ALL" && !stations.some((s) => s.code === userDraft.station)) { setUserUploadNotice("Station yang dipilih tidak valid."); return; }
-    if (role !== "Super Admin" && userDraft.role === "Super Admin") { setUserUploadNotice("Hanya Super Admin yang dapat membuat akun Super Admin."); return; }
+    if (!userDraft.name || !userDraft.username || !userDraft.email || !firebaseUser) { setUserUploadNotice({ kind: "warn", text: "Nama, username, dan email wajib diisi." }); return; }
+    if (!editingUser && userDraft.password.length < 8) { setUserUploadNotice({ kind: "warn", text: "Password sementara minimal 8 karakter." }); return; }
+    if (userDraft.station !== "ALL" && !stations.some((s) => s.code === userDraft.station)) { setUserUploadNotice({ kind: "warn", text: "Station yang dipilih tidak valid." }); return; }
+    if (role !== "Super Admin" && userDraft.role === "Super Admin") { setUserUploadNotice({ kind: "warn", text: "Hanya Super Admin yang dapat membuat akun Super Admin." }); return; }
     const roleScope = roleProfileSeed.find((item) => item.role === userDraft.role)?.scope || "Configured authority";
     const normalizedDraft = { ...userDraft, scope: `${roleScope} · ${userDraft.station === "ALL" ? "Seluruh Station" : `Station ${userDraft.station}`}` };
     setSavingUser(true);
     try {
       if (editingUser) {
         await updateManagedUser(firebaseUser, { ...normalizedDraft, uid: editingUser });
-        setUserUploadNotice("Akun berhasil diperbarui.");
-        setActionDialog({ kind: "ok", text: "User berhasil diperbarui." });
+        setUserUploadNotice({ kind: "ok", text: "Akun berhasil diperbarui." });
       } else {
         await createManagedUser(firebaseUser, normalizedDraft);
-        setUserUploadNotice("Akun berhasil dibuat. Sampaikan password sementara dan minta pengguna menggantinya saat login pertama.");
-        setActionDialog({ kind: "ok", text: "User berhasil ditambahkan. Sampaikan password sementara kepada pengguna." });
+        setUserUploadNotice({ kind: "ok", text: "Akun berhasil dibuat. Sampaikan password sementara dan minta pengguna menggantinya saat login pertama." });
       }
       setShowUserForm(false); setEditingUser(null);
-    } catch (error) { setUserUploadNotice(error instanceof Error ? error.message : "Akun tidak dapat dibuat."); }
+    } catch (error) { setUserUploadNotice({ kind: "error", text: error instanceof Error ? error.message : "Akun tidak dapat dibuat." }); }
     finally { setSavingUser(false); }
   }
   function downloadUserTemplate() {
@@ -2016,29 +1999,44 @@ export default function Home() {
     URL.revokeObjectURL(a.href);
   }
   async function uploadUsers(file: File) {
+    let rows: Record<string, unknown>[];
     try {
+      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: "" });
-      const validRoles: Account["role"][] = roleProfileSeed.map((x) => x.role);
-      const errors: string[] = [];
-      const incoming: Account[] = [];
-      rows.forEach((r, index) => {
-        const name = String(r["Full Name"] || "").trim(), username = String(r.Username || "").trim(), email = String(r.Email || "").trim(), password = String(r["Temporary Password"] || ""),
-          accountRole = String(r.Role || "") as Account["role"], stationCode = String(r["Station Code"] || "").trim().toUpperCase(),
-          status = (String(r.Status || "Aktif") === "Nonaktif" ? "Nonaktif" : "Aktif") as Account["status"];
-        if (!name || !username || !email.includes("@") || password.length < 8 || !validRoles.includes(accountRole) || (role !== "Super Admin" && accountRole === "Super Admin") || (stationCode !== "ALL" && !stations.some((s) => s.code === stationCode)) || accounts.some((a) => a.username.toLowerCase() === username.toLowerCase()) || incoming.some((a) => a.username.toLowerCase() === username.toLowerCase())) {
-          errors.push(`Baris ${index + 2}: nama, username, role, station, atau duplikasi tidak valid.`);
-          return;
-        }
-        incoming.push({ id: crypto.randomUUID(), name, username, email, role: accountRole, station: stationCode, scope: `${roleProfileSeed.find((item) => item.role === accountRole)?.scope || "Configured authority"} · ${stationCode === "ALL" ? "Seluruh Station" : `Station ${stationCode}`}`, organization: String(r.Organization || "Garuda Indonesia"), verificationScopes: String(r["Verification Scope"] || "").split(",").map((x) => x.trim()).filter(Boolean), status, password });
-      });
-      if (incoming.length && firebaseUser) {
-        const result = await importManagedUsers(firebaseUser, incoming);
-        errors.push(...result.errors.map((item) => `Baris ${item.row}: ${item.error}`));
-        setUserUploadNotice(`${result.created} akun berhasil dibuat.${errors.length ? ` ${errors.length} baris gagal divalidasi.` : ""}`);
-      } else setUserUploadNotice(`0 akun dibuat.${errors.length ? ` ${errors.length} baris gagal divalidasi.` : ""}`);
+      const firstSheet = wb.Sheets[wb.SheetNames[0]];
+      if (!firstSheet) throw new Error("Worksheet tidak ditemukan.");
+      rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: "" });
     } catch {
-      setUserUploadNotice("File akun tidak dapat dibaca.");
+      setUserUploadNotice({ kind: "error", text: "File akun tidak dapat dibaca. Gunakan template CSV/XLSX yang disediakan." });
+      return;
+    }
+
+    const validRoles: Account["role"][] = roleProfileSeed.map((x) => x.role);
+    const errors: string[] = [];
+    const incoming: Account[] = [];
+    rows.forEach((r, index) => {
+      const name = String(r["Full Name"] || "").trim(), username = String(r.Username || "").trim(), email = String(r.Email || "").trim(), password = String(r["Temporary Password"] || ""),
+        accountRole = String(r.Role || "") as Account["role"], stationCode = String(r["Station Code"] || "").trim().toUpperCase(),
+        status = (String(r.Status || "Aktif") === "Nonaktif" ? "Nonaktif" : "Aktif") as Account["status"];
+      if (!name || !username || !email.includes("@") || password.length < 8 || !validRoles.includes(accountRole) || (role !== "Super Admin" && accountRole === "Super Admin") || (stationCode !== "ALL" && !stations.some((s) => s.code === stationCode)) || accounts.some((a) => a.username.toLowerCase() === username.toLowerCase()) || incoming.some((a) => a.username.toLowerCase() === username.toLowerCase())) {
+        errors.push(`Baris ${index + 2}: nama, username, role, station, atau duplikasi tidak valid.`);
+        return;
+      }
+      incoming.push({ id: crypto.randomUUID(), name, username, email, role: accountRole, station: stationCode, scope: `${roleProfileSeed.find((item) => item.role === accountRole)?.scope || "Configured authority"} · ${stationCode === "ALL" ? "Seluruh Station" : `Station ${stationCode}`}`, organization: String(r.Organization || "Garuda Indonesia"), verificationScopes: String(r["Verification Scope"] || "").split(",").map((x) => x.trim()).filter(Boolean), status, password });
+    });
+
+    if (!incoming.length || !firebaseUser) {
+      setUserUploadNotice({ kind: "error", text: `0 akun dibuat.${errors.length ? ` ${errors.length} baris gagal divalidasi.` : " Tidak ada data akun yang valid."}` });
+      return;
+    }
+
+    try {
+      const result = await importManagedUsers(firebaseUser, incoming);
+      errors.push(...result.errors.map((item) => `Baris ${item.row}: ${item.error}`));
+      const kind: InlineNotice["kind"] = result.created === 0 ? "error" : errors.length ? "warn" : "ok";
+      setUserUploadNotice({ kind, text: `${result.created} akun berhasil dibuat.${errors.length ? ` ${errors.length} baris gagal diproses.` : ""}` });
+    } catch (error) {
+      setUserUploadNotice({ kind: "error", text: error instanceof Error ? error.message : "Import akun tidak dapat diproses." });
     }
   }
   function downloadStationTemplate() {
@@ -2047,6 +2045,7 @@ export default function Home() {
   }
   async function uploadStations(file: File) {
     try {
+      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: "" });
       const incoming = rows.map((r) => ({
@@ -2080,6 +2079,7 @@ export default function Home() {
   }
   async function uploadAirlines(file: File) {
     try {
+      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: "" });
       const incoming = rows.map((r) => ({
@@ -2111,6 +2111,7 @@ export default function Home() {
   }
   async function uploadEntitlements(file: File) {
     try {
+      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: "" });
       const incoming: Partnership[] = rows.map((r) => ({
@@ -2379,10 +2380,10 @@ export default function Home() {
                   </div>
                   <div className={`camera ${camera ? "on" : ""}`}>
                     <video ref={video} muted playsInline />
-                    <div />
+                    <div className="scanGuide" aria-hidden="true" />
                     <span>
                       {camera
-                        ? "Posisikan kode di dalam bingkai"
+                        ? "Arahkan barcode atau QR ke area kamera · horizontal/vertikal"
                         : "Kamera belum aktif"}
                     </span>
                   </div>
@@ -3178,8 +3179,14 @@ export default function Home() {
                     <button onClick={() => setMasterTableTarget("Master Lounge/Tenant")}>Kelola Tabel</button>
                     <button onClick={async () => {
                       if (!firebaseUser) return;
-                      try { const result = await syncSourceLounges(firebaseUser); setLoungeNotice(`${result.imported} data lounge/tenant berhasil disinkronkan dari Ground Experience Portal.`); }
-                      catch (error) { setLoungeNotice(error instanceof Error ? error.message : "Sinkronisasi gagal."); }
+                      try {
+                        const result = await syncSourceLounges(firebaseUser);
+                        setLoungeNotice(result.imported > 0
+                          ? { kind: "ok", text: `${result.imported} data lounge/tenant berhasil disinkronkan dari Ground Experience Portal.` }
+                          : { kind: "warn", text: "Sinkronisasi selesai, tetapi tidak ada data lounge/tenant yang ditemukan." });
+                      } catch (error) {
+                        setLoungeNotice({ kind: "error", text: error instanceof Error ? error.message : "Sinkronisasi gagal." });
+                      }
                     }}>Sinkronisasi Data</button>
                     <button onClick={downloadLoungeTemplate}>
                       Unduh Template CSV
@@ -3220,11 +3227,8 @@ export default function Home() {
               </div>
               {loungeNotice && (
                 <Notice
-                  n={{
-                    kind: loungeNotice.includes("berhasil") ? "ok" : "error",
-                    text: loungeNotice,
-                  }}
-                  close={() => setLoungeNotice("")}
+                  n={loungeNotice}
+                  close={() => setLoungeNotice(null)}
                 />
               )}
               <MasterFilterBar
@@ -3345,11 +3349,12 @@ export default function Home() {
                 <h2>User &amp; Role</h2>
                 {canManageMaster && <div className="rowAct"><button onClick={() => setMasterTableTarget("User & Role")}>Kelola Tabel</button>{role === "Super Admin" && <button onClick={() => setShowManageRole(true)}>Kelola Role</button>}<button onClick={downloadUserTemplate}>Unduh Template</button><label className="uploadButton">Upload Data<input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadUsers(f); e.target.value = ""; }} /></label><button className="primary" onClick={() => {
                   setEditingUser(null);
+                  setUserUploadNotice(null);
                   setUserDraft({ name: "", username: "", email: "", password: "", role: "BO Admin", station: "CGK", scope: "Station CGK", organization: "Branch Office CGK", verificationScopes: ["Business Class", "VIP/CIP/VVIP"], status: "Aktif" });
                   setShowUserForm(true);
                 }}>+ Tambah User</button></div>}
               </div>
-              {userUploadNotice && <Notice n={{ kind: userUploadNotice.includes("gagal") ? "warn" : "ok", text: userUploadNotice }} close={() => setUserUploadNotice("")} />}
+              {userUploadNotice && <Notice n={userUploadNotice} close={() => setUserUploadNotice(null)} />}
               <MasterFilterBar
                 query={masterQuery}
                 setQuery={setMasterQuery}
@@ -3390,13 +3395,14 @@ export default function Home() {
                             <div className="rowAct">
                               <button onClick={() => {
                                 setEditingUser(a.id);
+                                setUserUploadNotice(null);
                                 setUserDraft({ name: a.name, username: a.username, email: a.email || "", password: "", role: a.role, station: a.station, scope: a.scope, organization: a.organization || "Garuda Indonesia", verificationScopes: a.verificationScopes || [], status: a.status });
                                 setShowUserForm(true);
                               }}>Update</button>
                               <button className="del" onClick={() => askDelete("Nonaktifkan akun?", `${a.name} · ${a.username}`, async () => {
                                 if (!firebaseUser) return;
-                                try { await updateManagedUser(firebaseUser, { ...a, uid: a.id, status: "Nonaktif" }); setUserUploadNotice("Akun berhasil dinonaktifkan; histori dan audit tetap tersimpan."); }
-                                catch (error) { setUserUploadNotice(error instanceof Error ? error.message : "Akun tidak dapat dinonaktifkan."); }
+                                try { await updateManagedUser(firebaseUser, { ...a, uid: a.id, status: "Nonaktif" }); setUserUploadNotice({ kind: "ok", text: "Akun berhasil dinonaktifkan; histori dan audit tetap tersimpan." }); }
+                                catch (error) { setUserUploadNotice({ kind: "error", text: error instanceof Error ? error.message : "Akun tidak dapat dinonaktifkan." }); }
                               })}>Nonaktifkan</button>
                             </div>
                           ) : <span className="statusText">{a.id === currentAccount.id ? "Akun aktif" : "View only"}</span>}
@@ -4259,6 +4265,7 @@ export default function Home() {
         <div className="back" onMouseDown={() => setShowUserForm(false)}>
           <form className="modal" onMouseDown={(e) => e.stopPropagation()} onSubmit={saveUser}>
             <div className="modalHead"><div><span>MASTER USER</span><h2>{editingUser ? "Update" : "Tambah"} User</h2></div><button type="button" onClick={() => setShowUserForm(false)}>×</button></div>
+            {userUploadNotice && <Notice n={userUploadNotice} close={() => setUserUploadNotice(null)} />}
             <div className="form">
               <label>Nama<input value={userDraft.name} onChange={(e) => setUserDraft({ ...userDraft, name: e.target.value })} /></label>
               <label>Username<input value={userDraft.username} onChange={(e) => setUserDraft({ ...userDraft, username: e.target.value })} /></label>

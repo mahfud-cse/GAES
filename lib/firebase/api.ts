@@ -10,8 +10,22 @@ async function call<T>(path: string, user: User | null, body: unknown): Promise<
     },
     body: JSON.stringify(body),
   });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || "Permintaan tidak dapat diproses.");
+  const raw = await response.text();
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = raw ? JSON.parse(raw) as Record<string, unknown> : {};
+  } catch {
+    payload = {};
+  }
+  if (!response.ok) {
+    const message = String(
+      payload.error ||
+      payload.message ||
+      (raw && !raw.trim().startsWith("<") ? raw : "") ||
+      `Permintaan tidak dapat diproses (HTTP ${response.status}).`,
+    );
+    throw new Error(message);
+  }
   return payload as T;
 }
 
