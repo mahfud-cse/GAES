@@ -41,6 +41,66 @@ export default async (request) => {
       return json(403, { error: "Admin tidak dapat mengelola Super Admin." });
     }
 
+    const action = String(input.action || "update");
+    const auth = targetAuth();
+    if (action === "resetPassword") {
+      const password = String(input.password || "");
+      if (password.length < 8)
+        return json(400, { error: "Password baru minimal 8 karakter." });
+      await auth.updateUser(uid, { password });
+      await db.collection("users").doc(uid).set(
+        {
+          mustChangePassword: true,
+          passwordResetAt: new Date(),
+          updatedAt: new Date(),
+          updatedBy: actor.decoded.uid,
+        },
+        { merge: true },
+      );
+      await db.collection("auditLogs").add({
+        action: "RESET_USER_PASSWORD",
+        targetId: uid,
+        actorId: actor.decoded.uid,
+        createdAt: new Date(),
+      });
+      return json(200, { uid });
+    }
+    if (action === "delete") {
+      const batch = db.batch();
+      if (before.username)
+        batch.delete(db.collection("usernames").doc(before.username));
+      batch.delete(db.collection("users").doc(uid));
+      batch.set(db.collection("auditLogs").doc(), {
+        action: "DELETE_USER",
+        targetId: uid,
+        actorId: actor.decoded.uid,
+        before,
+        createdAt: new Date(),
+      });
+      await auth.updateUser(uid, { disabled: true });
+      let firestoreDeleted = false;
+      try {
+        await batch.commit();
+        firestoreDeleted = true;
+        await auth.deleteUser(uid);
+      } catch (error) {
+        if (firestoreDeleted) {
+          const restore = db.batch();
+          restore.set(db.collection("users").doc(uid), before);
+          if (before.username)
+            restore.set(db.collection("usernames").doc(before.username), {
+              uid,
+              email: before.email,
+              active: before.active !== false,
+            });
+          await restore.commit().catch(() => undefined);
+        }
+        await auth.updateUser(uid, { disabled: false }).catch(() => undefined);
+        throw error;
+      }
+      return json(200, { uid });
+    }
+
     const username = String(input.username || before.username)
       .trim()
       .toLowerCase();
@@ -61,7 +121,6 @@ export default async (request) => {
         return json(409, { error: "Username sudah digunakan." });
     }
     const active = input.status !== "Nonaktif";
-    const auth = targetAuth();
     await auth.updateUser(uid, {
       email,
       displayName: input.name || before.name,

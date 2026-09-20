@@ -9,6 +9,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  where,
 } from "firebase/firestore";
 import { db } from "./client";
 
@@ -60,6 +61,49 @@ export function subscribeCollection<T>(
         );
       }
     },
+    (error) => onError?.(error),
+  );
+}
+
+export function subscribeUserNotifications<T>(
+  userId: string,
+  callback: (rows: T[]) => void,
+  onError?: (error: Error) => void,
+) {
+  if (!db || !userId) return () => undefined;
+  return onSnapshot(
+    query(collection(db, "notifications"), where("userId", "==", userId)),
+    (snapshot) =>
+      callback(
+        snapshot.docs.map((item: QueryDocumentSnapshot<DocumentData>) => ({
+          id: item.id,
+          ...item.data(),
+        })) as T[],
+      ),
+    (error) => onError?.(error),
+  );
+}
+
+export function subscribeVisitors<T>(
+  station: string,
+  callback: (rows: T[]) => void,
+  onError?: (error: Error) => void,
+) {
+  if (!db) return () => undefined;
+  const base = collection(db, "visitors");
+  const source =
+    station && station !== "ALL"
+      ? query(base, where("airport", "==", station))
+      : base;
+  return onSnapshot(
+    source,
+    (snapshot) =>
+      callback(
+        snapshot.docs.map((item: QueryDocumentSnapshot<DocumentData>) => ({
+          id: item.id,
+          ...item.data(),
+        })) as T[],
+      ),
     (error) => onError?.(error),
   );
 }

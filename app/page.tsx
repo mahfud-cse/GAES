@@ -27,7 +27,10 @@ import {
   completePasswordChange,
   createManagedUser,
   createVisitor,
+  deleteManagedUser,
   importManagedUsers,
+  requestPasswordReset,
+  resetManagedUserPassword,
   resolveUsername,
   syncSourceLounges,
   updateManagedUser,
@@ -36,6 +39,8 @@ import {
   removeRecord,
   saveRecord,
   subscribeCollection,
+  subscribeUserNotifications,
+  subscribeVisitors,
   type GaesCollection,
 } from "../lib/firebase/repository";
 import { uploadEvidence } from "../lib/firebase/evidence";
@@ -538,6 +543,15 @@ type Account = {
   verificationScopes: string[];
   status: "Aktif" | "Nonaktif";
   mustChangePassword?: boolean;
+};
+type PortalNotification = {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  text: string;
+  targetUid?: string;
+  active: boolean;
 };
 type Station = {
   code: string;
@@ -1489,7 +1503,14 @@ export default function Home() {
     [authReady, setAuthReady] = useState(!auth || !db),
     [loginUser, setLoginUser] = useState(""),
     [loginPassword, setLoginPassword] = useState(""),
-    [loginError, setLoginError] = useState("");
+    [loginError, setLoginError] = useState(""),
+    [showForgotPassword, setShowForgotPassword] = useState(false),
+    [resetRequestIdentity, setResetRequestIdentity] = useState(""),
+    [resetRequestMessage, setResetRequestMessage] = useState(""),
+    [resetRequestNotice, setResetRequestNotice] = useState<InlineNotice | null>(
+      null,
+    ),
+    [sendingResetRequest, setSendingResetRequest] = useState(false);
   const [tab, setTab] = useState<MainTab>("access"),
     [lounges, setLounges] = useState<Lounge[]>([]),
     [visitors, setVisitors] = useState<Visitor[]>([]),
@@ -1537,6 +1558,9 @@ export default function Home() {
     [flightStatusFilter, setFlightStatusFilter] = useState("Semua"),
     [flightQuery, setFlightQuery] = useState("");
   const [accounts, setAccounts] = useState<Account[]>([]),
+    [portalNotifications, setPortalNotifications] = useState<
+      PortalNotification[]
+    >([]),
     [partnerships, setPartnerships] = useState<Partnership[]>([]),
     [airlines, setAirlines] = useState<Airline[]>([]),
     [stations, setStations] = useState<Station[]>([]),
@@ -1674,6 +1698,11 @@ export default function Home() {
   const [showUserForm, setShowUserForm] = useState(false),
     [savingUser, setSavingUser] = useState(false),
     [editingUser, setEditingUser] = useState<string | null>(null),
+    [resetPasswordTarget, setResetPasswordTarget] = useState<Account | null>(
+      null,
+    ),
+    [adminPasswordValue, setAdminPasswordValue] = useState(""),
+    [resettingManagedPassword, setResettingManagedPassword] = useState(false),
     [userDraft, setUserDraft] = useState<Omit<Account, "id">>({
       name: "",
       username: "",
@@ -1824,7 +1853,8 @@ export default function Home() {
     translatedNodesRef = useRef(new WeakMap<Text, string>()),
     translatedAttributesRef = useRef(
       new WeakMap<Element, Record<string, string>>(),
-    );
+    ),
+    profileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const translatedNodes = translatedNodesRef.current;
@@ -2018,13 +2048,12 @@ export default function Home() {
         text: `Sebagian data Firebase tidak dapat dimuat: ${error.message}. Halaman tetap dapat digunakan; periksa data yang ditandai pada saat UAT.`,
       });
     const stops = [
-      subscribeCollection<unknown>(
-        "visitors",
+      subscribeVisitors<unknown>(
+        currentAccount?.station || "ALL",
         (rows) =>
           setVisitors(
             normalizeRows<Visitor>(rows, normalizeVisitor) as Visitor[],
           ),
-        undefined,
         subscriptionError,
       ),
       subscribeCollection<unknown>(
@@ -2041,13 +2070,21 @@ export default function Home() {
         undefined,
         subscriptionError,
       ),
-      subscribeCollection<unknown>(
-        "users",
+      currentAccount && ["Super Admin", "Admin"].includes(currentAccount.role)
+        ? subscribeCollection<unknown>(
+            "users",
+            (rows) =>
+              setAccounts(
+                normalizeRows<Account>(rows, normalizeAccount) as Account[],
+              ),
+            undefined,
+            subscriptionError,
+          )
+        : () => undefined,
+      subscribeUserNotifications<PortalNotification>(
+        firebaseUser.uid,
         (rows) =>
-          setAccounts(
-            normalizeRows<Account>(rows, normalizeAccount) as Account[],
-          ),
-        undefined,
+          setPortalNotifications(rows.filter((item) => item.active !== false)),
         subscriptionError,
       ),
       subscribeCollection<unknown>(
@@ -2092,9 +2129,40 @@ export default function Home() {
         undefined,
         subscriptionError,
       ),
+      subscribeCollection<Record<string, unknown>>(
+        "portalConfiguration",
+        (rows) => {
+          const dashboard = rows.find((item) => item.id === "dashboard");
+          if (!dashboard) return;
+          if (Array.isArray(dashboard.allowedRoles))
+            setDashboardAllowedRoles(
+              dashboard.allowedRoles as Account["role"][],
+            );
+          if (Array.isArray(dashboard.widgets))
+            setDashboardWidgets(dashboard.widgets as DashboardWidget[]);
+        },
+        undefined,
+        subscriptionError,
+      ),
     ];
     return () => stops.forEach((stop) => stop());
-  }, [firebaseUser]);
+  }, [firebaseUser, currentAccount?.role, currentAccount?.station]);
+  useEffect(() => {
+    if (!showProfileMenu) return;
+    const closeOnOutsideClick = (event: MouseEvent | TouchEvent) => {
+      if (
+        profileMenuRef.current &&
+        !profileMenuRef.current.contains(event.target as Node)
+      )
+        setShowProfileMenu(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("touchstart", closeOnOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("touchstart", closeOnOutsideClick);
+    };
+  }, [showProfileMenu]);
   useEffect(() => {
     if (!lounges.length) return;
     const current = lounges.find(
@@ -2189,6 +2257,27 @@ export default function Home() {
       }
       return next;
     });
+  }
+
+  async function markPortalNotificationRead(item: PortalNotification) {
+    setPortalNotifications((rows) => rows.filter((row) => row.id !== item.id));
+    try {
+      await saveRecord("notifications", {
+        id: item.id,
+        userId: item.userId,
+        active: false,
+        readAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      setPortalNotifications((rows) => [item, ...rows]);
+      setActionDialog({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Notifikasi tidak dapat ditandai telah dibaca.",
+      });
+    }
   }
 
   async function persistRecords<T extends { id: string }>(
@@ -3143,84 +3232,83 @@ export default function Home() {
         (dashboardProvider === "All Providers" ||
           row.provider === dashboardProvider),
     ),
-    dashboardVisitorCount = dashboardRows.reduce(
-      (sum, row) =>
-        sum +
-        row.businessLounge +
-        row.platinum +
-        row.elitePlus +
-        row.skyteam +
-        row.partnership +
-        row.dpr +
-        row.paidAccess +
-        row.other,
-      0,
+    dashboardAcceptedVisitors = visitors.filter(
+      (visitor) =>
+        visitor.boStatus === "Accepted" &&
+        (dashboardPeriod === "All Periods" ||
+          (visitor.travelDate || visitor.date).startsWith(dashboardPeriod)) &&
+        (dashboardBo === "All BO" || visitor.airport === dashboardBo) &&
+        (dashboardProvider === "All Providers" ||
+          visitor.lounge === dashboardProvider),
     ),
-    dashboardTotals = dashboardRows.reduce(
+    dashboardVisitorCount = dashboardAcceptedVisitors.length,
+    importedPassengerTotals = dashboardRows.reduce(
       (total, row) => ({
         businessPax: total.businessPax + row.businessPax,
         economyPax: total.economyPax + row.economyPax,
-        businessLounge: total.businessLounge + row.businessLounge,
-        cost:
-          total.cost +
-          (row.businessLounge +
-            row.platinum +
-            row.elitePlus +
-            row.skyteam +
-            row.partnership +
-            row.dpr +
-            row.paidAccess +
-            row.other) *
-            row.unitPrice,
       }),
-      { businessPax: 0, economyPax: 0, businessLounge: 0, cost: 0 },
+      { businessPax: 0, economyPax: 0 },
     ),
+    dashboardTotals = {
+      ...importedPassengerTotals,
+      businessLounge: dashboardAcceptedVisitors.filter(
+        (visitor) => visitor.category === "Business Class",
+      ).length,
+      cost: dashboardAcceptedVisitors.reduce(
+        (total, visitor) => total + visitor.price,
+        0,
+      ),
+    },
     dashboardComposition = [
-      [
-        "Business Class",
-        dashboardRows.reduce((s, r) => s + r.businessLounge, 0),
-      ],
-      ["Platinum", dashboardRows.reduce((s, r) => s + r.platinum, 0)],
-      ["Elite Plus", dashboardRows.reduce((s, r) => s + r.elitePlus, 0)],
-      ["SkyTeam", dashboardRows.reduce((s, r) => s + r.skyteam, 0)],
-      ["Partnership", dashboardRows.reduce((s, r) => s + r.partnership, 0)],
-      ["DPR", dashboardRows.reduce((s, r) => s + r.dpr, 0)],
-      ["Paid Access", dashboardRows.reduce((s, r) => s + r.paidAccess, 0)],
-      ["Other", dashboardRows.reduce((s, r) => s + r.other, 0)],
-    ] as [string, number][],
+      "Business Class",
+      "Platinum",
+      "Elite Plus",
+      "SkyTeam",
+      "Partnership",
+      "DPR",
+      "Paid Access",
+      "Other",
+    ].map((categoryName) => [
+      categoryName,
+      dashboardAcceptedVisitors.filter((visitor) =>
+        categoryName === "Other"
+          ? ![
+              "Business Class",
+              "Platinum",
+              "Elite Plus",
+              "SkyTeam",
+              "Partnership",
+              "DPR",
+              "Paid Access",
+            ].includes(visitor.category)
+          : visitor.category === categoryName,
+      ).length,
+    ]) as [string, number][],
     dashboardDays = Math.max(
       1,
-      ...dashboardRows.map((row) => {
-        const [year, month] = row.period.split("-").map(Number);
-        return year && month ? new Date(year, month, 0).getDate() : 1;
-      }),
+      new Set(
+        dashboardAcceptedVisitors.map(
+          (visitor) => visitor.travelDate || visitor.date,
+        ),
+      ).size,
     ),
     dashboardTopBo = Object.values(
-      dashboardRows.reduce<
+      dashboardAcceptedVisitors.reduce<
         Record<
           string,
           { name: string; area: string; visitors: number; cost: number }
         >
-      >((all, row) => {
-        const visitors =
-          row.businessLounge +
-          row.platinum +
-          row.elitePlus +
-          row.skyteam +
-          row.partnership +
-          row.dpr +
-          row.paidAccess +
-          row.other;
-        const current = all[row.bo] || {
-          name: row.bo,
-          area: row.area,
+      >((all, visitor) => {
+        const current = all[visitor.airport] || {
+          name: visitor.airport,
+          area: "—",
           visitors: 0,
           cost: 0,
         };
-        all[row.bo] = {
+        all[visitor.airport] = {
           ...current,
-          visitors: current.visitors + visitors,
-          cost: current.cost + visitors * row.unitPrice,
+          visitors: current.visitors + 1,
+          cost: current.cost + visitor.price,
         };
         return all;
       }, {}),
@@ -3228,27 +3316,18 @@ export default function Home() {
       .sort((a, b) => b.visitors - a.visitors)
       .slice(0, 10),
     dashboardProviders = Object.values(
-      dashboardRows.reduce<
+      dashboardAcceptedVisitors.reduce<
         Record<string, { name: string; visitors: number; cost: number }>
-      >((all, row) => {
-        const visitors =
-          row.businessLounge +
-          row.platinum +
-          row.elitePlus +
-          row.skyteam +
-          row.partnership +
-          row.dpr +
-          row.paidAccess +
-          row.other;
-        const current = all[row.provider] || {
-          name: row.provider,
+      >((all, visitor) => {
+        const current = all[visitor.lounge] || {
+          name: visitor.lounge,
           visitors: 0,
           cost: 0,
         };
-        all[row.provider] = {
-          name: row.provider,
-          visitors: current.visitors + visitors,
-          cost: current.cost + visitors * row.unitPrice,
+        all[visitor.lounge] = {
+          name: visitor.lounge,
+          visitors: current.visitors + 1,
+          cost: current.cost + visitor.price,
         };
         return all;
       }, {}),
@@ -4645,7 +4724,10 @@ export default function Home() {
         <section className="loginPanel">
           <form className="loginCard" onSubmit={login}>
             <div className="loginBrand">
-              <img src="/garuda-indonesia-logo.png" alt="Garuda Indonesia" />
+              <img
+                src="/garuda-indonesia-logo-skyteam.png"
+                alt="Garuda Indonesia — SkyTeam"
+              />
               <h1>Garuda Access Entitlement System</h1>
             </div>
             <h2>Sign In</h2>
@@ -4673,6 +4755,84 @@ export default function Home() {
             <button className="primary loginButton">
               {tr("Masuk", "Sign In")}
             </button>
+            <button
+              type="button"
+              className="forgotPasswordAction"
+              onClick={() => {
+                setShowForgotPassword((value) => !value);
+                setResetRequestIdentity(loginUser);
+                setResetRequestNotice(null);
+              }}
+            >
+              Lupa password?
+            </button>
+            {showForgotPassword && (
+              <div className="forgotPasswordPanel">
+                <b>Permintaan reset password</b>
+                <span>
+                  Permintaan akan masuk ke inbox Admin dan Super Admin.
+                </span>
+                <label>
+                  Email atau Username
+                  <input
+                    value={resetRequestIdentity}
+                    onChange={(e) => setResetRequestIdentity(e.target.value)}
+                    placeholder="Masukkan email atau username"
+                  />
+                </label>
+                <label>
+                  Pesan (opsional)
+                  <textarea
+                    value={resetRequestMessage}
+                    onChange={(e) => setResetRequestMessage(e.target.value)}
+                    placeholder="Tambahkan informasi untuk Admin"
+                  />
+                </label>
+                {resetRequestNotice && (
+                  <Notice
+                    n={resetRequestNotice}
+                    close={() => setResetRequestNotice(null)}
+                  />
+                )}
+                <button
+                  type="button"
+                  disabled={sendingResetRequest}
+                  onClick={async () => {
+                    if (!resetRequestIdentity.trim()) {
+                      setResetRequestNotice({
+                        kind: "warn",
+                        text: "Email atau username wajib diisi.",
+                      });
+                      return;
+                    }
+                    setSendingResetRequest(true);
+                    try {
+                      await requestPasswordReset(
+                        resetRequestIdentity,
+                        resetRequestMessage,
+                      );
+                      setResetRequestNotice({
+                        kind: "ok",
+                        text: "Permintaan berhasil dikirim. Admin atau Super Admin akan menindaklanjuti.",
+                      });
+                      setResetRequestMessage("");
+                    } catch (error) {
+                      setResetRequestNotice({
+                        kind: "error",
+                        text:
+                          error instanceof Error
+                            ? error.message
+                            : "Permintaan reset password tidak dapat dikirim.",
+                      });
+                    } finally {
+                      setSendingResetRequest(false);
+                    }
+                  }}
+                >
+                  {sendingResetRequest ? "Mengirim..." : "Kirim Permintaan"}
+                </button>
+              </div>
+            )}
           </form>
         </section>
       </main>
@@ -4683,7 +4843,10 @@ export default function Home() {
       <header className="top">
         <div className="brand">
           <div className="officialLogo">
-            <img src="/garuda-indonesia-logo.png" alt="Garuda Indonesia" />
+            <img
+              src="/garuda-indonesia-logo-skyteam.png"
+              alt="Garuda Indonesia — SkyTeam"
+            />
           </div>
           <div>
             <b>GARUDA ACCESS ENTITLEMENT SYSTEM</b>
@@ -4701,7 +4864,7 @@ export default function Home() {
               {language === "ID" ? "EN" : "ID"}
             </button>
           )}
-          <div className="profileMenuWrap">
+          <div className="profileMenuWrap" ref={profileMenuRef}>
             <button
               type="button"
               className="headerAction"
@@ -4727,15 +4890,13 @@ export default function Home() {
                 >
                   {tr("Notifikasi", "Notifications")}{" "}
                   <strong>
-                    {
-                      visitors.filter(
-                        (v) =>
-                          v.boStatus !== "Accepted" &&
-                          !readNotificationIds.has(
-                            `${v.boStatus === "Rejected" ? "dispute" : "verify"}-${v.id}`,
-                          ),
-                      ).length
-                    }
+                    {visitors.filter(
+                      (v) =>
+                        v.boStatus !== "Accepted" &&
+                        !readNotificationIds.has(
+                          `${v.boStatus === "Rejected" ? "dispute" : "verify"}-${v.id}`,
+                        ),
+                    ).length + portalNotifications.length}
                   </strong>
                 </button>
                 <button
@@ -4860,7 +5021,14 @@ export default function Home() {
                       onChange={setDashboardPeriod}
                       options={[
                         "All Periods",
-                        ...new Set(monitoringRows.map((row) => row.period)),
+                        ...new Set([
+                          ...monitoringRows.map((row) => row.period),
+                          ...visitors
+                            .map((visitor) =>
+                              (visitor.travelDate || visitor.date).slice(0, 7),
+                            )
+                            .filter(Boolean),
+                        ]),
                       ]}
                       placeholder="Select period"
                     />
@@ -4882,7 +5050,10 @@ export default function Home() {
                       onChange={setDashboardBo}
                       options={[
                         "All BO",
-                        ...new Set(monitoringRows.map((row) => row.bo)),
+                        ...new Set([
+                          ...monitoringRows.map((row) => row.bo),
+                          ...visitors.map((visitor) => visitor.airport),
+                        ]),
                       ]}
                       placeholder="Select BO"
                     />
@@ -4893,7 +5064,10 @@ export default function Home() {
                       onChange={setDashboardProvider}
                       options={[
                         "All Providers",
-                        ...new Set(monitoringRows.map((row) => row.provider)),
+                        ...new Set([
+                          ...monitoringRows.map((row) => row.provider),
+                          ...visitors.map((visitor) => visitor.lounge),
+                        ]),
                       ]}
                       placeholder="Select provider"
                     />
@@ -4939,8 +5113,8 @@ export default function Home() {
                     <span>Total Lounge Visitors</span>
                     <b>{dashboardVisitorCount.toLocaleString("id-ID")}</b>
                     <small>
-                      {dashboardRows.length} BO/provider records{" "}
-                      <i>View data →</i>
+                      {dashboardAcceptedVisitors.length} accepted visitor
+                      records <i>View data →</i>
                     </small>
                   </button>
                   <button
@@ -7705,6 +7879,14 @@ export default function Home() {
                                 Update
                               </button>
                               <button
+                                onClick={() => {
+                                  setAdminPasswordValue("");
+                                  setResetPasswordTarget(a);
+                                }}
+                              >
+                                Reset Password
+                              </button>
+                              <button
                                 className="del"
                                 onClick={() =>
                                   askDelete(
@@ -7736,6 +7918,31 @@ export default function Home() {
                                 }
                               >
                                 Nonaktifkan
+                              </button>
+                              <button
+                                className="del"
+                                onClick={() =>
+                                  askDelete(
+                                    "Hapus akun secara permanen?",
+                                    `${a.name} · ${a.username}. Akun akan dihapus dari Firebase Authentication dan User & Role. Activity Log tetap disimpan.`,
+                                    async () => {
+                                      if (!firebaseUser) return;
+                                      await deleteManagedUser(
+                                        firebaseUser,
+                                        a.id,
+                                      );
+                                      setAccounts((rows) =>
+                                        rows.filter((item) => item.id !== a.id),
+                                      );
+                                      setUserUploadNotice({
+                                        kind: "ok",
+                                        text: `${a.name} berhasil dihapus.`,
+                                      });
+                                    },
+                                  )
+                                }
+                              >
+                                Hapus Akun
                               </button>
                             </div>
                           ) : (
@@ -8089,7 +8296,41 @@ export default function Home() {
                           yang dapat dilihat setiap role.
                         </p>
                       </div>
+                      <button
+                        className="primary"
+                        onClick={async () => {
+                          try {
+                            await saveRecord("portalConfiguration", {
+                              id: "dashboard",
+                              allowedRoles: dashboardAllowedRoles,
+                              widgets: dashboardWidgets,
+                            });
+                            setBuilderNotice(
+                              "Pengaturan Dashboard berhasil disimpan.",
+                            );
+                          } catch (error) {
+                            setBuilderNotice(
+                              error instanceof Error
+                                ? error.message
+                                : "Pengaturan Dashboard tidak dapat disimpan.",
+                            );
+                          }
+                        }}
+                      >
+                        Simpan Pengaturan
+                      </button>
                     </div>
+                    {builderNotice && (
+                      <Notice
+                        n={{
+                          kind: builderNotice.includes("berhasil")
+                            ? "ok"
+                            : "error",
+                          text: builderNotice,
+                        }}
+                        close={() => setBuilderNotice("")}
+                      />
+                    )}
                     <div className="dashboardRoleMatrix">
                       <b>Dashboard Access</b>
                       <div>
@@ -9328,6 +9569,27 @@ export default function Home() {
               <button onClick={() => setShowInbox(false)}>×</button>
             </div>
             <div className="notificationList">
+              {portalNotifications.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    void markPortalNotificationRead(item);
+                    if (item.type === "PASSWORD_RESET_REQUEST") {
+                      setMasterTab("User & Role");
+                      setTab("master");
+                    }
+                    setShowInbox(false);
+                  }}
+                >
+                  <i>
+                    {item.type === "PASSWORD_RESET_REQUEST"
+                      ? "PASSWORD"
+                      : "INFO"}
+                  </i>
+                  <b>{item.title}</b>
+                  <span>{item.text}</span>
+                </button>
+              ))}
               {verificationQueue
                 .filter(
                   (v) =>
@@ -9377,11 +9639,12 @@ export default function Home() {
                     <span>{v.boReason}</span>
                   </button>
                 ))}
-              {!verificationQueue.some(
-                (v) =>
-                  v.boStatus === "Pending" &&
-                  !readNotificationIds.has(`verify-${v.id}`),
-              ) &&
+              {!portalNotifications.length &&
+                !verificationQueue.some(
+                  (v) =>
+                    v.boStatus === "Pending" &&
+                    !readNotificationIds.has(`verify-${v.id}`),
+                ) &&
                 !shown.some(
                   (v) =>
                     v.boStatus === "Rejected" &&
@@ -9393,12 +9656,7 @@ export default function Home() {
         </div>
       )}
       {showProfile && (
-        <div
-          className="back"
-          onMouseDown={() => {
-            if (!currentAccount.mustChangePassword) setShowProfile(false);
-          }}
-        >
+        <div className="back" onMouseDown={() => setShowProfile(false)}>
           <form
             className="modal"
             onMouseDown={(e) => e.stopPropagation()}
@@ -9431,9 +9689,15 @@ export default function Home() {
                 setNewPasswordValue("");
                 setConfirmPasswordValue("");
                 setProfileNotice("Password berhasil diperbarui.");
-              } catch {
+              } catch (error) {
+                const code = String((error as { code?: string })?.code || "");
                 setProfileNotice(
-                  "Password lama tidak sesuai atau sesi perlu login ulang.",
+                  code.includes("wrong-password") ||
+                    code.includes("invalid-credential")
+                    ? "Password lama tidak sesuai. Periksa kembali password yang digunakan saat login."
+                    : code.includes("requires-recent-login")
+                      ? "Sesi login sudah terlalu lama. Silakan keluar, login kembali, lalu ulangi perubahan password."
+                      : "Password belum berhasil diperbarui. Periksa koneksi dan coba kembali.",
                 );
               }
             }}
@@ -9443,11 +9707,9 @@ export default function Home() {
                 <span>PROFIL SAYA</span>
                 <h2>Ganti Password</h2>
               </div>
-              {!currentAccount.mustChangePassword && (
-                <button type="button" onClick={() => setShowProfile(false)}>
-                  ×
-                </button>
-              )}
+              <button type="button" onClick={() => setShowProfile(false)}>
+                ×
+              </button>
             </div>
             <div className="profileIdentity">
               <b>{currentAccount.name}</b>
@@ -9493,11 +9755,9 @@ export default function Home() {
               </div>
             )}
             <div className="modalActions">
-              {!currentAccount.mustChangePassword && (
-                <button type="button" onClick={() => setShowProfile(false)}>
-                  Batal
-                </button>
-              )}
+              <button type="button" onClick={() => setShowProfile(false)}>
+                {currentAccount.mustChangePassword ? "Ingatkan Nanti" : "Batal"}
+              </button>
               <button className="primary">Simpan &amp; Konfirmasi</button>
             </div>
           </form>
@@ -10659,6 +10919,90 @@ export default function Home() {
               </button>
             </div>
           </section>
+        </div>
+      )}
+      {resetPasswordTarget && canManageMaster && (
+        <div className="back" onMouseDown={() => setResetPasswordTarget(null)}>
+          <form
+            className="modal"
+            onMouseDown={(e) => e.stopPropagation()}
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!firebaseUser || adminPasswordValue.length < 8) {
+                setUserUploadNotice({
+                  kind: "warn",
+                  text: "Password baru minimal 8 karakter.",
+                });
+                return;
+              }
+              setResettingManagedPassword(true);
+              try {
+                await resetManagedUserPassword(
+                  firebaseUser,
+                  resetPasswordTarget.id,
+                  adminPasswordValue,
+                );
+                setUserUploadNotice({
+                  kind: "ok",
+                  text: `Password ${resetPasswordTarget.name} berhasil direset. Pengguna akan diingatkan untuk menggantinya setelah login.`,
+                });
+                setResetPasswordTarget(null);
+                setAdminPasswordValue("");
+              } catch (error) {
+                setUserUploadNotice({
+                  kind: "error",
+                  text:
+                    error instanceof Error
+                      ? error.message
+                      : "Password pengguna tidak dapat direset.",
+                });
+              } finally {
+                setResettingManagedPassword(false);
+              }
+            }}
+          >
+            <div className="modalHead">
+              <div>
+                <span>USER &amp; ROLE</span>
+                <h2>Reset Password</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setResetPasswordTarget(null)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="profileIdentity">
+              <b>{resetPasswordTarget.name}</b>
+              <span>
+                {resetPasswordTarget.username} · {resetPasswordTarget.role}
+              </span>
+            </div>
+            <div className="form">
+              <label className="full">
+                Password Baru / Sementara
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={adminPasswordValue}
+                  onChange={(e) => setAdminPasswordValue(e.target.value)}
+                  placeholder="Minimal 8 karakter"
+                />
+              </label>
+            </div>
+            <div className="modalActions">
+              <button
+                type="button"
+                onClick={() => setResetPasswordTarget(null)}
+              >
+                Batal
+              </button>
+              <button className="primary" disabled={resettingManagedPassword}>
+                {resettingManagedPassword ? "Menyimpan..." : "Reset & Simpan"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
       {showUserForm && canManageMaster && (

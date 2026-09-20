@@ -46,6 +46,26 @@ export const createManagedUser = (user: User, payload: unknown) =>
 export const updateManagedUser = (user: User, payload: unknown) =>
   call<{ uid: string }>("manage-user", user, payload);
 
+export const deleteManagedUser = (user: User, uid: string) =>
+  call<{ uid: string }>("manage-user", user, { action: "delete", uid });
+
+export const resetManagedUserPassword = (
+  user: User,
+  uid: string,
+  password: string,
+) =>
+  call<{ uid: string }>("manage-user", user, {
+    action: "resetPassword",
+    uid,
+    password,
+  });
+
+export const requestPasswordReset = (identity: string, message: string) =>
+  call<{ submitted: boolean }>("request-password-reset", null, {
+    identity,
+    message,
+  });
+
 export const completePasswordChange = (user: User) =>
   call<{ uid: string }>("complete-password-change", user, {});
 
