@@ -3360,7 +3360,6 @@ export default function Home() {
         (dashboardProvider === "All Providers" ||
           visitor.lounge === dashboardProvider),
     ),
-    dashboardVisitorCount = dashboardAcceptedVisitors.length,
     importedPassengerTotals = dashboardRows.reduce(
       (total, row) => ({
         businessPax: total.businessPax + row.businessPax,
@@ -3372,13 +3371,57 @@ export default function Home() {
       ["First Class", dashboardAcceptedVisitors.filter((v) => /^(F|FIRST|FIRST CLASS)$/i.test(v.cabin)).length],
       ["Business Class", dashboardAcceptedVisitors.filter((v) => /^(C|J|BUSINESS|BUSINESS CLASS)$/i.test(v.cabin)).length],
       ["Economy Class", dashboardAcceptedVisitors.filter((v) => /^(Y|W|ECONOMY|ECONOMY CLASS)$/i.test(v.cabin)).length],
-      ["Unspecified", dashboardAcceptedVisitors.filter((v) => !/^(F|FIRST|FIRST CLASS|C|J|BUSINESS|BUSINESS CLASS|Y|W|ECONOMY|ECONOMY CLASS)$/i.test(v.cabin || "")).length],
     ] as [string, number][],
+    dashboardVisitorCabinTotal = dashboardVisitorCabin.reduce((total, [, value]) => total + value, 0),
+    dashboardVisitorCount = dashboardVisitorCabinTotal,
+    importedPassengerTotals = [
+      ["GA", dashboardAcceptedVisitors.filter((visitor) =>
+        !["Partner Airline / SkyTeam", "Kerjasama MPA"].includes(visitor.category),
+      ).length],
+      ["Non-GA / Partner", dashboardAcceptedVisitors.filter((visitor) =>
+        ["Partner Airline / SkyTeam", "Kerjasama MPA"].includes(visitor.category),
+      ).length],
+    ] as [string, number][],
+    dashboardVisitorEntitlement = [
+      "Platinum",
+      "Elite Plus",
+      "Gold Privilege",
+      "Elite",
+      "GPS",
+      "DPR",
+      "EMD",
+      "Paid Access",
+      "Partner Airline / SkyTeam",
+      "Kerjasama MPA",
+      "VIP/CIP/VVIP",
+      "Other",
+    ].map((categoryName) => [
+      categoryName,
+      dashboardAcceptedVisitors.filter((visitor) =>
+        categoryName === "Other"
+          ? ![
+              "Business Class",
+              "Platinum",
+              "Elite Plus",
+              "Gold Privilege",
+              "Elite",
+              "GPS",
+              "DPR",
+              "EMD",
+              "Paid Access",
+              "Partner Airline / SkyTeam",
+              "Kerjasama MPA",
+              "VIP/CIP/VVIP",
+            ].includes(visitor.category)
+          : visitor.category === categoryName,
+      ).length,
+    ]) as [string, number][],
     dashboardTotals = {
       ...importedPassengerTotals,
-      businessLounge: dashboardAcceptedVisitors.filter(
-        (visitor) => /^(C|J|BUSINESS|BUSINESS CLASS)$/i.test(visitor.cabin),
-      ).length,
+      firstVisitors: dashboardVisitorCabin.find(([name]) => name === "First Class")?.[1] || 0,
+      businessVisitors: dashboardVisitorCabin.find(([name]) => name === "Business Class")?.[1] || 0,
+      economyVisitors: dashboardVisitorCabin.find(([name]) => name === "Economy Class")?.[1] || 0,
+      businessLounge: dashboardVisitorCabin.find(([name]) => name === "Business Class")?.[1] || 0,
       cost: dashboardAcceptedVisitors.reduce(
         (total, visitor) => total + visitor.price,
         0,
@@ -3423,23 +3466,7 @@ export default function Home() {
     dashboardCapacityDates = dashboardCapacityScope
       .map((item) => item.effectiveFrom)
       .filter(Boolean),
-    dashboardComposition = [
-      "Platinum",
-      "SkyTeam Elite Plus",
-      "Elite Plus",
-      "SkyTeam",
-      "DPR",
-      "Partnership",
-      "Paid Access",
-      "Other",
-    ].map((categoryName) => [
-      categoryName,
-      dashboardAcceptedVisitors.filter((visitor) =>
-        categoryName === "Other"
-          ? !["Platinum", "SkyTeam Elite Plus", "Elite Plus", "SkyTeam", "DPR", "Partnership", "Paid Access"].includes(visitor.category)
-          : visitor.category === categoryName,
-      ).length,
-    ]) as [string, number][],
+    dashboardComposition = dashboardVisitorEntitlement,
     dashboardDays = Math.max(
       1,
       new Set(
@@ -5285,31 +5312,20 @@ export default function Home() {
                       records <i>View data →</i>
                     </small>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDashboardDetail("Business Pax");
-                      setTab("dashboard-detail");
-                    }}
-                  >
-                    <span>Business Passenger Volume</span>
-                    <b>{dashboardTotals.businessPax.toLocaleString("id-ID")}</b>
-                    <small>
-                      Source passenger volume <i>View data →</i>
-                    </small>
+                  <button type="button" onClick={() => openDashboardVisitors("Business Class")}>
+                    <span>Business Class Visitors</span>
+                    <b>{dashboardTotals.businessVisitors.toLocaleString("id-ID")}</b>
+                    <small>Cabin class · actual accepted visitors <i>View data →</i></small>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDashboardDetail("Economy Pax");
-                      setTab("dashboard-detail");
-                    }}
-                  >
-                    <span>Economy Passenger Volume</span>
-                    <b>{dashboardTotals.economyPax.toLocaleString("id-ID")}</b>
-                    <small>
-                      Source passenger volume <i>View data →</i>
-                    </small>
+                  <button type="button" onClick={() => openDashboardVisitors("Economy Class")}>
+                    <span>Economy Class Visitors</span>
+                    <b>{dashboardTotals.economyVisitors.toLocaleString("id-ID")}</b>
+                    <small>Cabin class · actual accepted visitors <i>View data →</i></small>
+                  </button>
+                  <button type="button" onClick={() => openDashboardVisitors("First Class")}>
+                    <span>First Class Visitors</span>
+                    <b>{dashboardTotals.firstVisitors.toLocaleString("id-ID")}</b>
+                    <small>Cabin class · actual accepted visitors <i>View data →</i></small>
                   </button>
                   <button type="button" onClick={() => openDashboardReport()}>
                     <span>Estimated Cost</span>
@@ -5379,7 +5395,7 @@ export default function Home() {
                       centerLabel="Visitors"
                       onSelect={(name) =>
                         openDashboardVisitors(
-                          name === "Partnership" ? "Kerjasama MPA" : name,
+                          name === "Other" ? "Semua" : name,
                         )
                       }
                     />
@@ -5392,6 +5408,15 @@ export default function Home() {
                     total={dashboardVisitorCount}
                     centerLabel="Visitors"
                   />
+                </article>
+                <article className="card dashboardWidget">
+                  <h2>Visitor by Airline Source</h2>
+                  <DonutChart
+                    items={dashboardVisitorSource}
+                    total={dashboardVisitorCount}
+                    centerLabel="Visitors"
+                  />
+                  <small>GA vs Non-GA/Partner berdasarkan access category yang tercatat.</small>
                 </article>
                 {visibleDashboardWidgets.some(
                   (widget) => widget.id === "utilization",
@@ -5415,20 +5440,16 @@ export default function Home() {
                         <DonutChart
                           compact
                           items={[
-                            ["Lounge", dashboardTotals.businessLounge],
+                            ["Lounge Visitors", dashboardTotals.businessVisitors],
                             [
-                              "Not used",
-                              Math.max(
-                                0,
-                                dashboardTotals.businessPax -
-                                  dashboardTotals.businessLounge,
-                              ),
+                              "Passenger Volume",
+                              Math.max(0, dashboardTotals.businessPax - dashboardTotals.businessVisitors),
                             ],
                           ]}
-                          total={dashboardTotals.businessPax}
+                          total={Math.max(dashboardTotals.businessPax, dashboardTotals.businessVisitors)}
                           centerLabel="Business"
                         />
-                        <span>Business Lounge / Business Pax</span>
+                        <span>Business Visitors / Passenger Volume</span>
                         <small>
                           {dashboardTotals.businessLounge.toLocaleString(
                             "id-ID",
@@ -11770,7 +11791,7 @@ export default function Home() {
                 </select>
               </label>
               </>}
-              {canManageLoungeCapacity && (<>
+              {canManageLoungeCapacity && editingLounge && (<>
                 <div className="full formulaNote"><b>Kapasitas Lounge</b><br />Histori kapasitas tersimpan di Firebase dan tidak menimpa versi sebelumnya.</div>
                 <label>Kapasitas (pax)<input type="number" min="1" step="1" value={capacityDraft.capacity} onChange={(e) => setCapacityDraft({ ...capacityDraft, capacity: e.target.value })} placeholder="150" required={Boolean(editingLounge)} /></label>
                 <label>Berlaku mulai<input type="date" value={capacityDraft.effectiveFrom} onChange={(e) => setCapacityDraft({ ...capacityDraft, effectiveFrom: e.target.value })} required={Boolean(editingLounge)} /></label>
