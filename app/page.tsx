@@ -1748,6 +1748,7 @@ export default function Home() {
     [visitorTimeTo, setVisitorTimeTo] = useState(""),
     [reportLoungeFilter, setReportLoungeFilter] = useState("Semua"),
     [visitorFiltersActive, setVisitorFiltersActive] = useState(false),
+    [dashboardVisitorScope, setDashboardVisitorScope] = useState(false),
     [query, setQuery] = useState(""),
     [edit, setEdit] = useState<Visitor | null>(null),
     [scanStatus, setScanStatus] = useState("");
@@ -2465,8 +2466,9 @@ export default function Home() {
     provider = dashboardProvider,
   ) {
     setFilter(bo === "All BO" ? "Semua" : bo);
+    setDashboardVisitorScope(true);
     setVisitorCategoryFilter(category);
-    setVisitorStatusFilter("All Status");
+    setVisitorStatusFilter("Accepted");
     setQuery(provider === "All Providers" ? "" : provider);
     applyDashboardPeriodToVisitorFilter();
     setReconTab("Visitor List");
@@ -3046,11 +3048,22 @@ export default function Home() {
     });
   }
   const effectiveVisitorFilter = isGlobalAdmin ? filter : station;
+  const dashboardAreaBoCodes = useMemo(() => {
+    if (dashboardArea === "All Areas") return null;
+    return new Set(
+      monitoringRows
+        .filter((row) => row.area === dashboardArea)
+        .map((row) => row.bo),
+    );
+  }, [monitoringRows, dashboardArea]);
   const shown = useMemo(() => {
     const rows = visitors.filter(
       (v) =>
         (effectiveVisitorFilter === "Semua" ||
           v.airport === effectiveVisitorFilter) &&
+        (!dashboardVisitorScope ||
+          !dashboardAreaBoCodes ||
+          dashboardAreaBoCodes.has(v.airport)) &&
         (visitorCategoryFilter === "Semua" ||
           v.category === visitorCategoryFilter) &&
         (!visitorFiltersActive ||
@@ -3088,6 +3101,8 @@ export default function Home() {
   }, [
     visitors,
     effectiveVisitorFilter,
+    dashboardVisitorScope,
+    dashboardAreaBoCodes,
     visitorCategoryFilter,
     visitorStatusFilter,
     visitorFiltersActive,
@@ -3237,6 +3252,8 @@ export default function Home() {
         visitor.boStatus === "Accepted" &&
         (dashboardPeriod === "All Periods" ||
           (visitor.travelDate || visitor.date).startsWith(dashboardPeriod)) &&
+        (dashboardArea === "All Areas" ||
+          dashboardAreaBoCodes?.has(visitor.airport)) &&
         (dashboardBo === "All BO" || visitor.airport === dashboardBo) &&
         (dashboardProvider === "All Providers" ||
           visitor.lounge === dashboardProvider),
@@ -6319,7 +6336,10 @@ export default function Home() {
                         <SearchableSelect
                           value={effectiveVisitorFilter}
                           disabled={!isGlobalAdmin}
-                          onChange={setFilter}
+                          onChange={(value) => {
+                            setDashboardVisitorScope(false);
+                            setFilter(value);
+                          }}
                           options={[
                             "Semua",
                             ...new Set(visitors.map((v) => v.airport)),
