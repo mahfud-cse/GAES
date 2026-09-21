@@ -3253,3 +3253,608 @@ td small {
     overflow: auto;
   }
 }
+
+
+/* ================================================================
+   GAES v0.23 — controlled visual refinement
+   Visual-only overrides. No interaction, data, route or workflow rules.
+   ================================================================ */
+
+:root {
+  --gaes-navy: #073b57;
+  --gaes-teal: #087f98;
+  --gaes-teal-soft: #eaf7f8;
+  --gaes-bg: #f6f8f9;
+  --gaes-surface: #ffffff;
+  --gaes-text: #183f4d;
+  --gaes-muted: #687f89;
+  --gaes-border: #dce7ea;
+  --gaes-border-strong: #c9d9de;
+  --gaes-success: #28755e;
+  --gaes-warning: #87621a;
+  --gaes-danger: #b43a34;
+  --gaes-radius: 12px;
+  --gaes-control-height: 42px;
+}
+
+body {
+  background: var(--gaes-bg);
+  color: var(--gaes-text);
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* Header: retain branding, reduce visual weight. */
+.top {
+  height: 72px;
+  padding-inline: 28px;
+  background: var(--gaes-navy);
+  box-shadow: 0 2px 12px #082f4018;
+}
+
+.top > span {
+  font-size: 11px;
+  letter-spacing: 0.35px;
+  border-color: #5aaabd;
+  border-radius: 9px;
+  padding: 7px 11px;
+}
+
+.brand {
+  gap: 12px;
+}
+
+.brand b,
+.brand > div:last-child b {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.brand small,
+.brand > div:last-child small {
+  margin-top: 2px;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.shell {
+  grid-template-columns: 248px minmax(0, 1fr);
+  min-height: calc(100vh - 72px);
+}
+
+.shell.sidebarCollapsed {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+aside {
+  padding: 22px 14px;
+  border-right-color: var(--gaes-border);
+}
+
+aside > p {
+  padding-inline: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.1px;
+}
+
+nav {
+  gap: 4px;
+}
+
+nav a {
+  min-height: 42px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: #536d77;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+nav a i {
+  font-size: 10px;
+  color: #9aafb7;
+}
+
+nav a:hover {
+  background: #f4f8f9;
+}
+
+nav .active {
+  background: var(--gaes-teal-soft);
+  color: var(--gaes-teal);
+  font-weight: 600;
+  box-shadow: inset 2px 0 var(--gaes-teal);
+}
+
+.local {
+  background: #f1f7f8;
+  border: 1px solid #e3ecee;
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 12px;
+}
+
+/* Main page hierarchy. */
+.content {
+  padding: 30px;
+  max-width: 1540px;
+}
+
+.content .title {
+  margin-bottom: 25px;
+}
+
+.content .title p,
+.content .cardTitle span,
+.content .modalHead span {
+  margin-bottom: 6px;
+  color: #16849a;
+  font-size: 11px;
+  line-height: 1.3;
+  letter-spacing: 0.7px;
+  font-weight: 600;
+}
+
+.content .title h1 {
+  margin-bottom: 7px;
+  color: var(--gaes-navy);
+  font-size: clamp(32px, 3vw, 36px);
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.45px;
+}
+
+.content .title > span {
+  color: var(--gaes-muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* Calm surfaces: fewer shadows, consistent geometry. */
+.content .card {
+  border-color: var(--gaes-border);
+  border-radius: var(--gaes-radius);
+  padding: 22px;
+  box-shadow: 0 3px 14px #173d4e07;
+}
+
+.content .cardTitle {
+  margin-bottom: 18px;
+}
+
+.content .cardTitle h2,
+.content .miniHead h2 {
+  color: #174457;
+  font-size: 18px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+}
+
+.content .cardTitle mark,
+.content .type,
+.content .scopeBadge {
+  letter-spacing: 0;
+  font-weight: 600;
+}
+
+/* Forms: consistent, lighter controls. */
+.content label {
+  gap: 6px;
+  color: #536e78;
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 500;
+}
+
+.content input,
+.content select,
+.content textarea {
+  box-sizing: border-box;
+  min-height: var(--gaes-control-height);
+  border-color: var(--gaes-border-strong);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-size: 14px;
+  line-height: 1.35;
+  color: #183f4d;
+}
+
+.content input::placeholder,
+.content textarea::placeholder {
+  color: #8a9ca4;
+  font-weight: 400;
+}
+
+.content input:focus,
+.content select:focus,
+.content textarea:focus {
+  border-color: #1595a9;
+  box-shadow: 0 0 0 3px #1595a914;
+}
+
+/* Button hierarchy, scoped to the application content. */
+.content button,
+.content .uploadButton {
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.25;
+  font-weight: 600;
+}
+
+.content button:not(:disabled):hover,
+.content .uploadButton:hover {
+  transform: none;
+  filter: none;
+  box-shadow: none;
+}
+
+.content .primary,
+.content .confirm {
+  min-height: var(--gaes-control-height);
+  border: 1px solid var(--gaes-teal);
+  border-radius: 8px;
+  background: var(--gaes-teal);
+  color: #fff;
+  padding: 9px 15px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.content .primary:hover:not(:disabled),
+.content .confirm:hover:not(:disabled) {
+  background: #076f86;
+  border-color: #076f86;
+}
+
+.content .secondary,
+.content .scannerOn,
+.content .actionTitle button,
+.content .modalActions > button,
+.content .uploadButton {
+  min-height: var(--gaes-control-height);
+  border: 1px solid var(--gaes-border-strong);
+  border-radius: 8px;
+  background: #fff;
+  color: #286477;
+  padding: 9px 14px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.content .danger {
+  min-height: var(--gaes-control-height);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Filter areas read as one operational control group. */
+.content .filters,
+.content .dashboardFilterCard {
+  border-color: var(--gaes-border);
+}
+
+.content .filters {
+  gap: 12px;
+  padding: 14px;
+  background: #fbfcfc;
+}
+
+.content .filterField {
+  gap: 6px;
+  color: #536e78;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.content .filterField > input,
+.content .filterField > .searchableSelect,
+.content .filterField .searchableSelect input {
+  min-height: var(--gaes-control-height);
+  height: var(--gaes-control-height);
+}
+
+.content .searchableSelect > button {
+  background: #f8fbfb;
+  border-left-color: var(--gaes-border);
+}
+
+.content .searchableOptions {
+  border-color: var(--gaes-border);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px #082f4018;
+}
+
+.content .searchableOptions button {
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.content .searchableOptions button.selected {
+  background: var(--gaes-teal-soft);
+  color: var(--gaes-teal);
+  font-weight: 500;
+}
+
+/* Tabs/segmented navigation: selected state carries emphasis. */
+.content .subTabs {
+  gap: 4px;
+  margin: -3px 0 18px;
+  padding: 3px;
+  border: 1px solid var(--gaes-border);
+  border-radius: 10px;
+  background: #f7fafb;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.content .subTabs button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #5a747e;
+  padding: 8px 13px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.content .subTabs .selected {
+  background: #fff;
+  color: var(--gaes-teal);
+  box-shadow: 0 1px 3px #173d4e0d;
+  font-weight: 600;
+}
+
+/* Dashboard hierarchy. */
+.content .dashboardKpis {
+  gap: 12px;
+}
+
+.content .dashboardKpis > button {
+  min-height: 112px;
+  border-color: var(--gaes-border);
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.content .dashboardKpis > button:hover,
+.content .dashboardKpis > button:focus-visible {
+  border-color: #8bc6cf;
+  box-shadow: 0 5px 16px #073b5710;
+  transform: none;
+}
+
+.content .dashboardKpis b {
+  font-size: 25px;
+  font-weight: 600;
+}
+
+.content .dashboardWidget h2,
+.content .portalSectionHead h2 {
+  font-weight: 600;
+}
+
+.content .dashboardDataTools {
+  border-top-color: var(--gaes-border);
+}
+
+.content .dashboardTableWrap {
+  border-color: var(--gaes-border);
+  border-radius: 9px;
+}
+
+/* Tables: increase readability without changing data or columns. */
+.content table {
+  font-size: 13px;
+}
+
+.content th {
+  background: #f7f9fa;
+  color: #607780;
+  padding: 11px 13px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.content td {
+  padding: 12px 13px;
+  color: #3b5964;
+  font-size: 13px;
+}
+
+.content td small {
+  color: #8799a1;
+  font-size: 12px;
+}
+
+.content .rowAct button {
+  min-height: 34px;
+  border-radius: 7px;
+  padding: 7px 9px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Lounge / tenant access workflow. */
+.content .dotFirst {
+  border-color: #a8d8de;
+  border-radius: 10px;
+  background: #f0fafb;
+  color: #245b69;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.content .dotFirst small {
+  color: #66818a;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.content .camera {
+  margin: 16px 0;
+  border-radius: 10px;
+}
+
+.content .processList > div {
+  padding: 11px 12px;
+  border: 1px solid #e3ecee;
+  background: #f8fafb;
+  font-size: 13px;
+}
+
+.content .processList i {
+  font-weight: 600;
+}
+
+.content .scanHelp,
+.content .manualFallback,
+.content .info {
+  border-radius: 9px;
+  font-size: 13px;
+}
+
+.content .companionPanel {
+  border-color: var(--gaes-border);
+  border-radius: 10px;
+  background: #f8fafb;
+}
+
+/* Flight tools and operational actions. */
+.content .flightTools {
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.content .flightTools > span {
+  color: var(--gaes-muted);
+  font-size: 12px;
+}
+
+.content .flightStatus {
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Master-data and management surfaces. */
+.content .schemaManager > div,
+.content .integrationGrid article,
+.content .dashboardRoleMatrix,
+.content .dashboardWidgetManager > div,
+.content .pageTextEditor > div,
+.content .reportConfigGrid > div,
+.content .customColumnList > div:not(.empty) {
+  border-color: var(--gaes-border);
+  border-radius: 10px;
+}
+
+.content .schemaManager label {
+  font-weight: 500;
+}
+
+.content .builderAddPanel,
+.content .builderPublishBar {
+  border-color: var(--gaes-border);
+  border-radius: 10px;
+}
+
+/* Modals: preserve existing overlay/portal behavior, refine only surface. */
+.content .modal,
+.modal {
+  border-radius: 14px;
+  box-shadow: 0 18px 50px #00151f2e;
+}
+
+.modalHead h2 {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.modalHead button {
+  box-shadow: none;
+}
+
+.modalActions {
+  gap: 8px;
+}
+
+.modalActions > button,
+.modalActions .primary,
+.modalActions .danger {
+  font-weight: 600;
+}
+
+/* Login remains branded but lighter and consistent with the application. */
+.loginCard,
+.testAccountCard {
+  border-radius: 16px;
+  box-shadow: 0 16px 40px #00192320;
+}
+
+.loginCard h2 {
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.loginCard label,
+.signParty label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.loginCard input,
+.signParty input {
+  min-height: var(--gaes-control-height);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.loginButton {
+  min-height: var(--gaes-control-height);
+  border-radius: 8px;
+  background: var(--gaes-teal);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Keep small-screen behavior intact while improving spacing/type. */
+@media (max-width: 1050px) {
+  .content {
+    padding: 26px;
+  }
+}
+
+@media (max-width: 720px) {
+  .top {
+    height: 68px;
+    padding-inline: 15px;
+  }
+
+  .content {
+    padding: 22px 14px;
+  }
+
+  .content .title h1 {
+    font-size: 30px;
+  }
+
+  .content .card {
+    padding: 18px;
+  }
+
+  .content .subTabs {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .content .subTabs button {
+    flex: 0 0 auto;
+  }
+}
