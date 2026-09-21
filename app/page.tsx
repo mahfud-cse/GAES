@@ -2089,7 +2089,8 @@ export default function Home() {
         undefined,
         subscriptionError,
       ),
-      currentAccount && role === "Lounge Officer"
+      currentAccount &&
+      ["Lounge Officer", "Lounge Manager"].includes(role)
         ? subscribeLoungeCapacityHistory<unknown>(
             currentAccount.loungeId || null,
             (rows) =>
@@ -2443,8 +2444,19 @@ export default function Home() {
           bo = normalizedText(row.BO).toUpperCase(),
           stationCode = normalizedText(row.Station, bo).toUpperCase(),
           provider = normalizedText(row.Provider);
+        const existing = monitoringRows.find(
+          (item) =>
+            item.period === period &&
+            item.bo === bo &&
+            item.station === stationCode &&
+            item.provider === provider,
+        );
         const normalized = normalizeMonitoring({
-          id: `monitor-${period}-${bo}-${stationCode}-${provider.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+          id:
+            existing?.id ||
+            `monitor-${period}-${bo}-${stationCode}-${provider
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")}`,
           period,
           area: row.Area,
           bo,
@@ -5289,18 +5301,20 @@ export default function Home() {
                   <button onClick={downloadPassengerVolumeTemplate}>
                     Download Template
                   </button>
-                  <label className="uploadButton">
-                    Import Passenger Volume
-                    <input
-                      type="file"
-                      accept=".csv,.xlsx,.xls"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) void uploadPassengerVolume(file);
-                        e.target.value = "";
-                      }}
-                    />
-                  </label>
+                  {["Super Admin", "Admin", "BO Admin"].includes(role) && (
+                    <label className="uploadButton">
+                      Import Passenger Volume
+                      <input
+                        type="file"
+                        accept=".csv,.xlsx,.xls"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) void uploadPassengerVolume(file);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                  )}
                 </div>
                 {dashboardImportNotice && (
                   <Notice
