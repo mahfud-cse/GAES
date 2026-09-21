@@ -137,6 +137,26 @@ export function normalizeLounge(row: Row) {
   };
 }
 
+export function normalizeLoungeCapacity(row: Row) {
+  const loungeId = text(row.loungeId ?? row["Lounge ID"]);
+  const effectiveFrom = isoDate(
+    row.effectiveFrom ?? row["Berlaku Mulai"],
+  );
+  const capacity = numberValue(row.capacity ?? row["Kapasitas Lounge"]);
+  if (!loungeId || !effectiveFrom || capacity <= 0) return null;
+  return {
+    id:
+      text(row.id) ||
+      `capacity-${loungeId}-${effectiveFrom}`,
+    loungeId,
+    capacity: Math.floor(capacity),
+    effectiveFrom,
+    reason: text(row.reason ?? row["Alasan Perubahan"], "Update kapasitas"),
+    updatedBy: text(row.updatedBy, "System"),
+    updatedAt: text(row.updatedAt, ""),
+  };
+}
+
 export function normalizeVisitor(row: Row) {
   const id = text(row.id);
   const name = text(row.name);

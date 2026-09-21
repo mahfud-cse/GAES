@@ -39,6 +39,7 @@ import {
   removeRecord,
   saveRecord,
   subscribeCollection,
+  subscribeLoungeCapacityHistory,
   subscribeUserNotifications,
   subscribeVisitors,
   type GaesCollection,
@@ -52,6 +53,7 @@ import {
   normalizeEntitlement,
   normalizeFlight,
   normalizeLounge,
+  normalizeLoungeCapacity,
   normalizeMonitoring,
   normalizeStation,
   normalizeVisitor,
@@ -504,6 +506,15 @@ type Lounge = {
   end: string;
   status: string;
 };
+type LoungeCapacityVersion = {
+  id: string;
+  loungeId: string;
+  capacity: number;
+  effectiveFrom: string;
+  reason: string;
+  updatedBy: string;
+  updatedAt?: string;
+};
 type FlightStatus =
   "Scheduled" | "Delayed" | "Rescheduled" | "Postponed" | "Cancelled";
 type Flight = {
@@ -540,6 +551,7 @@ type Account = {
   station: string;
   scope: string;
   organization: string;
+  loungeId?: string;
   verificationScopes: string[];
   status: "Aktif" | "Nonaktif";
   mustChangePassword?: boolean;
@@ -1513,6 +1525,7 @@ export default function Home() {
     [sendingResetRequest, setSendingResetRequest] = useState(false);
   const [tab, setTab] = useState<MainTab>("access"),
     [lounges, setLounges] = useState<Lounge[]>([]),
+    [loungeCapacityHistory, setLoungeCapacityHistory] = useState<LoungeCapacityVersion[]>([]),
     [visitors, setVisitors] = useState<Visitor[]>([]),
     [flights, setFlights] = useState<Flight[]>([]);
   const [reconTab, setReconTab] = useState("Visitor List"),
@@ -1598,7 +1611,7 @@ export default function Home() {
     >(["Super Admin", "Admin", "HO Admin", "Report Viewer"]),
     [languageFeatureEnabled, setLanguageFeatureEnabled] = useState(true),
     [monitoringRows, setMonitoringRows] = useState<MonitoringRow[]>([]),
-    [dashboardPeriod, setDashboardPeriod] = useState("2026-08"),
+    [dashboardPeriod, setDashboardPeriod] = useState("All Periods"),
     [dashboardArea, setDashboardArea] = useState("All Areas"),
     [dashboardBo, setDashboardBo] = useState("All BO"),
     [dashboardProvider, setDashboardProvider] = useState("All Providers"),
@@ -1695,6 +1708,13 @@ export default function Home() {
       end: "",
       status: "Aktif",
     });
+  const [showCapacityForm, setShowCapacityForm] = useState(false),
+    [capacityLoungeId, setCapacityLoungeId] = useState<string | null>(null),
+    [capacityDraft, setCapacityDraft] = useState({
+      capacity: "",
+      effectiveFrom: localDate(),
+      reason: "",
+    });
   const [showUserForm, setShowUserForm] = useState(false),
     [savingUser, setSavingUser] = useState(false),
     [editingUser, setEditingUser] = useState<string | null>(null),
@@ -1712,6 +1732,7 @@ export default function Home() {
       station: "CGK",
       scope: "Station CGK",
       organization: "Branch Office CGK",
+      loungeId: "",
       verificationScopes: ["Business Class", "VIP/CIP/VVIP"],
       status: "Aktif",
     }),
@@ -1947,6 +1968,8 @@ export default function Home() {
             "HO Admin",
             "HO Ancillary Coordinator",
             "HO Ancillary Verifier",
+            "Lounge Officer",
+            "Lounge Manager",
           ].includes(account.role)
             ? ["master" as MainTab]
             : []),
@@ -1961,7 +1984,9 @@ export default function Home() {
               ? "dashboard"
               : "access",
         );
-        if (params.get("master")) setMasterTab(params.get("master")!);
+        if (account.role === "Lounge Officer" || account.role === "Lounge Manager")
+          setMasterTab("Master Lounge/Tenant");
+        else if (params.get("master")) setMasterTab(params.get("master")!);
         if (params.get("recon")) setReconTab(params.get("recon")!);
         if (params.get("flight")) setFlightTab(params.get("flight")!);
         if (account.mustChangePassword) {
@@ -2064,6 +2089,30 @@ export default function Home() {
         undefined,
         subscriptionError,
       ),
+      currentAccount && role === "Lounge Officer"
+        ? subscribeLoungeCapacityHistory<unknown>(
+            currentAccount.loungeId || null,
+            (rows) =>
+              setLoungeCapacityHistory(
+                normalizeRows<LoungeCapacityVersion>(
+                  rows,
+                  normalizeLoungeCapacity,
+                ) as LoungeCapacityVersion[],
+              ),
+            subscriptionError,
+          )
+        : subscribeCollection<unknown>(
+            "loungeCapacityHistory",
+            (rows) =>
+              setLoungeCapacityHistory(
+                normalizeRows<LoungeCapacityVersion>(
+                  rows,
+                  normalizeLoungeCapacity,
+                ) as LoungeCapacityVersion[],
+              ),
+            undefined,
+            subscriptionError,
+          ),
       subscribeCollection<unknown>(
         "flights",
         (rows) =>
@@ -2199,6 +2248,11 @@ export default function Home() {
       "HO Ancillary Verifier",
     ].includes(role),
     canManageMaster = role === "Super Admin" || role === "Admin",
+    canAccessMasterData =
+      isGlobalAdmin || role === "Lounge Officer" || role === "Lounge Manager",
+    canManageLoungeCapacity =
+      canManageMaster ||
+      (role === "Lounge Officer" && Boolean(currentAccount?.loungeId)),
     canSeeDashboard = dashboardAllowedRoles.includes(role),
     canDeleteFlight = (f: Flight) =>
       isGlobalAdmin || (role === "BO Admin" && f.origin === station),
@@ -3115,6 +3169,8 @@ export default function Home() {
   ]);
   const filteredLounges = lounges.filter(
       (l) =>
+        (!(role === "Lounge Officer" || role === "Lounge Manager") ||
+          l.id === currentAccount?.loungeId) &&
         (masterSelect === "Semua" || l.airport === masterSelect) &&
         (masterSelect2 === "Semua" ||
           l.type === masterSelect2 ||
@@ -3239,7 +3295,17 @@ export default function Home() {
       }),
       {},
     );
-  const dashboardRows = monitoringRows.filter(
+  const dashboardPeriodOptions = Array.from(
+      new Set([
+        ...monitoringRows.map((row) => row.period),
+        ...visitors
+          .map((visitor) =>
+            (visitor.travelDate || visitor.date || "").slice(0, 7),
+          )
+          .filter((period) => /^\d{4}-\d{2}$/.test(period)),
+      ]),
+    ).sort((a, b) => b.localeCompare(a)),
+    dashboardRows = monitoringRows.filter(
       (row) =>
         (dashboardPeriod === "All Periods" || row.period === dashboardPeriod) &&
         (dashboardArea === "All Areas" || row.area === dashboardArea) &&
@@ -3276,6 +3342,45 @@ export default function Home() {
         0,
       ),
     },
+    dashboardCapacityReferenceDate =
+      dashboardPeriod === "All Periods"
+        ? localDate()
+        : `${dashboardPeriod}-${new Date(
+            Number(dashboardPeriod.slice(0, 4)),
+            Number(dashboardPeriod.slice(5, 7)),
+            0,
+          )
+            .getDate()
+            .toString()
+            .padStart(2, "0")}`,
+    dashboardCapacityScope = lounges
+      .filter(
+        (lounge) =>
+          (dashboardBo === "All BO" || lounge.airport === dashboardBo) &&
+          (dashboardProvider === "All Providers" ||
+            lounge.name === dashboardProvider) &&
+          (dashboardArea === "All Areas" ||
+            dashboardAreaBoCodes?.has(lounge.airport)),
+      )
+      .map((lounge) => {
+        const applicable = loungeCapacityHistory
+          .filter(
+            (item) =>
+              item.loungeId === lounge.id &&
+              item.effectiveFrom <= dashboardCapacityReferenceDate,
+          )
+          .sort((a, b) =>
+            b.effectiveFrom.localeCompare(a.effectiveFrom),
+          )[0];
+        return { lounge, capacity: applicable?.capacity || 0, effectiveFrom: applicable?.effectiveFrom || "" };
+      }),
+    dashboardCapacityTotal = dashboardCapacityScope.reduce(
+      (total, item) => total + item.capacity,
+      0,
+    ),
+    dashboardCapacityDates = dashboardCapacityScope
+      .map((item) => item.effectiveFrom)
+      .filter(Boolean),
     dashboardComposition = [
       "Business Class",
       "Platinum",
@@ -4158,6 +4263,83 @@ export default function Home() {
       });
     }
   }
+  async function saveLoungeCapacity(e: FormEvent) {
+    e.preventDefault();
+    const loungeId = capacityLoungeId;
+    const capacity = Number(capacityDraft.capacity);
+    const lounge = lounges.find((item) => item.id === loungeId);
+    const loungeScopedRole = role === "Lounge Officer";
+    if (!loungeId || !lounge) {
+      setLoungeNotice({ kind: "warn", text: "Lounge target belum dipilih." });
+      return;
+    }
+    if (loungeScopedRole && currentAccount?.loungeId !== loungeId) {
+      setLoungeNotice({
+        kind: "error",
+        text: "Anda tidak berwenang mengubah kapasitas lounge ini.",
+      });
+      return;
+    }
+    if (!Number.isInteger(capacity) || capacity <= 0) {
+      setLoungeNotice({
+        kind: "warn",
+        text: "Kapasitas lounge harus berupa bilangan bulat lebih dari 0.",
+      });
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(capacityDraft.effectiveFrom)) {
+      setLoungeNotice({ kind: "warn", text: "Tanggal berlaku belum valid." });
+      return;
+    }
+    if (
+      capacityDraft.effectiveFrom < lounge.start ||
+      capacityDraft.effectiveFrom > lounge.end
+    ) {
+      setLoungeNotice({
+        kind: "warn",
+        text: `Tanggal berlaku harus berada dalam periode lounge ${lounge.start} — ${lounge.end}.`,
+      });
+      return;
+    }
+    const duplicate = loungeCapacityHistory.find(
+      (item) =>
+        item.loungeId === loungeId &&
+        item.effectiveFrom === capacityDraft.effectiveFrom,
+    );
+    const record: LoungeCapacityVersion = {
+      id: duplicate?.id || `capacity-${loungeId}-${capacityDraft.effectiveFrom}`,
+      loungeId,
+      capacity,
+      effectiveFrom: capacityDraft.effectiveFrom,
+      reason: capacityDraft.reason.trim() || "Update kapasitas",
+      updatedBy: currentAccount?.name || role,
+      updatedAt: new Date().toISOString(),
+    };
+    try {
+      await saveRecord("loungeCapacityHistory", record);
+      setLoungeCapacityHistory((rows) => {
+        const index = rows.findIndex((item) => item.id === record.id);
+        return index >= 0
+          ? rows.map((item) => (item.id === record.id ? record : item))
+          : [...rows, record];
+      });
+      setShowCapacityForm(false);
+      setCapacityLoungeId(null);
+      setLoungeNotice({
+        kind: "ok",
+        text: `Kapasitas ${lounge.name} disimpan ke Firebase dan berlaku mulai ${record.effectiveFrom}.`,
+      });
+    } catch (error) {
+      setLoungeNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Kapasitas lounge tidak dapat disimpan.",
+      });
+    }
+  }
+
   async function saveLounge(e: FormEvent) {
     e.preventDefault();
     if (!loungeDraft.airport || !loungeDraft.name || !loungeDraft.end) {
@@ -4256,6 +4438,17 @@ export default function Home() {
       });
       return;
     }
+    if (
+      (userDraft.role === "Lounge Officer" ||
+        userDraft.role === "Lounge Manager") &&
+      !userDraft.loungeId
+    ) {
+      setUserUploadNotice({
+        kind: "warn",
+        text: "Assigned Lounge wajib diisi untuk akun petugas lounge.",
+      });
+      return;
+    }
     const roleScope =
       roleProfileSeed.find((item) => item.role === userDraft.role)?.scope ||
       "Configured authority";
@@ -4292,7 +4485,7 @@ export default function Home() {
   }
   function downloadUserTemplate() {
     const body =
-      'Full Name,Username,Temporary Password,Role,Organization,Verification Scope,Scope Type,Station Code,Email,Status\nBranch Office CGK,bo.cgk,ChangeMe123!,BO Admin,Branch Office CGK,"Business Class,VIP/CIP/VVIP",Single Station,CGK,bo.cgk@garuda-indonesia.com,Aktif\nAncillary Verifier,ancillary.verify,ChangeMe123!,HO Ancillary Verifier,HO Ancillary,"Platinum,Elite Plus,EMD,Paid Access",All Stations,ALL,ancillary@garuda-indonesia.com,Aktif';
+      'Full Name,Username,Temporary Password,Role,Organization,Verification Scope,Scope Type,Station Code,Lounge ID,Email,Status\nBranch Office CGK,bo.cgk,ChangeMe123!,BO Admin,Branch Office CGK,"Business Class,VIP/CIP/VVIP",Single Station,CGK,,bo.cgk@garuda-indonesia.com,Aktif\nAncillary Verifier,ancillary.verify,ChangeMe123!,HO Ancillary Verifier,HO Ancillary,"Platinum,Elite Plus,EMD,Paid Access",All Stations,ALL,,ancillary@garuda-indonesia.com,Aktif';
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([body], { type: "text/csv" }));
     a.download = "template-upload-akun.csv";
@@ -4331,6 +4524,7 @@ export default function Home() {
         stationCode = String(r["Station Code"] || "")
           .trim()
           .toUpperCase(),
+        loungeId = String(r["Lounge ID"] || "").trim(),
         status = (
           String(r.Status || "Aktif") === "Nonaktif" ? "Nonaktif" : "Aktif"
         ) as Account["status"];
@@ -4343,6 +4537,9 @@ export default function Home() {
         (role !== "Super Admin" && accountRole === "Super Admin") ||
         (stationCode !== "ALL" &&
           !stations.some((s) => s.code === stationCode)) ||
+        ((accountRole === "Lounge Officer" ||
+          accountRole === "Lounge Manager") &&
+          (!loungeId || !lounges.some((lounge) => lounge.id === loungeId))) ||
         accounts.some(
           (a) => a.username.toLowerCase() === username.toLowerCase(),
         ) ||
@@ -4364,6 +4561,7 @@ export default function Home() {
         station: stationCode,
         scope: `${roleProfileSeed.find((item) => item.role === accountRole)?.scope || "Configured authority"} · ${stationCode === "ALL" ? "Seluruh Station" : `Station ${stationCode}`}`,
         organization: String(r.Organization || "Garuda Indonesia"),
+        loungeId,
         verificationScopes: String(r["Verification Scope"] || "")
           .split(",")
           .map((x) => x.trim())
@@ -5005,7 +5203,7 @@ export default function Home() {
                 <span>Flight Information</span>
               </Link>
             )}
-            {isGlobalAdmin && (
+            {canAccessMasterData && (
               <Link
                 href="/?view=master"
                 className={tab === "master" ? "active" : ""}
@@ -5036,17 +5234,7 @@ export default function Home() {
                     <SearchableSelect
                       value={dashboardPeriod}
                       onChange={setDashboardPeriod}
-                      options={[
-                        "All Periods",
-                        ...new Set([
-                          ...monitoringRows.map((row) => row.period),
-                          ...visitors
-                            .map((visitor) =>
-                              (visitor.travelDate || visitor.date).slice(0, 7),
-                            )
-                            .filter(Boolean),
-                        ]),
-                      ]}
+                      options={["All Periods", ...dashboardPeriodOptions]}
                       placeholder="Select period"
                     />
                   </FilterField>
@@ -5319,10 +5507,27 @@ export default function Home() {
                         </small>
                       </button>
                     </div>
+                    <div className="card" style={{ marginTop: 12 }}>
+                      <b>Kapasitas Lounge</b>
+                      <div style={{ fontSize: 28, fontWeight: 700, marginTop: 6 }}>
+                        {dashboardCapacityTotal
+                          ? `${dashboardCapacityTotal.toLocaleString("id-ID")} pax`
+                          : "Belum diatur"}
+                      </div>
+                      <small>
+                        {dashboardCapacityScope.length
+                          ? `${dashboardCapacityScope.length} lounge dalam scope · referensi ${dashboardPeriod === "All Periods" ? "hari ini" : "akhir periode"}`
+                          : "Tidak ada lounge dalam scope filter."}
+                        {dashboardCapacityDates.length
+                          ? ` · berlaku dari ${dashboardCapacityDates.sort().at(-1)}`
+                          : ""}
+                      </small>
+                    </div>
                     <p className="formulaNote">
-                      Persentase menggunakan denominator passenger volume, bukan
-                      hanya data lounge. Nilai produksi dapat berasal dari
-                      API/DCS atau impor BO.
+                      Donut Business/Economy tetap menggunakan passenger volume sebagai
+                      denominator. Kapasitas lounge adalah kapasitas tampung simultan, bukan
+                      pax per jam; utilisasi kapasitas belum dihitung sebagai visitor/periode
+                      karena data visitor tidak merekam durasi okupansi.
                     </p>
                   </article>
                 )}
@@ -7124,16 +7329,20 @@ export default function Home() {
                 sub="Data referensi dan rule operasional sesuai kewenangan pengguna."
               />
               <SubTabs
-                items={[
-                  "Master Lounge/Tenant",
-                  "Master Station",
-                  "Master Airline",
-                  "User & Role",
-                  "Access Entitlement",
-                  "Operational Rule",
-                  ...(role === "Super Admin" ? ["Portal Management"] : []),
-                  "Activity Log",
-                ]}
+                items={
+                  role === "Lounge Officer" || role === "Lounge Manager"
+                    ? ["Master Lounge/Tenant"]
+                    : [
+                        "Master Lounge/Tenant",
+                        "Master Station",
+                        "Master Airline",
+                        "User & Role",
+                        "Access Entitlement",
+                        "Operational Rule",
+                        ...(role === "Super Admin" ? ["Portal Management"] : []),
+                        "Activity Log",
+                      ]
+                }
                 value={masterTab}
                 setValue={(value) => {
                   setMasterTab(value);
@@ -7277,6 +7486,56 @@ export default function Home() {
                           <br />
                           <b>{cash(l.price, l.currency)}</b>
                         </p>
+                        {(() => {
+                          const latest = loungeCapacityHistory
+                            .filter(
+                              (item) =>
+                                item.loungeId === l.id &&
+                                item.effectiveFrom <= localDate(),
+                            )
+                            .sort((a, b) =>
+                              b.effectiveFrom.localeCompare(a.effectiveFrom),
+                            )[0];
+                          return (
+                            <p>
+                              Kapasitas lounge
+                              <br />
+                              <b>
+                                {latest
+                                  ? `${latest.capacity.toLocaleString("id-ID")} pax`
+                                  : "Belum diatur"}
+                              </b>
+                              {latest && (
+                                <>
+                                  <br />
+                                  <small>Berlaku sejak {latest.effectiveFrom}</small>
+                                </>
+                              )}
+                            </p>
+                          );
+                        })()}
+                        {canManageLoungeCapacity &&
+                          (canManageMaster || currentAccount?.loungeId === l.id) && (
+                            <button
+                              className="loungeEdit"
+                              onClick={() => {
+                                const latest = loungeCapacityHistory
+                                  .filter((item) => item.loungeId === l.id)
+                                  .sort((a, b) =>
+                                    b.effectiveFrom.localeCompare(a.effectiveFrom),
+                                  )[0];
+                                setCapacityLoungeId(l.id);
+                                setCapacityDraft({
+                                  capacity: latest ? String(latest.capacity) : "",
+                                  effectiveFrom: localDate(),
+                                  reason: "",
+                                });
+                                setShowCapacityForm(true);
+                              }}
+                            >
+                              Kapasitas
+                            </button>
+                          )}
                         {canManageMaster && (
                           <div className="rowAct">
                             <button
@@ -7889,6 +8148,7 @@ export default function Home() {
                                     scope: a.scope,
                                     organization:
                                       a.organization || "Garuda Indonesia",
+                                    loungeId: a.loungeId || "",
                                     verificationScopes:
                                       a.verificationScopes || [],
                                     status: a.status,
@@ -11109,6 +11369,11 @@ export default function Home() {
                       ...userDraft,
                       role: nextRole,
                       station: globalRole ? "ALL" : userDraft.station,
+                      loungeId:
+                        nextRole === "Lounge Officer" ||
+                        nextRole === "Lounge Manager"
+                          ? userDraft.loungeId || ""
+                          : "",
                       scope:
                         roleProfileSeed.find((item) => item.role === nextRole)
                           ?.scope || "Configured authority",
@@ -11132,6 +11397,11 @@ export default function Home() {
                     setUserDraft({
                       ...userDraft,
                       station: e.target.value,
+                      loungeId:
+                        userDraft.role === "Lounge Officer" ||
+                        userDraft.role === "Lounge Manager"
+                          ? ""
+                          : userDraft.loungeId,
                       scope:
                         e.target.value === "ALL"
                           ? "Seluruh Station"
@@ -11149,6 +11419,31 @@ export default function Home() {
                     ))}
                 </select>
               </label>
+              {(userDraft.role === "Lounge Officer" ||
+                userDraft.role === "Lounge Manager") && (
+                <label className="full">
+                  Assigned Lounge
+                  <select
+                    value={userDraft.loungeId || ""}
+                    onChange={(e) =>
+                      setUserDraft({ ...userDraft, loungeId: e.target.value })
+                    }
+                  >
+                    <option value="">Pilih lounge</option>
+                    {lounges
+                      .filter(
+                        (lounge) =>
+                          userDraft.station === "ALL" ||
+                          lounge.airport === userDraft.station,
+                      )
+                      .map((lounge) => (
+                        <option key={lounge.id} value={lounge.id}>
+                          {lounge.airport} — {lounge.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
               <label className="full">
                 Authority
                 <textarea
@@ -11437,6 +11732,94 @@ export default function Home() {
           </form>
         </div>
       )}
+      {showCapacityForm &&
+        canManageLoungeCapacity &&
+        capacityLoungeId && (
+          <div className="back" onMouseDown={() => setShowCapacityForm(false)}>
+            <form
+              className="modal"
+              onMouseDown={(e) => e.stopPropagation()}
+              onSubmit={saveLoungeCapacity}
+            >
+              <div className="modalHead">
+                <div>
+                  <span>MASTER DATA · LOUNGE CAPACITY</span>
+                  <h2>Update Kapasitas Lounge</h2>
+                </div>
+                <button type="button" onClick={() => setShowCapacityForm(false)}>
+                  ×
+                </button>
+              </div>
+              <div className="form">
+                <label className="full">
+                  Lounge
+                  <input
+                    readOnly
+                    value={
+                      lounges.find((item) => item.id === capacityLoungeId)?.name ||
+                      ""
+                    }
+                  />
+                </label>
+                <label>
+                  Kapasitas (pax)
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={capacityDraft.capacity}
+                    onChange={(e) =>
+                      setCapacityDraft({
+                        ...capacityDraft,
+                        capacity: e.target.value,
+                      })
+                    }
+                    placeholder="150"
+                    required
+                  />
+                </label>
+                <label>
+                  Berlaku mulai
+                  <input
+                    type="date"
+                    value={capacityDraft.effectiveFrom}
+                    onChange={(e) =>
+                      setCapacityDraft({
+                        ...capacityDraft,
+                        effectiveFrom: e.target.value,
+                      })
+                    }
+                    required
+                  />
+                </label>
+                <label className="full">
+                  Alasan perubahan
+                  <textarea
+                    value={capacityDraft.reason}
+                    onChange={(e) =>
+                      setCapacityDraft({
+                        ...capacityDraft,
+                        reason: e.target.value,
+                      })
+                    }
+                    placeholder="Contoh: penambahan area seating"
+                  />
+                </label>
+              </div>
+              <p className="formulaNote">
+                Kapasitas berlaku terus sampai ada versi kapasitas berikutnya. Jika
+                tanggal masa depan dipilih, kapasitas baru otomatis aktif pada tanggal
+                tersebut tanpa menimpa histori sebelumnya.
+              </p>
+              <div className="modalActions">
+                <button type="button" onClick={() => setShowCapacityForm(false)}>
+                  Batal
+                </button>
+                <button className="primary">Simpan Kapasitas</button>
+              </div>
+            </form>
+          </div>
+        )}
       {showLoungeForm && canManageMaster && (
         <div className="back" onMouseDown={() => setShowLoungeForm(false)}>
           <form

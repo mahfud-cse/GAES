@@ -44,8 +44,18 @@ export async function createUserRecord(input, actor) {
   if (actor.profile.role !== "Super Admin" && input.role === "Super Admin") {
     throw httpError(403, "Hanya Super Admin yang dapat membuat Super Admin.");
   }
+  const loungeScopedRole = input.role === "Lounge Officer" || input.role === "Lounge Manager";
+  if (loungeScopedRole && !String(input.loungeId || "").trim())
+    throw httpError(400, "Assigned Lounge wajib diisi untuk akun petugas lounge.");
 
   const db = targetDb();
+  if (loungeScopedRole) {
+    const lounge = await db.collection("lounges").doc(String(input.loungeId)).get();
+    if (!lounge.exists) throw httpError(400, "Assigned Lounge tidak ditemukan.");
+    const loungeData = lounge.data() || {};
+    if (input.station && input.station !== "ALL" && loungeData.airport !== input.station)
+      throw httpError(400, "Assigned Lounge tidak sesuai dengan station akun.");
+  }
   const usernameRef = db.collection("usernames").doc(username);
   if ((await usernameRef.get()).exists)
     throw httpError(409, "Username sudah digunakan.");
@@ -66,6 +76,7 @@ export async function createUserRecord(input, actor) {
     station: input.station || "ALL",
     scope: input.scope || "Seluruh Station",
     organization: input.organization || "Garuda Indonesia",
+    loungeId: input.loungeId || "",
     verificationScopes: Array.isArray(input.verificationScopes)
       ? input.verificationScopes
       : [],
