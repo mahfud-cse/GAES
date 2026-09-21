@@ -495,19 +495,17 @@ type ReportConfig = {
 };
 type LoungePricePeriod = {
   id: string;
-  price: number;
   currency: string;
+  price: number;
   start: string;
   end: string;
 };
-
-type LoungeCapacityPeriod = {
+type LoungeCapacityHistory = {
   id: string;
   capacity: number;
   effectiveFrom: string;
-  effectiveTo?: string;
+  recordedAt: string;
 };
-
 type Lounge = {
   id: string;
   airport: string;
@@ -518,8 +516,10 @@ type Lounge = {
   start: string;
   end: string;
   status: string;
+  capacity?: number;
+  capacityEffectiveFrom?: string;
+  capacityHistory?: LoungeCapacityHistory[];
   pricePeriods?: LoungePricePeriod[];
-  capacityPeriods?: LoungeCapacityPeriod[];
 };
 type FlightStatus =
   "Scheduled" | "Delayed" | "Rescheduled" | "Postponed" | "Cancelled";
@@ -1330,79 +1330,6 @@ function addDays(date: string, days: number) {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
-
-function dateInPeriod(date: string, start: string, end?: string) {
-  if (!date || !start) return false;
-  return date >= start && (!end || date <= end);
-}
-
-function normalizeCabinClass(value: string) {
-  const cabin = value.trim().toUpperCase();
-  if (cabin === "F" || cabin === "FIRST" || cabin === "FIRST CLASS")
-    return "First Class";
-  if (cabin === "C" || cabin === "BUSINESS" || cabin === "BUSINESS CLASS")
-    return "Business Class";
-  if (cabin === "Y" || cabin === "ECONOMY" || cabin === "ECONOMY CLASS")
-    return "Economy Class";
-  return "";
-}
-
-function getApplicableLoungePrice(lounge: Lounge, date: string) {
-  const allPeriods = lounge.pricePeriods || [];
-  if (!allPeriods.length) return lounge.price;
-  const periods = [...allPeriods]
-    .filter((period) => dateInPeriod(date, period.start, period.end))
-    .sort((a, b) => b.start.localeCompare(a.start));
-  return periods[0]?.price ?? lounge.price;
-}
-
-function getVisitorApplicablePrice(
-  visitor: Visitor,
-  lounges: Lounge[],
-) {
-  const travelDate = visitor.travelDate || visitor.date;
-  const lounge = lounges.find(
-    (item) =>
-      item.id === visitor.lounge ||
-      (item.airport === visitor.airport && item.name === visitor.lounge),
-  );
-  if (!lounge || !travelDate) return visitor.price;
-  return getApplicableLoungePrice(lounge, travelDate);
-}
-
-function getApplicableLoungeCapacity(lounge: Lounge, date: string) {
-  const periods = [...(lounge.capacityPeriods || [])]
-    .filter((period) => dateInPeriod(date, period.effectiveFrom, period.effectiveTo))
-    .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
-  return periods[0]?.capacity;
-}
-
-function hasOverlappingPeriods(
-  periods: Array<{ start: string; end?: string }>,
-) {
-  const sorted = [...periods]
-    .filter((period) => period.start)
-    .sort((a, b) => a.start.localeCompare(b.start));
-  for (let index = 1; index < sorted.length; index += 1) {
-    const previous = sorted[index - 1];
-    const current = sorted[index];
-    if (!previous.end || current.start <= previous.end) return true;
-  }
-  return false;
-}
-
-function closeOpenCapacityPeriods(periods: LoungeCapacityPeriod[]) {
-  const sorted = [...periods].sort((a, b) =>
-    a.effectiveFrom.localeCompare(b.effectiveFrom),
-  );
-  return sorted.map((period, index) => {
-    const next = sorted[index + 1];
-    if (next && !period.effectiveTo) {
-      return { ...period, effectiveTo: addDays(next.effectiveFrom, -1) };
-    }
-    return period;
-  });
-}
 function dateFromJulian(day: string, referenceDate: string) {
   if (!/^\d{3}$/.test(day)) return "";
   const refYear = Number(referenceDate.slice(0, 4));
@@ -1693,7 +1620,7 @@ export default function Home() {
     [dashboardBo, setDashboardBo] = useState("All BO"),
     [dashboardProvider, setDashboardProvider] = useState("All Providers"),
     [dashboardDetail, setDashboardDetail] = useState<
-      "First Class Pax" | "Business Pax" | "Economy Pax"
+      "Business Pax" | "Economy Pax"
     >("Business Pax"),
     [dashboardImportNotice, setDashboardImportNotice] =
       useState<InlineNotice | null>(null);
@@ -1784,8 +1711,10 @@ export default function Home() {
       start: localDate(),
       end: "",
       status: "Aktif",
+      capacity: 0,
+      capacityEffectiveFrom: localDate(),
+      capacityHistory: [],
       pricePeriods: [],
-      capacityPeriods: [],
     });
   const [showUserForm, setShowUserForm] = useState(false),
     [savingUser, setSavingUser] = useState(false),
@@ -3069,7 +2998,7 @@ export default function Home() {
       category,
       reference: reference.trim(),
       currency: lounge.currency,
-      price: getApplicableLoungePrice(lounge, travelDate),
+      price: lounge.price,
       source: raw ? "Scan/Input" : "Manual",
       boStatus: "Pending",
       boReason: lateScan ? "Melewati STD/ETD" : "",
@@ -3334,37 +3263,80 @@ export default function Home() {
           visitor.lounge === dashboardProvider),
     ),
     dashboardVisitorCount = dashboardAcceptedVisitors.length,
-    passengerVolumeTotals = dashboardRows.reduce(
-      (total, row) => ({
-        businessPax: total.businessPax + row.businessPax,
-        economyPax: total.economyPax + row.economyPax,
-      }),
-      { businessPax: 0, economyPax: 0 },
-    ),
-    dashboardFirstClassVisitors = dashboardAcceptedVisitors.filter(
-      (visitor) => normalizeCabinClass(visitor.cabin) === "First Class",
-    ).length,
-    dashboardBusinessClassVisitors = dashboardAcceptedVisitors.filter(
-      (visitor) => normalizeCabinClass(visitor.cabin) === "Business Class",
-    ).length,
-    dashboardEconomyClassVisitors = dashboardAcceptedVisitors.filter(
-      (visitor) => normalizeCabinClass(visitor.cabin) === "Economy Class",
-    ).length,
+    cabinClass = (visitor: Visitor) => {
+      const value = String(visitor.cabin || "").trim().toUpperCase();
+      if (["FIRST", "FIRST CLASS", "F", "P"].includes(value)) return "First Class";
+      if (["BUSINESS", "BUSINESS CLASS", "C", "J"].includes(value)) return "Business Class";
+      if (["ECONOMY", "ECONOMY CLASS", "Y", "M", "W"].includes(value)) return "Economy Class";
+      return "";
+    },
+    loungeCapacityForDate = (lounge: Lounge, date: string) => {
+      const history = (lounge.capacityHistory || [])
+        .filter((item) => item.capacity >= 0 && item.effectiveFrom && item.effectiveFrom <= date)
+        .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
+      return history[0]?.capacity ?? lounge.capacity ?? 0;
+    },
+    loungePriceForVisitor = (visitor: Visitor) => {
+      const travelDate = visitor.travelDate || visitor.date;
+      const lounge = lounges.find(
+        (item) =>
+          item.airport === visitor.airport &&
+          item.name === visitor.lounge,
+      );
+      if (!lounge) return visitor.price;
+      const periods = (lounge.pricePeriods || []).filter(
+        (period) =>
+          period.start &&
+          period.end &&
+          travelDate >= period.start &&
+          travelDate <= period.end,
+      );
+      if (periods.length) {
+        const current = periods.sort((a, b) => b.start.localeCompare(a.start))[0];
+        return current.price;
+      }
+      if (lounge.start && lounge.end && travelDate >= lounge.start && travelDate <= lounge.end) {
+        return lounge.price;
+      }
+      return visitor.price;
+    },
     dashboardTotals = {
-      firstClassPax: dashboardFirstClassVisitors,
-      businessPax: dashboardBusinessClassVisitors,
-      economyPax: dashboardEconomyClassVisitors,
+      firstPax: dashboardAcceptedVisitors.filter((visitor) => cabinClass(visitor) === "First Class").length,
+      businessPax: dashboardAcceptedVisitors.filter((visitor) => cabinClass(visitor) === "Business Class").length,
+      economyPax: dashboardAcceptedVisitors.filter((visitor) => cabinClass(visitor) === "Economy Class").length,
+      businessLounge: dashboardAcceptedVisitors.filter(
+        (visitor) => visitor.category === "Business Class",
+      ).length,
       cost: dashboardAcceptedVisitors.reduce(
-        (total, visitor) =>
-          total + getVisitorApplicablePrice(visitor, lounges),
+        (total, visitor) => total + loungePriceForVisitor(visitor),
         0,
       ),
     },
     dashboardComposition = [
-      ["First Class", dashboardFirstClassVisitors],
-      ["Business Class", dashboardBusinessClassVisitors],
-      ["Economy Class", dashboardEconomyClassVisitors],
-    ] as [string, number][],
+      "Business Class",
+      "Platinum",
+      "Elite Plus",
+      "SkyTeam",
+      "Partnership",
+      "DPR",
+      "Paid Access",
+      "Other",
+    ].map((categoryName) => [
+      categoryName,
+      dashboardAcceptedVisitors.filter((visitor) =>
+        categoryName === "Other"
+          ? ![
+              "Business Class",
+              "Platinum",
+              "Elite Plus",
+              "SkyTeam",
+              "Partnership",
+              "DPR",
+              "Paid Access",
+            ].includes(visitor.category)
+          : visitor.category === categoryName,
+      ).length,
+    ]) as [string, number][],
     dashboardDays = Math.max(
       1,
       new Set(
@@ -3389,7 +3361,7 @@ export default function Home() {
         all[visitor.airport] = {
           ...current,
           visitors: current.visitors + 1,
-          cost: current.cost + visitor.price,
+          cost: current.cost + loungePriceForVisitor(visitor),
         };
         return all;
       }, {}),
@@ -3408,7 +3380,7 @@ export default function Home() {
         all[visitor.lounge] = {
           name: visitor.lounge,
           visitors: current.visitors + 1,
-          cost: current.cost + visitor.price,
+          cost: current.cost + loungePriceForVisitor(visitor),
         };
         return all;
       }, {}),
@@ -4231,104 +4203,67 @@ export default function Home() {
       });
       return;
     }
-
-    const pricePeriods = (loungeDraft.pricePeriods || [])
+    const pricePeriods = (loungeDraft.pricePeriods?.length
+      ? loungeDraft.pricePeriods
+      : [{
+          id: `${editingLounge || crypto.randomUUID()}-default`,
+          currency: loungeDraft.currency,
+          price: loungeDraft.price,
+          start: loungeDraft.start,
+          end: loungeDraft.end,
+        }])
       .map((period) => ({
         ...period,
-        start: period.start || loungeDraft.start,
-        end: period.end || loungeDraft.end,
-        id:
-          period.id.startsWith("draft-")
-            ? `price-${period.start || loungeDraft.start}-${period.end || loungeDraft.end}-${Number(period.price)}`
-            : period.id,
         currency: (period.currency || loungeDraft.currency).toUpperCase(),
-        price: Number(period.price),
-      }))
-      .filter((period) => period.start && period.end);
-
-    if (
-      pricePeriods.some(
-        (period) =>
-          !Number.isFinite(period.price) ||
-          period.price < 0 ||
-          period.start > period.end,
-      )
-    ) {
-      setLoungeNotice({
-        kind: "warn",
-        text: "Periode harga harus memiliki harga valid dan tanggal mulai tidak boleh melewati tanggal berakhir.",
-      });
-      return;
-    }
-    if (hasOverlappingPeriods(pricePeriods)) {
-      setLoungeNotice({
-        kind: "warn",
-        text: "Periode harga tidak boleh saling tumpang tindih. Buat rentang tanggal yang terpisah untuk setiap harga.",
-      });
-      return;
-    }
-
-    const capacityPeriods = closeOpenCapacityPeriods(
-      (loungeDraft.capacityPeriods || [])
-        .map((period) => ({
-          ...period,
-          id:
-            period.id.startsWith("draft-")
-              ? `capacity-${period.effectiveFrom}-${Number(period.capacity)}`
-              : period.id,
-          capacity: Number(period.capacity),
-        }))
-        .filter((period) => period.effectiveFrom),
+        price: Number(period.price) || 0,
+      }));
+    const invalidPricePeriod = pricePeriods.some(
+      (period) =>
+        !period.start ||
+        !period.end ||
+        period.end < period.start ||
+        period.price < 0,
     );
-    if (
-      capacityPeriods.some(
-        (period) =>
-          !Number.isInteger(period.capacity) ||
-          period.capacity < 0 ||
-          Boolean(period.effectiveTo) &&
-            period.effectiveFrom > String(period.effectiveTo),
-      )
-    ) {
+    const sortedPricePeriods = [...pricePeriods].sort((a, b) =>
+      a.start.localeCompare(b.start),
+    );
+    const overlappingPricePeriods = sortedPricePeriods.some(
+      (period, index) =>
+        index > 0 && period.start <= sortedPricePeriods[index - 1].end,
+    );
+    if (invalidPricePeriod || overlappingPricePeriods) {
       setLoungeNotice({
         kind: "warn",
-        text: "Periode kapasitas harus memiliki kapasitas bulat >= 0 dan tanggal efektif yang valid.",
+        text: overlappingPricePeriods
+          ? "Periode harga lounge tidak boleh saling tumpang tindih."
+          : "Setiap periode harga harus memiliki tanggal dan harga yang valid.",
       });
       return;
     }
-    if (
-      hasOverlappingPeriods(
-        capacityPeriods.map((period) => ({
-          start: period.effectiveFrom,
-          end: period.effectiveTo,
-        })),
-      )
-    ) {
-      setLoungeNotice({
-        kind: "warn",
-        text: "Periode kapasitas tidak boleh saling tumpang tindih.",
+    const nextCapacity = Math.max(0, Number(loungeDraft.capacity) || 0);
+    const previousLounge = lounges.find((item) => item.id === editingLounge);
+    const previousCapacity = previousLounge?.capacity || 0;
+    const effectiveFrom = loungeDraft.capacityEffectiveFrom || localDate();
+    const capacityHistory = [...(loungeDraft.capacityHistory || [])];
+    const latestCapacity = capacityHistory
+      .slice()
+      .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
+    if (nextCapacity > 0 && (nextCapacity !== previousCapacity || latestCapacity?.effectiveFrom !== effectiveFrom)) {
+      capacityHistory.push({
+        id: crypto.randomUUID(),
+        capacity: nextCapacity,
+        effectiveFrom,
+        recordedAt: new Date().toISOString(),
       });
-      return;
     }
-
-    const fallbackPricePeriod =
-      pricePeriods[0] ||
-      ({
-        id: `${editingLounge || "lounge"}-price-initial`,
-        price: loungeDraft.price,
-        currency: loungeDraft.currency,
-        start: loungeDraft.start,
-        end: loungeDraft.end,
-      } as LoungePricePeriod);
-
     const record = normalizeLounge({
       ...loungeDraft,
       id: editingLounge || undefined,
-      price: fallbackPricePeriod.price,
-      currency: loungeDraft.currency,
-      pricePeriods: pricePeriods.length ? pricePeriods : [fallbackPricePeriod],
-      capacityPeriods,
+      capacity: effectiveFrom <= localDate() ? nextCapacity : previousCapacity,
+      capacityEffectiveFrom: effectiveFrom,
+      capacityHistory,
+      pricePeriods: sortedPricePeriods,
     });
-
     if (!record || !record.end) {
       setLoungeNotice({
         kind: "warn",
@@ -4336,30 +4271,23 @@ export default function Home() {
       });
       return;
     }
-
-    const normalizedRecord = {
-      ...(record as Lounge),
-      pricePeriods: pricePeriods.length ? pricePeriods : [fallbackPricePeriod],
-      capacityPeriods,
-    };
-
     try {
-      await saveRecord("lounges", normalizedRecord);
+      await saveRecord("lounges", record);
       setLounges((xs) => {
-        const index = xs.findIndex((x) => x.id === normalizedRecord.id);
+        const index = xs.findIndex((x) => x.id === record.id);
         return index >= 0
-          ? xs.map((x) => (x.id === normalizedRecord.id ? normalizedRecord : x))
-          : [...xs, normalizedRecord];
+          ? xs.map((x) => (x.id === record.id ? (record as Lounge) : x))
+          : [...xs, record as Lounge];
       });
       setShowLoungeForm(false);
       setEditingLounge(null);
       setLoungeNotice({
         kind: "ok",
-        text: "Data lounge/tenant, kapasitas, dan periode harga berhasil disimpan.",
+        text: "Data lounge/tenant berhasil disimpan.",
       });
       setActionDialog({
         kind: "ok",
-        text: `Lounge/Tenant berhasil ${editingLounge ? "diperbarui" : "ditambahkan"}. Riwayat periode harga dan kapasitas tetap tersimpan di Firebase.`,
+        text: `Lounge/Tenant berhasil ${editingLounge ? "diperbarui" : "ditambahkan"}.`,
       });
     } catch (error) {
       setLoungeNotice({
@@ -5299,44 +5227,20 @@ export default function Home() {
                       records <i>View data →</i>
                     </small>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDashboardDetail("First Class Pax");
-                      setTab("dashboard-detail");
-                    }}
-                  >
+                  <button type="button" onClick={() => openDashboardVisitors()}>
                     <span>First Class Pax</span>
-                    <b>{dashboardTotals.firstClassPax.toLocaleString("id-ID")}</b>
-                    <small>
-                      Accepted visitor · Cabin Class <i>View data →</i>
-                    </small>
+                    <b>{dashboardTotals.firstPax.toLocaleString("id-ID")}</b>
+                    <small>Accepted visitor records <i>View data →</i></small>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDashboardDetail("Business Pax");
-                      setTab("dashboard-detail");
-                    }}
-                  >
-                    <span>Business Pax</span>
+                  <button type="button" onClick={() => openDashboardVisitors()}>
+                    <span>Business Class Pax</span>
                     <b>{dashboardTotals.businessPax.toLocaleString("id-ID")}</b>
-                    <small>
-                      Accepted visitor · Cabin Class <i>View data →</i>
-                    </small>
+                    <small>Accepted visitor records <i>View data →</i></small>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDashboardDetail("Economy Pax");
-                      setTab("dashboard-detail");
-                    }}
-                  >
-                    <span>Economy Pax</span>
+                  <button type="button" onClick={() => openDashboardVisitors()}>
+                    <span>Economy Class Pax</span>
                     <b>{dashboardTotals.economyPax.toLocaleString("id-ID")}</b>
-                    <small>
-                      Accepted visitor · Cabin Class <i>View data →</i>
-                    </small>
+                    <small>Accepted visitor records <i>View data →</i></small>
                   </button>
                   <button type="button" onClick={() => openDashboardReport()}>
                     <span>Estimated Cost</span>
@@ -5404,22 +5308,11 @@ export default function Home() {
                       items={dashboardComposition}
                       total={dashboardVisitorCount}
                       centerLabel="Visitors"
-                      onSelect={(name) => {
-                        if (
-                          name === "First Class" ||
-                          name === "Business Class" ||
-                          name === "Economy Class"
-                        ) {
-                          setDashboardDetail(
-                            name === "First Class"
-                              ? "First Class Pax"
-                              : name === "Business Class"
-                                ? "Business Pax"
-                                : "Economy Pax",
-                          );
-                          setTab("dashboard-detail");
-                        }
-                      }}
+                      onSelect={(name) =>
+                        openDashboardVisitors(
+                          name === "Partnership" ? "Kerjasama MPA" : name,
+                        )
+                      }
                     />
                   </article>
                 )}
@@ -5445,29 +5338,27 @@ export default function Home() {
                         <DonutChart
                           compact
                           items={[
-                            ["Lounge Visitors", dashboardTotals.businessPax],
+                            ["Lounge", dashboardTotals.businessLounge],
                             [
                               "Not used",
                               Math.max(
                                 0,
-                                passengerVolumeTotals.businessPax -
-                                  dashboardTotals.businessPax,
+                                dashboardTotals.businessPax -
+                                  dashboardTotals.businessLounge,
                               ),
                             ],
                           ]}
-                          total={passengerVolumeTotals.businessPax}
+                          total={dashboardTotals.businessPax}
                           centerLabel="Business"
                         />
-                        <span>
-                          Business Lounge Visitors vs Business Passenger Volume
-                        </span>
+                        <span>Business Lounge / Business Pax</span>
                         <small>
-                          {dashboardTotals.businessPax.toLocaleString("id-ID")}{" "}
-                          lounge visitors dari{" "}
-                          {passengerVolumeTotals.businessPax.toLocaleString(
+                          {dashboardTotals.businessLounge.toLocaleString(
                             "id-ID",
                           )}{" "}
-                          passenger volume
+                          dari{" "}
+                          {dashboardTotals.businessPax.toLocaleString("id-ID")}{" "}
+                          pax
                         </small>
                       </button>
                       <button
@@ -5480,36 +5371,40 @@ export default function Home() {
                         <DonutChart
                           compact
                           items={[
-                            ["Lounge Visitors", dashboardTotals.economyPax],
+                            [
+                              "Lounge",
+                              dashboardVisitorCount -
+                                dashboardTotals.businessLounge,
+                            ],
                             [
                               "Not used",
                               Math.max(
                                 0,
-                                passengerVolumeTotals.economyPax -
-                                  dashboardTotals.economyPax,
+                                dashboardTotals.economyPax -
+                                  (dashboardVisitorCount -
+                                    dashboardTotals.businessLounge),
                               ),
                             ],
                           ]}
-                          total={passengerVolumeTotals.economyPax}
+                          total={dashboardTotals.economyPax}
                           centerLabel="Economy"
                         />
-                        <span>
-                          Economy Lounge Visitors vs Economy Passenger Volume
-                        </span>
+                        <span>Economy Membership Lounge / Economy Pax</span>
                         <small>
+                          {(
+                            dashboardVisitorCount -
+                            dashboardTotals.businessLounge
+                          ).toLocaleString("id-ID")}{" "}
+                          dari{" "}
                           {dashboardTotals.economyPax.toLocaleString("id-ID")}{" "}
-                          lounge visitors dari{" "}
-                          {passengerVolumeTotals.economyPax.toLocaleString(
-                            "id-ID",
-                          )}{" "}
-                          passenger volume
+                          pax
                         </small>
                       </button>
                     </div>
                     <p className="formulaNote">
-                      Panel ini hanya untuk perbandingan lounge visitor terhadap
-                      passenger volume/DCS. KPI utama di atas tetap 100% berasal
-                      dari visitor Accepted.
+                      Persentase menggunakan denominator passenger volume, bukan
+                      hanya data lounge. Nilai produksi dapat berasal dari
+                      API/DCS atau impor BO.
                     </p>
                   </article>
                 )}
@@ -5715,7 +5610,7 @@ export default function Home() {
                 <Title
                   eye="DASHBOARD DETAIL"
                   title={dashboardDetail}
-                  sub="Detail visitor lounge Accepted berdasarkan Cabin Class dan filter Dashboard aktif."
+                  sub="Passenger volume denominator berdasarkan filter Dashboard aktif."
                 />
                 <button
                   className="secondary"
@@ -5741,11 +5636,9 @@ export default function Home() {
                   <span>
                     Total{" "}
                     <b>
-                      {(dashboardDetail === "First Class Pax"
-                        ? dashboardTotals.firstClassPax
-                        : dashboardDetail === "Business Pax"
-                          ? dashboardTotals.businessPax
-                          : dashboardTotals.economyPax
+                      {(dashboardDetail === "Business Pax"
+                        ? dashboardTotals.businessPax
+                        : dashboardTotals.economyPax
                       ).toLocaleString("id-ID")}
                     </b>
                   </span>
@@ -5760,44 +5653,41 @@ export default function Home() {
                         <th>Station</th>
                         <th>Lounge / Provider</th>
                         <th>{dashboardDetail}</th>
-                        <th>Population</th>
+                        <th>Source</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {dashboardAcceptedVisitors
-                        .filter((visitor) =>
-                          dashboardDetail === "First Class Pax"
-                            ? normalizeCabinClass(visitor.cabin) === "First Class"
-                            : dashboardDetail === "Business Pax"
-                              ? normalizeCabinClass(visitor.cabin) === "Business Class"
-                              : normalizeCabinClass(visitor.cabin) === "Economy Class",
-                        )
-                        .map((visitor) => (
-                          <tr key={visitor.id}>
-                            <td>{visitor.travelDate || visitor.date}</td>
-                            <td>—</td>
-                            <td>
-                              <button
-                                className="tableLink"
-                                onClick={() =>
-                                  openDashboardVisitors(
-                                    "Semua",
-                                    visitor.airport,
-                                    visitor.lounge,
-                                  )
-                                }
-                              >
-                                {visitor.airport} →
-                              </button>
-                            </td>
-                            <td>{visitor.airport}</td>
-                            <td>{visitor.lounge}</td>
-                            <td>
-                              <b>1</b>
-                            </td>
-                            <td>Accepted visitor</td>
-                          </tr>
-                        ))}
+                      {dashboardRows.map((row) => (
+                        <tr key={row.id}>
+                          <td>{row.period}</td>
+                          <td>{row.area}</td>
+                          <td>
+                            <button
+                              className="tableLink"
+                              onClick={() =>
+                                openDashboardVisitors(
+                                  "Semua",
+                                  row.bo,
+                                  row.provider,
+                                )
+                              }
+                            >
+                              {row.bo} →
+                            </button>
+                          </td>
+                          <td>{row.station}</td>
+                          <td>{row.provider}</td>
+                          <td>
+                            <b>
+                              {(dashboardDetail === "Business Pax"
+                                ? row.businessPax
+                                : row.economyPax
+                              ).toLocaleString("id-ID")}
+                            </b>
+                          </td>
+                          <td>{row.source}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -6050,7 +5940,6 @@ export default function Home() {
                           }
                         >
                           <option value="">Pilih kelas</option>
-                          <option value="F">F — First Class</option>
                           <option value="C">C — Business Class</option>
                           <option value="Y">Y — Economy Class</option>
                         </select>
@@ -6065,7 +5954,7 @@ export default function Home() {
                               cabin: e.target.value.toUpperCase(),
                             })
                           }
-                          placeholder="F / C / Y"
+                          placeholder="C / Y"
                         />
                       )}
                       <small className="fieldAlignmentHint" aria-hidden="true">
@@ -7408,16 +7297,10 @@ export default function Home() {
                           start: localDate(),
                           end: "",
                           status: "Aktif",
-                          pricePeriods: [
-                            {
-                              id: `draft-price-${crypto.randomUUID()}`,
-                              price: 0,
-                              currency: "IDR",
-                              start: localDate(),
-                              end: "",
-                            },
-                          ],
-                          capacityPeriods: [],
+                          capacity: 0,
+                          capacityEffectiveFrom: localDate(),
+                          capacityHistory: [],
+                          pricePeriods: [],
                         });
                         setShowLoungeForm(true);
                       }}
@@ -7456,12 +7339,10 @@ export default function Home() {
               />
               <div className="loungeGrid">
                 {filteredLounges.map((l) => {
-                  const endTime = l.end
-                    ? new Date(`${l.end}T12:00:00Z`).getTime()
-                    : Number.NaN;
+                  const endTime = l.end ? new Date(`${l.end}T23:59:59`).getTime() : NaN;
                   const d = Number.isFinite(endTime)
                     ? Math.ceil((endTime - Date.now()) / 86400000)
-                    : null;
+                    : NaN;
                   return (
                     <article className="card lounge" key={l.id}>
                       <div className="code">{l.airport}</div>
@@ -7478,16 +7359,16 @@ export default function Home() {
                         <p>
                           Harga per pax
                           <br />
-                          <b>{cash(getApplicableLoungePrice(l, localDate()), l.currency)}</b>
+                          <b>{cash(l.price, l.currency)}</b>
                         </p>
                         <p>
                           Kapasitas lounge
                           <br />
-                          <b>
-                            {getApplicableLoungeCapacity(l, localDate()) ??
-                              "Belum diatur"}
-                          </b>
+                          <b>{loungeCapacityForDate(l, localDate()).toLocaleString("id-ID")} pax</b>
                         </p>
+                        {l.pricePeriods && l.pricePeriods.length > 1 && (
+                          <p><b>{l.pricePeriods.length} periode harga</b></p>
+                        )}
                         {canManageMaster && (
                           <div className="rowAct">
                             <button
@@ -7503,21 +7384,22 @@ export default function Home() {
                                   start: l.start,
                                   end: l.end,
                                   status: l.status,
-                                  pricePeriods:
-                                    l.pricePeriods?.length
-                                      ? l.pricePeriods
-                                      : l.start && l.end
-                                        ? [
-                                            {
-                                              id: `${l.id}-price-legacy`,
-                                              price: l.price,
-                                              currency: l.currency,
-                                              start: l.start,
-                                              end: l.end,
-                                            },
-                                          ]
-                                        : [],
-                                  capacityPeriods: l.capacityPeriods || [],
+                                  capacity: l.capacity || 0,
+                                  capacityEffectiveFrom:
+                                    l.capacityEffectiveFrom ||
+                                    l.capacityHistory?.slice().sort((a, b) =>
+                                      b.effectiveFrom.localeCompare(a.effectiveFrom),
+                                    )[0]?.effectiveFrom || localDate(),
+                                  capacityHistory: l.capacityHistory || [],
+                                  pricePeriods: l.pricePeriods?.length
+                                    ? l.pricePeriods
+                                    : [{
+                                        id: `${l.id}-default`,
+                                        currency: l.currency,
+                                        price: l.price,
+                                        start: l.start,
+                                        end: l.end,
+                                      }],
                                 });
                                 setShowLoungeForm(true);
                               }}
@@ -7546,16 +7428,10 @@ export default function Home() {
                       </div>
                       <mark
                         className={
-                          d === null
-                            ? "green"
-                            : d < 90
-                              ? "red"
-                              : d < 150
-                                ? "yellow"
-                                : "green"
+                          d < 90 ? "red" : d < 150 ? "yellow" : "green"
                         }
                       >
-                        {d === null
+                        {!Number.isFinite(d)
                           ? "Periode tidak valid"
                           : d < 0
                             ? "Kedaluwarsa"
@@ -11726,26 +11602,6 @@ export default function Home() {
                 />
               </label>
               <label>
-                Periode kerja sama — Mulai
-                <input
-                  type="date"
-                  value={loungeDraft.start}
-                  onChange={(e) =>
-                    setLoungeDraft({ ...loungeDraft, start: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Periode kerja sama — Berakhir
-                <input
-                  type="date"
-                  value={loungeDraft.end}
-                  onChange={(e) =>
-                    setLoungeDraft({ ...loungeDraft, end: e.target.value })
-                  }
-                />
-              </label>
-              <label>
                 Currency
                 <input
                   value={loungeDraft.currency}
@@ -11756,6 +11612,40 @@ export default function Home() {
                     })
                   }
                   placeholder="IDR"
+                />
+              </label>
+              <label>
+                Harga per Pax
+                <input
+                  type="number"
+                  min="0"
+                  value={loungeDraft.price}
+                  onChange={(e) =>
+                    setLoungeDraft({
+                      ...loungeDraft,
+                      price: Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Tanggal Mulai
+                <input
+                  type="date"
+                  value={loungeDraft.start}
+                  onChange={(e) =>
+                    setLoungeDraft({ ...loungeDraft, start: e.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Tanggal Berakhir
+                <input
+                  type="date"
+                  value={loungeDraft.end}
+                  onChange={(e) =>
+                    setLoungeDraft({ ...loungeDraft, end: e.target.value })
+                  }
                 />
               </label>
               <label>
@@ -11770,234 +11660,58 @@ export default function Home() {
                   <option>Nonaktif</option>
                 </select>
               </label>
-
-              <section className="form full loungePeriodSection">
-                <div className="loungePeriodHead">
-                  <div>
-                    <b>Harga per Pax — Periode</b>
-                    <small>
-                      Satu lounge boleh memiliki beberapa harga. Harga yang
-                      tersimpan mengikuti tanggal perjalanan visitor.
-                    </small>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setLoungeDraft((draft) => ({
-                        ...draft,
-                        pricePeriods: [
-                          ...(draft.pricePeriods || []),
-                          {
-                            id: `draft-price-${crypto.randomUUID()}`,
-                            price: 0,
-                            currency: draft.currency,
-                            start: draft.start || localDate(),
-                            end: draft.end || "",
-                          },
-                        ],
-                      }))
-                    }
-                  >
-                    + Tambah Periode Harga
-                  </button>
+              <label>
+                Kapasitas Lounge (Pax)
+                <input
+                  type="number"
+                  min="0"
+                  value={loungeDraft.capacity || 0}
+                  onChange={(e) =>
+                    setLoungeDraft({ ...loungeDraft, capacity: Number(e.target.value) || 0 })
+                  }
+                />
+              </label>
+              <label>
+                Kapasitas Berlaku Mulai
+                <input
+                  type="date"
+                  value={loungeDraft.capacityEffectiveFrom || localDate()}
+                  onChange={(e) =>
+                    setLoungeDraft({ ...loungeDraft, capacityEffectiveFrom: e.target.value })
+                  }
+                />
+              </label>
+              <div className="full" style={{ marginTop: 8 }}>
+                <strong>Periode Harga</strong>
+                <div className="info" style={{ marginTop: 8 }}>
+                  Harga dapat memiliki beberapa periode. Dashboard menggunakan harga yang berlaku pada Date of Travel visitor.
                 </div>
-                {(loungeDraft.pricePeriods || []).map((period, index) => (
-                  <div className="loungePeriodRow" key={period.id}>
-                    <label>
-                      Harga/Pax
-                      <input
-                        type="number"
-                        min="0"
-                        value={period.price}
-                        disabled={!period.id.startsWith("draft-")}
-                        onChange={(e) =>
-                          setLoungeDraft((draft) => ({
-                            ...draft,
-                            pricePeriods: (draft.pricePeriods || []).map(
-                              (item, itemIndex) =>
-                                itemIndex === index
-                                  ? {
-                                      ...item,
-                                      price: Number(e.target.value),
-                                    }
-                                  : item,
-                            ),
-                          }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      Mulai berlaku
-                      <input
-                        type="date"
-                        value={period.start}
-                        disabled={!period.id.startsWith("draft-")}
-                        onChange={(e) =>
-                          setLoungeDraft((draft) => ({
-                            ...draft,
-                            pricePeriods: (draft.pricePeriods || []).map(
-                              (item, itemIndex) =>
-                                itemIndex === index
-                                  ? { ...item, start: e.target.value }
-                                  : item,
-                            ),
-                          }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      Sampai berlaku
-                      <input
-                        type="date"
-                        value={period.end}
-                        onChange={(e) =>
-                          setLoungeDraft((draft) => ({
-                            ...draft,
-                            pricePeriods: (draft.pricePeriods || []).map(
-                              (item, itemIndex) =>
-                                itemIndex === index
-                                  ? { ...item, end: e.target.value }
-                                  : item,
-                            ),
-                          }))
-                        }
-                      />
-                    </label>
-                    {period.id.startsWith("draft-") && (
-                      <button
-                        type="button"
-                        className="del"
-                        onClick={() =>
-                          setLoungeDraft((draft) => ({
-                            ...draft,
-                            pricePeriods: (draft.pricePeriods || []).filter(
-                              (_, itemIndex) => itemIndex !== index,
-                            ),
-                          }))
-                        }
-                      >
-                        Hapus periode
-                      </button>
-                    )}
+                {(loungeDraft.pricePeriods?.length
+                  ? loungeDraft.pricePeriods
+                  : [{ id: "default", currency: loungeDraft.currency, price: loungeDraft.price, start: loungeDraft.start, end: loungeDraft.end }]
+                ).map((period, index, source) => (
+                  <div className="form" key={period.id} style={{ marginTop: 8 }}>
+                    <label>Currency<input value={period.currency} onChange={(e) => { const rows = source.map((item) => ({ ...item })); rows[index].currency = e.target.value.toUpperCase(); setLoungeDraft({ ...loungeDraft, pricePeriods: rows }); }} /></label>
+                    <label>Harga per Pax<input type="number" min="0" value={period.price} onChange={(e) => { const rows = source.map((item) => ({ ...item })); rows[index].price = Number(e.target.value) || 0; setLoungeDraft({ ...loungeDraft, pricePeriods: rows }); }} /></label>
+                    <label>Tanggal Mulai<input type="date" value={period.start} onChange={(e) => { const rows = source.map((item) => ({ ...item })); rows[index].start = e.target.value; setLoungeDraft({ ...loungeDraft, pricePeriods: rows }); }} /></label>
+                    <label>Tanggal Berakhir<input type="date" value={period.end} onChange={(e) => { const rows = source.map((item) => ({ ...item })); rows[index].end = e.target.value; setLoungeDraft({ ...loungeDraft, pricePeriods: rows }); }} /></label>
+                    {source.length > 1 && <button type="button" onClick={() => setLoungeDraft({ ...loungeDraft, pricePeriods: source.filter((_, rowIndex) => rowIndex !== index) })}>Hapus Periode</button>}
                   </div>
                 ))}
-
-                <div className="loungePeriodHead">
-                  <div>
-                    <b>Kapasitas Lounge — Periode Efektif</b>
-                    <small>
-                      Kapasitas berlaku mulai tanggal efektif dan tetap berlaku
-                      sampai ada periode kapasitas baru.
-                    </small>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setLoungeDraft((draft) => ({
-                        ...draft,
-                        capacityPeriods: closeOpenCapacityPeriods([
-                          ...(draft.capacityPeriods || []),
-                          {
-                            id: `draft-capacity-${crypto.randomUUID()}`,
-                            capacity: 0,
-                            effectiveFrom: draft.start || localDate(),
-                          },
-                        ]),
-                      }))
-                    }
-                  >
-                    + Tambah Periode Kapasitas
-                  </button>
-                </div>
-                {(loungeDraft.capacityPeriods || []).map((period, index) => (
-                  <div className="loungePeriodRow" key={period.id}>
-                    <label>
-                      Kapasitas
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={period.capacity}
-                        disabled={!period.id.startsWith("draft-")}
-                        onChange={(e) =>
-                          setLoungeDraft((draft) => ({
-                            ...draft,
-                            capacityPeriods: (draft.capacityPeriods || []).map(
-                              (item, itemIndex) =>
-                                itemIndex === index
-                                  ? {
-                                      ...item,
-                                      capacity: Number(e.target.value),
-                                    }
-                                  : item,
-                            ),
-                          }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      Efektif mulai
-                      <input
-                        type="date"
-                        value={period.effectiveFrom}
-                        disabled={!period.id.startsWith("draft-")}
-                        onChange={(e) =>
-                          setLoungeDraft((draft) => ({
-                            ...draft,
-                            capacityPeriods: (draft.capacityPeriods || []).map(
-                              (item, itemIndex) =>
-                                itemIndex === index
-                                  ? {
-                                      ...item,
-                                      effectiveFrom: e.target.value,
-                                    }
-                                  : item,
-                            ),
-                          }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      Sampai tanggal
-                      <input
-                        type="date"
-                        value={period.effectiveTo || ""}
-                        onChange={(e) =>
-                          setLoungeDraft((draft) => ({
-                            ...draft,
-                            capacityPeriods: (draft.capacityPeriods || []).map(
-                              (item, itemIndex) =>
-                                itemIndex === index
-                                  ? {
-                                      ...item,
-                                      effectiveTo: e.target.value || undefined,
-                                    }
-                                  : item,
-                            ),
-                          }))
-                        }
-                        placeholder="Kosong = sampai ada perubahan"
-                      />
-                    </label>
-                    {period.id.startsWith("draft-") && (
-                      <button
-                        type="button"
-                        className="del"
-                        onClick={() =>
-                          setLoungeDraft((draft) => ({
-                            ...draft,
-                            capacityPeriods: (draft.capacityPeriods || []).filter(
-                              (_, itemIndex) => itemIndex !== index,
-                            ),
-                          }))
-                        }
-                      >
-                        Hapus periode
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </section>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const rows = loungeDraft.pricePeriods?.length
+                      ? [...loungeDraft.pricePeriods]
+                      : [{ id: crypto.randomUUID(), currency: loungeDraft.currency, price: loungeDraft.price, start: loungeDraft.start, end: loungeDraft.end }];
+                    const nextStart = loungeDraft.end ? addDays(loungeDraft.end, 1) : localDate();
+                    rows.push({ id: crypto.randomUUID(), currency: loungeDraft.currency, price: loungeDraft.price, start: nextStart, end: addDays(nextStart, 30) });
+                    setLoungeDraft({ ...loungeDraft, pricePeriods: rows });
+                  }}
+                >
+                  + Tambah Periode Harga
+                </button>
+              </div>
             </div>
             <div className="modalActions">
               <button type="button" onClick={() => setShowLoungeForm(false)}>
