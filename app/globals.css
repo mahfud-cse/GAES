@@ -3254,69 +3254,73 @@ td small {
   }
 }
 
-
-/* ================================================================
-   GAES v0.23 — controlled visual refinement
-   Visual-only overrides. No interaction, data, route or workflow rules.
-   ================================================================ */
-
+/* v0.23 GAES enterprise design-system normalization.
+   Scoped visual overrides only; business logic, routes and data are untouched. */
 :root {
   --gaes-navy: #073b57;
-  --gaes-teal: #087f98;
-  --gaes-teal-soft: #eaf7f8;
-  --gaes-bg: #f6f8f9;
+  --gaes-teal: #087b9d;
+  --gaes-cyan: #1595a9;
+  --gaes-soft-cyan: #eaf7f8;
+  --gaes-bg: #f4f7f8;
   --gaes-surface: #ffffff;
-  --gaes-text: #183f4d;
-  --gaes-muted: #687f89;
-  --gaes-border: #dce7ea;
-  --gaes-border-strong: #c9d9de;
-  --gaes-success: #28755e;
-  --gaes-warning: #87621a;
-  --gaes-danger: #b43a34;
-  --gaes-radius: 12px;
-  --gaes-control-height: 42px;
+  --gaes-ink: #193b49;
+  --gaes-muted: #6e858f;
+  --gaes-line: #dbe6e9;
+  --gaes-focus: rgba(21, 149, 169, 0.22);
+  --gaes-radius: 10px;
+  --gaes-control-h: 42px;
 }
 
 body {
   background: var(--gaes-bg);
-  color: var(--gaes-text);
   font-family: Inter, "Segoe UI", Arial, sans-serif;
-  font-size: 14px;
-  line-height: 1.45;
+  color: var(--gaes-ink);
 }
 
-/* Header: retain branding, reduce visual weight. */
+/* Keep shared controls compact and remove legacy browser-like weight. */
+button,
+input,
+select,
+textarea {
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+}
+
+button:not(:disabled):hover,
+.uploadButton:hover {
+  transform: none;
+  filter: none;
+  box-shadow: none;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--gaes-cyan);
+  outline-offset: 2px;
+}
+
 .top {
   height: 72px;
-  padding-inline: 28px;
-  background: var(--gaes-navy);
-  box-shadow: 0 2px 12px #082f4018;
-}
-
-.top > span {
-  font-size: 11px;
-  letter-spacing: 0.35px;
-  border-color: #5aaabd;
-  border-radius: 9px;
-  padding: 7px 11px;
+  padding-inline: 24px;
+  background: linear-gradient(105deg, #073b57, #075f7b);
+  box-shadow: 0 2px 12px rgba(8, 47, 64, 0.16);
 }
 
 .brand {
   gap: 12px;
 }
 
-.brand b,
-.brand > div:last-child b {
-  font-size: 15px;
+.brand b {
+  font-size: 16px;
   font-weight: 600;
-  letter-spacing: 0.3px;
+  letter-spacing: 1.2px;
 }
 
-.brand small,
-.brand > div:last-child small {
-  margin-top: 2px;
-  font-size: 11px;
-  letter-spacing: 0;
+.brand small {
+  margin-top: 3px;
+  font-size: 12px;
 }
 
 .shell {
@@ -3325,19 +3329,16 @@ body {
 }
 
 .shell.sidebarCollapsed {
-  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-columns: 68px minmax(0, 1fr);
 }
 
 aside {
-  padding: 22px 14px;
-  border-right-color: var(--gaes-border);
+  padding: 22px 16px;
 }
 
 aside > p {
   padding-inline: 12px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 1.1px;
+  letter-spacing: 1.4px;
 }
 
 nav {
@@ -3345,431 +3346,462 @@ nav {
 }
 
 nav a {
-  min-height: 42px;
+  min-height: 44px;
   padding: 10px 12px;
+  gap: 10px;
   border-radius: 10px;
-  color: #536d77;
   font-size: 14px;
-  font-weight: 400;
-}
-
-nav a i {
-  font-size: 10px;
-  color: #9aafb7;
+  font-weight: 500;
 }
 
 nav a:hover {
-  background: #f4f8f9;
+  background: #f0f7f8;
+  color: #17667a;
 }
 
 nav .active {
-  background: var(--gaes-teal-soft);
-  color: var(--gaes-teal);
+  background: var(--gaes-soft-cyan);
+  color: #056d89;
   font-weight: 600;
-  box-shadow: inset 2px 0 var(--gaes-teal);
+  box-shadow: inset 3px 0 #0b8fa6;
 }
 
-.local {
-  background: #f1f7f8;
-  border: 1px solid #e3ecee;
-  border-radius: 10px;
-  padding: 12px;
-  font-size: 12px;
+.sidebarToggle {
+  width: 26px;
+  height: 26px;
+  right: -13px;
+  top: 14px;
 }
 
-/* Main page hierarchy. */
 .content {
-  padding: 30px;
-  max-width: 1540px;
+  max-width: none;
+  padding: 24px 28px 32px;
 }
 
-.content .title {
-  margin-bottom: 25px;
-}
-
-.content .title p,
-.content .cardTitle span,
-.content .modalHead span {
-  margin-bottom: 6px;
-  color: #16849a;
-  font-size: 11px;
-  line-height: 1.3;
-  letter-spacing: 0.7px;
-  font-weight: 600;
-}
-
-.content .title h1 {
-  margin-bottom: 7px;
-  color: var(--gaes-navy);
-  font-size: clamp(32px, 3vw, 36px);
-  line-height: 1.15;
-  font-weight: 600;
-  letter-spacing: -0.45px;
-}
-
-.content .title > span {
-  color: var(--gaes-muted);
-  font-size: 14px;
-  line-height: 1.55;
-}
-
-/* Calm surfaces: fewer shadows, consistent geometry. */
-.content .card {
-  border-color: var(--gaes-border);
-  border-radius: var(--gaes-radius);
-  padding: 22px;
-  box-shadow: 0 3px 14px #173d4e07;
-}
-
-.content .cardTitle {
+.title {
   margin-bottom: 18px;
 }
 
-.content .cardTitle h2,
-.content .miniHead h2 {
-  color: #174457;
-  font-size: 18px;
-  line-height: 1.3;
-  font-weight: 600;
-  letter-spacing: -0.1px;
-}
-
-.content .cardTitle mark,
-.content .type,
-.content .scopeBadge {
-  letter-spacing: 0;
+.title p,
+.cardTitle span,
+.modalHead span {
+  margin-bottom: 5px;
+  font-size: 11px;
+  letter-spacing: 1.25px;
   font-weight: 600;
 }
 
-/* Forms: consistent, lighter controls. */
-.content label {
+.title h1 {
+  margin-bottom: 5px;
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: 600;
+}
+
+.title > span {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.card {
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 3px 12px rgba(23, 61, 78, 0.05);
+}
+
+.cardTitle {
+  margin-bottom: 16px;
+}
+
+.cardTitle h2,
+.dashboardWidget h2,
+.dashboardTrend h2,
+.trafficHead h2 {
+  font-weight: 600;
+}
+
+.cardTitle h2 {
+  font-size: 17px;
+}
+
+label {
   gap: 6px;
-  color: #536e78;
   font-size: 13px;
-  line-height: 1.3;
   font-weight: 500;
+  color: #526f7a;
 }
 
-.content input,
-.content select,
-.content textarea {
-  box-sizing: border-box;
-  min-height: var(--gaes-control-height);
-  border-color: var(--gaes-border-strong);
-  border-radius: 8px;
-  padding: 9px 11px;
+input,
+select,
+textarea {
+  min-height: var(--gaes-control-h);
+  border-color: #cbdde1;
+  border-radius: 9px;
+  padding: 9px 12px;
   font-size: 14px;
-  line-height: 1.35;
-  color: #183f4d;
+  color: #173a48;
 }
 
-.content input::placeholder,
-.content textarea::placeholder {
-  color: #8a9ca4;
-  font-weight: 400;
+textarea {
+  min-height: 76px;
 }
 
-.content input:focus,
-.content select:focus,
-.content textarea:focus {
-  border-color: #1595a9;
-  box-shadow: 0 0 0 3px #1595a914;
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: #aacbd2;
 }
 
-/* Button hierarchy, scoped to the application content. */
-.content button,
-.content .uploadButton {
-  font-family: inherit;
-  font-size: 14px;
-  line-height: 1.25;
-  font-weight: 600;
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--gaes-cyan);
+  box-shadow: 0 0 0 3px var(--gaes-focus);
 }
 
-.content button:not(:disabled):hover,
-.content .uploadButton:hover {
-  transform: none;
-  filter: none;
-  box-shadow: none;
-}
-
-.content .primary,
-.content .confirm {
-  min-height: var(--gaes-control-height);
-  border: 1px solid var(--gaes-teal);
-  border-radius: 8px;
+.primary,
+.confirm {
+  min-height: 42px;
+  border: 1px solid #087b9d;
+  border-radius: 9px;
   background: var(--gaes-teal);
+  background-image: none;
   color: #fff;
-  padding: 9px 15px;
+  padding: 9px 18px;
   font-size: 14px;
   font-weight: 600;
 }
 
-.content .primary:hover:not(:disabled),
-.content .confirm:hover:not(:disabled) {
-  background: #076f86;
-  border-color: #076f86;
+.primary:not(:disabled):hover,
+.confirm:not(:disabled):hover {
+  background: #076d8c;
+  border-color: #076d8c;
+  box-shadow: 0 4px 12px rgba(7, 123, 157, 0.16);
 }
 
-.content .secondary,
-.content .scannerOn,
-.content .actionTitle button,
-.content .modalActions > button,
-.content .uploadButton {
-  min-height: var(--gaes-control-height);
-  border: 1px solid var(--gaes-border-strong);
-  border-radius: 8px;
+.primary:focus-visible,
+.confirm:focus-visible {
+  box-shadow: 0 0 0 3px var(--gaes-focus);
+}
+
+.secondary,
+.scannerOn,
+.actionTitle button,
+.modalActions > button {
+  min-height: 42px;
+  border: 1px solid #c8d9de;
+  border-radius: 9px;
   background: #fff;
-  color: #286477;
-  padding: 9px 14px;
+  color: #245b6c;
+  padding: 9px 17px;
   font-size: 14px;
-  font-weight: 600;
-}
-
-.content .danger {
-  min-height: var(--gaes-control-height);
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-/* Filter areas read as one operational control group. */
-.content .filters,
-.content .dashboardFilterCard {
-  border-color: var(--gaes-border);
-}
-
-.content .filters {
-  gap: 12px;
-  padding: 14px;
-  background: #fbfcfc;
-}
-
-.content .filterField {
-  gap: 6px;
-  color: #536e78;
-  font-size: 13px;
   font-weight: 500;
 }
 
-.content .filterField > input,
-.content .filterField > .searchableSelect,
-.content .filterField .searchableSelect input {
-  min-height: var(--gaes-control-height);
-  height: var(--gaes-control-height);
+.secondary:not(:disabled):hover,
+.actionTitle button:not(:disabled):hover,
+.modalActions > button:not(:disabled):hover {
+  border-color: #8ebfc9;
+  background: #f5fafb;
+  color: #0a718c;
+  box-shadow: 0 3px 10px rgba(23, 61, 78, 0.08);
 }
 
-.content .searchableSelect > button {
-  background: #f8fbfb;
-  border-left-color: var(--gaes-border);
+.scannerOn {
+  background: #e7f6f4;
+  border-color: #83c9bb;
+  color: #237663;
 }
 
-.content .searchableOptions {
-  border-color: var(--gaes-border);
-  border-radius: 10px;
-  box-shadow: 0 12px 28px #082f4018;
-}
-
-.content .searchableOptions button {
-  font-size: 13px;
-  font-weight: 400;
-}
-
-.content .searchableOptions button.selected {
-  background: var(--gaes-teal-soft);
+.link,
+.tableLink {
   color: var(--gaes-teal);
   font-weight: 500;
 }
 
-/* Tabs/segmented navigation: selected state carries emphasis. */
-.content .subTabs {
-  gap: 4px;
-  margin: -3px 0 18px;
+.link:hover,
+.tableLink:hover {
+  color: #065f78;
+  text-decoration: underline;
+}
+
+.buttons,
+.actionTitle > div:last-child,
+.reportButtons,
+.rowAct,
+.modalActions {
+  gap: 8px;
+}
+
+.dashboardFilterCard,
+.trafficCard {
+  margin-bottom: 14px;
+}
+
+.dashboardFilters {
+  gap: 10px;
+}
+
+.dashboardDataTools {
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.dashboardKpis {
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.dashboardKpis > button {
+  min-height: 96px;
+  padding: 15px;
+  border-radius: 12px;
+  box-shadow: none;
+  transition: border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.dashboardKpis > button:hover,
+.dashboardKpis > button:focus-visible {
+  border-color: #73b9c3;
+  background: #fbfefe;
+  box-shadow: 0 4px 14px rgba(7, 59, 87, 0.08);
+}
+
+.dashboardKpis b {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.dashboardWorkflow > div {
+  gap: 10px;
+}
+
+/* These three controls are real navigation targets, not ordinary buttons. */
+.dashboardWorkflow button {
+  min-height: 70px;
+  padding: 12px 14px;
+  border: 1px solid #d7e5e8;
+  border-radius: 10px;
+  background: #fff;
+  color: #315c68;
+  text-align: left;
+  justify-items: start;
+  transition: border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.dashboardWorkflow button:hover,
+.dashboardWorkflow button:focus-visible {
+  border-color: #79bbc4;
+  background: #f5fbfc;
+  box-shadow: 0 4px 12px rgba(7, 59, 87, 0.07);
+}
+
+.dashboardWorkflow button b {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.stats {
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.stats > div {
+  min-width: 170px;
+  border-radius: 11px;
+  padding: 13px;
+}
+
+.stats b {
+  margin: 6px 0;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+/* Tables: operational density without changing table semantics. */
+th {
+  padding: 10px 12px;
+  font-size: 10px;
+}
+
+td {
+  padding: 11px 12px;
+}
+
+tbody tr:hover {
+  background: #f7fbfc;
+}
+
+.sortButton:hover,
+.sortButton:focus-visible {
+  color: #0a718c;
+}
+
+.rowAct button {
+  min-height: 36px;
+  padding: 7px 11px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+.del {
+  min-height: 36px;
+  padding: 7px 10px;
+}
+
+/* Page/module tabs are intentionally different from buttons. */
+.subTabs {
+  gap: 5px;
+  margin: -2px 0 16px;
   padding: 3px;
-  border: 1px solid var(--gaes-border);
+  border: 1px solid #dbe7e9;
   border-radius: 10px;
   background: #f7fafb;
   width: fit-content;
   max-width: 100%;
 }
 
-.content .subTabs button {
+.subTabs button {
   min-height: 36px;
   border: 0;
   border-radius: 7px;
   background: transparent;
-  color: #5a747e;
-  padding: 8px 13px;
+  color: #55727c;
+  padding: 8px 12px;
   font-size: 13px;
   font-weight: 500;
 }
 
-.content .subTabs .selected {
-  background: #fff;
-  color: var(--gaes-teal);
-  box-shadow: 0 1px 3px #173d4e0d;
-  font-weight: 600;
-}
-
-/* Dashboard hierarchy. */
-.content .dashboardKpis {
-  gap: 12px;
-}
-
-.content .dashboardKpis > button {
-  min-height: 112px;
-  border-color: var(--gaes-border);
-  border-radius: 12px;
+.subTabs button:hover,
+.subTabs button:focus-visible {
+  background: #edf6f7;
+  color: #17667a;
   box-shadow: none;
 }
 
-.content .dashboardKpis > button:hover,
-.content .dashboardKpis > button:focus-visible {
-  border-color: #8bc6cf;
-  box-shadow: 0 5px 16px #073b5710;
-  transform: none;
+.subTabs .selected {
+  border: 1px solid #b8dbe1;
+  background: #fff;
+  color: #076f89;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(23, 61, 78, 0.06);
 }
 
-.content .dashboardKpis b {
-  font-size: 25px;
+.portalTabs {
+  width: fit-content;
+  max-width: 100%;
+  margin: 14px 0;
+}
+
+.portalTabs button {
+  min-width: 0;
+  flex: 0 1 auto;
+  padding: 8px 13px;
+}
+
+.portalManagerSection {
+  max-width: 1180px;
+  margin-top: 12px;
+}
+
+.portalSectionHead {
+  margin-bottom: 12px;
+}
+
+.portalSectionHead h2 {
+  font-size: 20px;
   font-weight: 600;
 }
 
-.content .dashboardWidget h2,
-.content .portalSectionHead h2 {
-  font-weight: 600;
-}
-
-.content .dashboardDataTools {
-  border-top-color: var(--gaes-border);
-}
-
-.content .dashboardTableWrap {
-  border-color: var(--gaes-border);
-  border-radius: 9px;
-}
-
-/* Tables: increase readability without changing data or columns. */
-.content table {
+.portalSectionHead p {
+  max-width: 760px;
   font-size: 13px;
+  line-height: 1.5;
 }
 
-.content th {
-  background: #f7f9fa;
-  color: #607780;
-  padding: 11px 13px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0;
-}
-
-.content td {
-  padding: 12px 13px;
-  color: #3b5964;
-  font-size: 13px;
-}
-
-.content td small {
-  color: #8799a1;
-  font-size: 12px;
-}
-
-.content .rowAct button {
-  min-height: 34px;
-  border-radius: 7px;
-  padding: 7px 9px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-/* Lounge / tenant access workflow. */
-.content .dotFirst {
-  border-color: #a8d8de;
-  border-radius: 10px;
-  background: #f0fafb;
-  color: #245b69;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.content .dotFirst small {
-  color: #66818a;
-  font-size: 12px;
-  font-weight: 400;
-}
-
-.content .camera {
-  margin: 16px 0;
-  border-radius: 10px;
-}
-
-.content .processList > div {
+.pageTextEditor > div {
+  grid-template-columns: minmax(150px, 0.55fr) minmax(220px, 0.9fr) minmax(220px, 0.9fr);
   padding: 11px 12px;
-  border: 1px solid #e3ecee;
-  background: #f8fafb;
-  font-size: 13px;
-}
-
-.content .processList i {
-  font-weight: 600;
-}
-
-.content .scanHelp,
-.content .manualFallback,
-.content .info {
-  border-radius: 9px;
-  font-size: 13px;
-}
-
-.content .companionPanel {
-  border-color: var(--gaes-border);
   border-radius: 10px;
-  background: #f8fafb;
 }
 
-/* Flight tools and operational actions. */
-.content .flightTools {
+.pageTextEditor input {
+  max-width: 520px;
+}
+
+.translationControl {
+  grid-template-columns: minmax(300px, 1fr) auto;
+  gap: 10px;
+}
+
+.switchLine {
+  padding: 12px 14px;
+  border-radius: 10px;
+}
+
+.translationSummary {
   gap: 8px;
-  margin-bottom: 14px;
 }
 
-.content .flightTools > span {
-  color: var(--gaes-muted);
-  font-size: 12px;
+.translationSummary > div {
+  min-width: 108px;
+  padding: 10px 12px;
+  border-radius: 10px;
 }
 
-.content .flightStatus {
-  padding: 5px 8px;
-  font-size: 11px;
+.translationSummary b {
+  font-size: 18px;
   font-weight: 600;
 }
 
-/* Master-data and management surfaces. */
-.content .schemaManager > div,
-.content .integrationGrid article,
-.content .dashboardRoleMatrix,
-.content .dashboardWidgetManager > div,
-.content .pageTextEditor > div,
-.content .reportConfigGrid > div,
-.content .customColumnList > div:not(.empty) {
-  border-color: var(--gaes-border);
+.builderAddPanel,
+.builderPublishBar {
   border-radius: 10px;
 }
 
-.content .schemaManager label {
-  font-weight: 500;
+.builderAddPanel {
+  margin-top: 14px;
+  padding: 13px;
 }
 
-.content .builderAddPanel,
-.content .builderPublishBar {
-  border-color: var(--gaes-border);
-  border-radius: 10px;
+.builderPublishBar {
+  margin-top: 12px;
+  padding: 11px 13px;
 }
 
-/* Modals: preserve existing overlay/portal behavior, refine only surface. */
-.content .modal,
+/* Information panels remain passive: no pointer, hover or elevation. */
+.info,
+.notice,
+.reconciliationGate {
+  box-shadow: none;
+}
+
+/* Profile/language controls retain their existing behavior while using the same interaction language. */
+.languageToggle,
+.headerAction {
+  border-radius: 9px;
+}
+
+.languageToggle:hover,
+.headerAction:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.profileMenu button:hover {
+  transform: none;
+  box-shadow: none;
+  background: #eef7f8;
+}
+
+/* Compact modal controls without altering portal, z-index or scroll behavior. */
 .modal {
-  border-radius: 14px;
-  box-shadow: 0 18px 50px #00151f2e;
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 18px 55px rgba(0, 21, 31, 0.22);
+}
+
+.modalHead {
+  padding-top: 18px;
 }
 
 .modalHead h2 {
@@ -3777,57 +3809,23 @@ nav .active {
   font-weight: 600;
 }
 
-.modalHead button {
-  box-shadow: none;
-}
-
 .modalActions {
-  gap: 8px;
+  margin-top: 16px;
+  padding: 12px 0 18px;
 }
 
-.modalActions > button,
-.modalActions .primary,
-.modalActions .danger {
-  font-weight: 600;
-}
-
-/* Login remains branded but lighter and consistent with the application. */
-.loginCard,
-.testAccountCard {
-  border-radius: 16px;
-  box-shadow: 0 16px 40px #00192320;
-}
-
-.loginCard h2 {
-  font-size: 26px;
-  font-weight: 600;
-}
-
-.loginCard label,
-.signParty label {
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.loginCard input,
-.signParty input {
-  min-height: var(--gaes-control-height);
-  border-radius: 8px;
-  font-size: 14px;
-}
-
-.loginButton {
-  min-height: var(--gaes-control-height);
-  border-radius: 8px;
-  background: var(--gaes-teal);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-/* Keep small-screen behavior intact while improving spacing/type. */
-@media (max-width: 1050px) {
+/* Responsive: keep the compact model while allowing complete controls to wrap. */
+@media (max-width: 1200px) {
   .content {
-    padding: 26px;
+    padding-inline: 22px;
+  }
+
+  .shell {
+    grid-template-columns: 236px minmax(0, 1fr);
+  }
+
+  .shell.sidebarCollapsed {
+    grid-template-columns: 68px minmax(0, 1fr);
   }
 }
 
@@ -3838,23 +3836,29 @@ nav .active {
   }
 
   .content {
-    padding: 22px 14px;
+    padding: 18px 13px 24px;
   }
 
-  .content .title h1 {
-    font-size: 30px;
+  .title h1 {
+    font-size: 26px;
   }
 
-  .content .card {
-    padding: 18px;
-  }
-
-  .content .subTabs {
+  .subTabs,
+  .portalTabs {
     width: 100%;
     overflow-x: auto;
   }
 
-  .content .subTabs button {
+  .subTabs button,
+  .portalTabs button {
     flex: 0 0 auto;
+  }
+
+  .portalManagerSection {
+    max-width: none;
+  }
+
+  .pageTextEditor input {
+    max-width: none;
   }
 }
