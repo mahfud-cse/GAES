@@ -122,57 +122,78 @@ export function normalizeLounge(row: Row) {
   const airport = upper(row.airport ?? row.Airport);
   const name = text(row.name ?? row["Nama Lounge/Tenant"]);
   if (!/^[A-Z]{3}$/.test(airport) || !name) return null;
+
+  const id =
+    text(row.id) ||
+    `lounge-${airport}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  const currency = upper(row.currency ?? row.Currency, "IDR");
+  const price = numberValue(row.price ?? row["Harga per Pax"]);
+  const start = isoDate(row.start ?? row["Tanggal Mulai"]);
+  const end = isoDate(row.end ?? row["Tanggal Berakhir"]);
+
+  const rawPricePeriods = Array.isArray(row.pricePeriods)
+    ? row.pricePeriods
+    : [];
+  const pricePeriods = rawPricePeriods
+    .map((item, index) => {
+      const period = item as Row;
+      const periodStart = isoDate(period.start);
+      const periodEnd = isoDate(period.end);
+      if (!periodStart || !periodEnd) return null;
+      return {
+        id: text(period.id) || `${id}-price-${index + 1}`,
+        price: numberValue(period.price),
+        currency: upper(period.currency, currency),
+        start: periodStart,
+        end: periodEnd,
+      };
+    })
+    .filter(Boolean);
+
+  const normalizedPricePeriods =
+    pricePeriods.length || !start || !end
+      ? pricePeriods
+      : [
+          {
+            id: `${id}-price-legacy`,
+            price,
+            currency,
+            start,
+            end,
+          },
+        ];
+
+  const rawCapacityPeriods = Array.isArray(row.capacityPeriods)
+    ? row.capacityPeriods
+    : [];
+  const capacityPeriods = rawCapacityPeriods
+    .map((item, index) => {
+      const period = item as Row;
+      const effectiveFrom = isoDate(period.effectiveFrom);
+      const effectiveTo = isoDate(period.effectiveTo);
+      const capacity = numberValue(period.capacity, -1);
+      if (!effectiveFrom || capacity < 0) return null;
+      return {
+        id: text(period.id) || `${id}-capacity-${index + 1}`,
+        capacity,
+        effectiveFrom,
+        ...(effectiveTo ? { effectiveTo } : {}),
+      };
+    })
+    .filter(Boolean);
+
   return {
-    id:
-      text(row.id) ||
-      `lounge-${airport}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    id,
     airport,
     name,
     type: text(row.type ?? row.Tipe, "Lounge"),
-    currency: upper(row.currency ?? row.Currency, "IDR"),
-    price: numberValue(row.price ?? row["Harga per Pax"]),
-    start: isoDate(row.start ?? row["Tanggal Mulai"]),
-    end: isoDate(row.end ?? row["Tanggal Berakhir"]),
-    status: text(row.status ?? row.Status, "Aktif"),
-  };
-}
-
-export function normalizeLoungeCapacity(row: Row) {
-  const loungeId = text(row.loungeId ?? row["Lounge ID"]);
-  const effectiveFrom = isoDate(
-    row.effectiveFrom ?? row["Berlaku Mulai"],
-  );
-  const capacity = numberValue(row.capacity ?? row["Kapasitas Lounge"]);
-  if (!loungeId || !effectiveFrom || capacity <= 0) return null;
-  return {
-    id:
-      text(row.id) ||
-      `capacity-${loungeId}-${effectiveFrom}`,
-    loungeId,
-    capacity: Math.floor(capacity),
-    effectiveFrom,
-    reason: text(row.reason ?? row["Alasan Perubahan"], "Update kapasitas"),
-    updatedBy: text(row.updatedBy, "System"),
-    updatedAt: text(row.updatedAt, ""),
-  };
-}
-
-export function normalizeLoungePrice(row: Row) {
-  const loungeId = text(row.loungeId ?? row["Lounge ID"]);
-  const effectiveFrom = isoDate(row.effectiveFrom ?? row["Tanggal Mulai"]);
-  const effectiveTo = isoDate(row.effectiveTo ?? row["Tanggal Berakhir"]);
-  const price = numberValue(row.price ?? row["Harga per Pax"]);
-  const currency = upper(row.currency ?? row.Currency, "IDR");
-  if (!loungeId || !effectiveFrom || !effectiveTo || price < 0) return null;
-  return {
-    id: text(row.id) || `price-${loungeId}-${effectiveFrom}-${effectiveTo}`,
-    loungeId,
-    price,
     currency,
-    effectiveFrom,
-    effectiveTo,
-    updatedBy: text(row.updatedBy, "System"),
-    updatedAt: text(row.updatedAt, ""),
+    price,
+    start,
+    end,
+    status: text(row.status ?? row.Status, "Aktif"),
+    pricePeriods: normalizedPricePeriods,
+    capacityPeriods,
   };
 }
 

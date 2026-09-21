@@ -32,7 +32,7 @@
 }
 .dashboardKpis {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 16px;
 }
@@ -3007,6 +3007,58 @@ td small {
   color: #4c6b78;
   font-size: 11px;
 }
+.loungePeriodSection {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #d7e7ea;
+  border-radius: 12px;
+  background: #f8fbfc;
+}
+.loungePeriodHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.loungePeriodHead > div {
+  display: grid;
+  gap: 4px;
+}
+.loungePeriodHead b {
+  color: #174457;
+  font-size: 12px;
+}
+.loungePeriodHead small {
+  color: #718991;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.loungePeriodHead > button {
+  flex: 0 0 auto;
+  border: 1px solid #bfd3da;
+  border-radius: 9px;
+  background: #fff;
+  color: #286477;
+  padding: 9px 11px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.loungePeriodRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: 10px;
+  align-items: end;
+  padding: 11px;
+  border: 1px solid #e0eaed;
+  border-radius: 10px;
+  background: #fff;
+}
+.loungePeriodRow .del {
+  white-space: nowrap;
+  margin-bottom: 1px;
+}
 .lounge mark {
   position: absolute;
   right: 13px;
@@ -3251,614 +3303,5 @@ td small {
   .modal {
     max-height: 90vh;
     overflow: auto;
-  }
-}
-
-/* v0.23 GAES enterprise design-system normalization.
-   Scoped visual overrides only; business logic, routes and data are untouched. */
-:root {
-  --gaes-navy: #073b57;
-  --gaes-teal: #087b9d;
-  --gaes-cyan: #1595a9;
-  --gaes-soft-cyan: #eaf7f8;
-  --gaes-bg: #f4f7f8;
-  --gaes-surface: #ffffff;
-  --gaes-ink: #193b49;
-  --gaes-muted: #6e858f;
-  --gaes-line: #dbe6e9;
-  --gaes-focus: rgba(21, 149, 169, 0.22);
-  --gaes-radius: 10px;
-  --gaes-control-h: 42px;
-}
-
-body {
-  background: var(--gaes-bg);
-  font-family: Inter, "Segoe UI", Arial, sans-serif;
-  color: var(--gaes-ink);
-}
-
-/* Keep shared controls compact and remove legacy browser-like weight. */
-button,
-input,
-select,
-textarea {
-  font-family: Inter, "Segoe UI", Arial, sans-serif;
-}
-
-button:not(:disabled):hover,
-.uploadButton:hover {
-  transform: none;
-  filter: none;
-  box-shadow: none;
-}
-
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
-  outline: 2px solid var(--gaes-cyan);
-  outline-offset: 2px;
-}
-
-.top {
-  height: 72px;
-  padding-inline: 24px;
-  background: linear-gradient(105deg, #073b57, #075f7b);
-  box-shadow: 0 2px 12px rgba(8, 47, 64, 0.16);
-}
-
-.brand {
-  gap: 12px;
-}
-
-.brand b {
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: 1.2px;
-}
-
-.brand small {
-  margin-top: 3px;
-  font-size: 12px;
-}
-
-.shell {
-  grid-template-columns: 248px minmax(0, 1fr);
-  min-height: calc(100vh - 72px);
-}
-
-.shell.sidebarCollapsed {
-  grid-template-columns: 68px minmax(0, 1fr);
-}
-
-aside {
-  padding: 22px 16px;
-}
-
-aside > p {
-  padding-inline: 12px;
-  letter-spacing: 1.4px;
-}
-
-nav {
-  gap: 4px;
-}
-
-nav a {
-  min-height: 44px;
-  padding: 10px 12px;
-  gap: 10px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-nav a:hover {
-  background: #f0f7f8;
-  color: #17667a;
-}
-
-nav .active {
-  background: var(--gaes-soft-cyan);
-  color: #056d89;
-  font-weight: 600;
-  box-shadow: inset 3px 0 #0b8fa6;
-}
-
-.sidebarToggle {
-  width: 26px;
-  height: 26px;
-  right: -13px;
-  top: 14px;
-}
-
-.content {
-  max-width: none;
-  padding: 24px 28px 32px;
-}
-
-.title {
-  margin-bottom: 18px;
-}
-
-.title p,
-.cardTitle span,
-.modalHead span {
-  margin-bottom: 5px;
-  font-size: 11px;
-  letter-spacing: 1.25px;
-  font-weight: 600;
-}
-
-.title h1 {
-  margin-bottom: 5px;
-  font-size: 32px;
-  line-height: 1.15;
-  font-weight: 600;
-}
-
-.title > span {
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.card {
-  border-radius: 12px;
-  padding: 18px;
-  box-shadow: 0 3px 12px rgba(23, 61, 78, 0.05);
-}
-
-.cardTitle {
-  margin-bottom: 16px;
-}
-
-.cardTitle h2,
-.dashboardWidget h2,
-.dashboardTrend h2,
-.trafficHead h2 {
-  font-weight: 600;
-}
-
-.cardTitle h2 {
-  font-size: 17px;
-}
-
-label {
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #526f7a;
-}
-
-input,
-select,
-textarea {
-  min-height: var(--gaes-control-h);
-  border-color: #cbdde1;
-  border-radius: 9px;
-  padding: 9px 12px;
-  font-size: 14px;
-  color: #173a48;
-}
-
-textarea {
-  min-height: 76px;
-}
-
-input:hover,
-select:hover,
-textarea:hover {
-  border-color: #aacbd2;
-}
-
-input:focus,
-select:focus,
-textarea:focus {
-  border-color: var(--gaes-cyan);
-  box-shadow: 0 0 0 3px var(--gaes-focus);
-}
-
-.primary,
-.confirm {
-  min-height: 42px;
-  border: 1px solid #087b9d;
-  border-radius: 9px;
-  background: var(--gaes-teal);
-  background-image: none;
-  color: #fff;
-  padding: 9px 18px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.primary:not(:disabled):hover,
-.confirm:not(:disabled):hover {
-  background: #076d8c;
-  border-color: #076d8c;
-  box-shadow: 0 4px 12px rgba(7, 123, 157, 0.16);
-}
-
-.primary:focus-visible,
-.confirm:focus-visible {
-  box-shadow: 0 0 0 3px var(--gaes-focus);
-}
-
-.secondary,
-.scannerOn,
-.actionTitle button,
-.modalActions > button {
-  min-height: 42px;
-  border: 1px solid #c8d9de;
-  border-radius: 9px;
-  background: #fff;
-  color: #245b6c;
-  padding: 9px 17px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.secondary:not(:disabled):hover,
-.actionTitle button:not(:disabled):hover,
-.modalActions > button:not(:disabled):hover {
-  border-color: #8ebfc9;
-  background: #f5fafb;
-  color: #0a718c;
-  box-shadow: 0 3px 10px rgba(23, 61, 78, 0.08);
-}
-
-.scannerOn {
-  background: #e7f6f4;
-  border-color: #83c9bb;
-  color: #237663;
-}
-
-.link,
-.tableLink {
-  color: var(--gaes-teal);
-  font-weight: 500;
-}
-
-.link:hover,
-.tableLink:hover {
-  color: #065f78;
-  text-decoration: underline;
-}
-
-.buttons,
-.actionTitle > div:last-child,
-.reportButtons,
-.rowAct,
-.modalActions {
-  gap: 8px;
-}
-
-.dashboardFilterCard,
-.trafficCard {
-  margin-bottom: 14px;
-}
-
-.dashboardFilters {
-  gap: 10px;
-}
-
-.dashboardDataTools {
-  margin-top: 12px;
-  padding-top: 12px;
-}
-
-.dashboardKpis {
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.dashboardKpis > button {
-  min-height: 96px;
-  padding: 15px;
-  border-radius: 12px;
-  box-shadow: none;
-  transition: border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
-}
-
-.dashboardKpis > button:hover,
-.dashboardKpis > button:focus-visible {
-  border-color: #73b9c3;
-  background: #fbfefe;
-  box-shadow: 0 4px 14px rgba(7, 59, 87, 0.08);
-}
-
-.dashboardKpis b {
-  font-size: 22px;
-  font-weight: 600;
-}
-
-.dashboardWorkflow > div {
-  gap: 10px;
-}
-
-/* These three controls are real navigation targets, not ordinary buttons. */
-.dashboardWorkflow button {
-  min-height: 70px;
-  padding: 12px 14px;
-  border: 1px solid #d7e5e8;
-  border-radius: 10px;
-  background: #fff;
-  color: #315c68;
-  text-align: left;
-  justify-items: start;
-  transition: border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
-}
-
-.dashboardWorkflow button:hover,
-.dashboardWorkflow button:focus-visible {
-  border-color: #79bbc4;
-  background: #f5fbfc;
-  box-shadow: 0 4px 12px rgba(7, 59, 87, 0.07);
-}
-
-.dashboardWorkflow button b {
-  font-size: 22px;
-  font-weight: 600;
-}
-
-.stats {
-  gap: 10px;
-  margin: 16px 0;
-}
-
-.stats > div {
-  min-width: 170px;
-  border-radius: 11px;
-  padding: 13px;
-}
-
-.stats b {
-  margin: 6px 0;
-  font-size: 19px;
-  font-weight: 600;
-}
-
-/* Tables: operational density without changing table semantics. */
-th {
-  padding: 10px 12px;
-  font-size: 10px;
-}
-
-td {
-  padding: 11px 12px;
-}
-
-tbody tr:hover {
-  background: #f7fbfc;
-}
-
-.sortButton:hover,
-.sortButton:focus-visible {
-  color: #0a718c;
-}
-
-.rowAct button {
-  min-height: 36px;
-  padding: 7px 11px;
-  border-radius: 7px;
-  font-size: 12px;
-}
-
-.del {
-  min-height: 36px;
-  padding: 7px 10px;
-}
-
-/* Page/module tabs are intentionally different from buttons. */
-.subTabs {
-  gap: 5px;
-  margin: -2px 0 16px;
-  padding: 3px;
-  border: 1px solid #dbe7e9;
-  border-radius: 10px;
-  background: #f7fafb;
-  width: fit-content;
-  max-width: 100%;
-}
-
-.subTabs button {
-  min-height: 36px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: #55727c;
-  padding: 8px 12px;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.subTabs button:hover,
-.subTabs button:focus-visible {
-  background: #edf6f7;
-  color: #17667a;
-  box-shadow: none;
-}
-
-.subTabs .selected {
-  border: 1px solid #b8dbe1;
-  background: #fff;
-  color: #076f89;
-  font-weight: 600;
-  box-shadow: 0 1px 4px rgba(23, 61, 78, 0.06);
-}
-
-.portalTabs {
-  width: fit-content;
-  max-width: 100%;
-  margin: 14px 0;
-}
-
-.portalTabs button {
-  min-width: 0;
-  flex: 0 1 auto;
-  padding: 8px 13px;
-}
-
-.portalManagerSection {
-  max-width: 1180px;
-  margin-top: 12px;
-}
-
-.portalSectionHead {
-  margin-bottom: 12px;
-}
-
-.portalSectionHead h2 {
-  font-size: 20px;
-  font-weight: 600;
-}
-
-.portalSectionHead p {
-  max-width: 760px;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.pageTextEditor > div {
-  grid-template-columns: minmax(150px, 0.55fr) minmax(220px, 0.9fr) minmax(220px, 0.9fr);
-  padding: 11px 12px;
-  border-radius: 10px;
-}
-
-.pageTextEditor input {
-  max-width: 520px;
-}
-
-.translationControl {
-  grid-template-columns: minmax(300px, 1fr) auto;
-  gap: 10px;
-}
-
-.switchLine {
-  padding: 12px 14px;
-  border-radius: 10px;
-}
-
-.translationSummary {
-  gap: 8px;
-}
-
-.translationSummary > div {
-  min-width: 108px;
-  padding: 10px 12px;
-  border-radius: 10px;
-}
-
-.translationSummary b {
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.builderAddPanel,
-.builderPublishBar {
-  border-radius: 10px;
-}
-
-.builderAddPanel {
-  margin-top: 14px;
-  padding: 13px;
-}
-
-.builderPublishBar {
-  margin-top: 12px;
-  padding: 11px 13px;
-}
-
-/* Information panels remain passive: no pointer, hover or elevation. */
-.info,
-.notice,
-.reconciliationGate {
-  box-shadow: none;
-}
-
-/* Profile/language controls retain their existing behavior while using the same interaction language. */
-.languageToggle,
-.headerAction {
-  border-radius: 9px;
-}
-
-.languageToggle:hover,
-.headerAction:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.profileMenu button:hover {
-  transform: none;
-  box-shadow: none;
-  background: #eef7f8;
-}
-
-/* Compact modal controls without altering portal, z-index or scroll behavior. */
-.modal {
-  border-radius: 12px;
-  padding: 18px;
-  box-shadow: 0 18px 55px rgba(0, 21, 31, 0.22);
-}
-
-.modalHead {
-  padding-top: 18px;
-}
-
-.modalHead h2 {
-  font-size: 20px;
-  font-weight: 600;
-}
-
-.modalActions {
-  margin-top: 16px;
-  padding: 12px 0 18px;
-}
-
-/* Responsive: keep the compact model while allowing complete controls to wrap. */
-@media (max-width: 1200px) {
-  .content {
-    padding-inline: 22px;
-  }
-
-  .shell {
-    grid-template-columns: 236px minmax(0, 1fr);
-  }
-
-  .shell.sidebarCollapsed {
-    grid-template-columns: 68px minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 720px) {
-  .top {
-    height: 68px;
-    padding-inline: 15px;
-  }
-
-  .content {
-    padding: 18px 13px 24px;
-  }
-
-  .title h1 {
-    font-size: 26px;
-  }
-
-  .subTabs,
-  .portalTabs {
-    width: 100%;
-    overflow-x: auto;
-  }
-
-  .subTabs button,
-  .portalTabs button {
-    flex: 0 0 auto;
-  }
-
-  .portalManagerSection {
-    max-width: none;
-  }
-
-  .pageTextEditor input {
-    max-width: none;
   }
 }

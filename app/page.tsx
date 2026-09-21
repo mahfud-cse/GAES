@@ -39,8 +39,6 @@ import {
   removeRecord,
   saveRecord,
   subscribeCollection,
-  subscribeLoungeCapacityHistory,
-  subscribeLoungePriceHistory,
   subscribeUserNotifications,
   subscribeVisitors,
   type GaesCollection,
@@ -54,8 +52,6 @@ import {
   normalizeEntitlement,
   normalizeFlight,
   normalizeLounge,
-  normalizeLoungeCapacity,
-  normalizeLoungePrice,
   normalizeMonitoring,
   normalizeStation,
   normalizeVisitor,
@@ -497,6 +493,21 @@ type ReportConfig = {
   includeCost: boolean;
   includeEvidenceAppendix: boolean;
 };
+type LoungePricePeriod = {
+  id: string;
+  price: number;
+  currency: string;
+  start: string;
+  end: string;
+};
+
+type LoungeCapacityPeriod = {
+  id: string;
+  capacity: number;
+  effectiveFrom: string;
+  effectiveTo?: string;
+};
+
 type Lounge = {
   id: string;
   airport: string;
@@ -507,25 +518,8 @@ type Lounge = {
   start: string;
   end: string;
   status: string;
-};
-type LoungeCapacityVersion = {
-  id: string;
-  loungeId: string;
-  capacity: number;
-  effectiveFrom: string;
-  reason: string;
-  updatedBy: string;
-  updatedAt?: string;
-};
-type LoungePriceVersion = {
-  id: string;
-  loungeId: string;
-  price: number;
-  currency: string;
-  effectiveFrom: string;
-  effectiveTo: string;
-  updatedBy: string;
-  updatedAt?: string;
+  pricePeriods?: LoungePricePeriod[];
+  capacityPeriods?: LoungeCapacityPeriod[];
 };
 type FlightStatus =
   "Scheduled" | "Delayed" | "Rescheduled" | "Postponed" | "Cancelled";
@@ -563,7 +557,6 @@ type Account = {
   station: string;
   scope: string;
   organization: string;
-  loungeId?: string;
   verificationScopes: string[];
   status: "Aktif" | "Nonaktif";
   mustChangePassword?: boolean;
@@ -1337,6 +1330,65 @@ function addDays(date: string, days: number) {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+function dateInPeriod(date: string, start: string, end?: string) {
+  if (!date || !start) return false;
+  return date >= start && (!end || date <= end);
+}
+
+function normalizeCabinClass(value: string) {
+  const cabin = value.trim().toUpperCase();
+  if (cabin === "F" || cabin === "FIRST" || cabin === "FIRST CLASS")
+    return "First Class";
+  if (cabin === "C" || cabin === "BUSINESS" || cabin === "BUSINESS CLASS")
+    return "Business Class";
+  if (cabin === "Y" || cabin === "ECONOMY" || cabin === "ECONOMY CLASS")
+    return "Economy Class";
+  return "";
+}
+
+function getApplicableLoungePrice(lounge: Lounge, date: string) {
+  const allPeriods = lounge.pricePeriods || [];
+  if (!allPeriods.length) return lounge.price;
+  const periods = [...allPeriods]
+    .filter((period) => dateInPeriod(date, period.start, period.end))
+    .sort((a, b) => b.start.localeCompare(a.start));
+  return periods[0]?.price ?? 0;
+}
+
+function getApplicableLoungeCapacity(lounge: Lounge, date: string) {
+  const periods = [...(lounge.capacityPeriods || [])]
+    .filter((period) => dateInPeriod(date, period.effectiveFrom, period.effectiveTo))
+    .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
+  return periods[0]?.capacity;
+}
+
+function hasOverlappingPeriods(
+  periods: Array<{ start: string; end?: string }>,
+) {
+  const sorted = [...periods]
+    .filter((period) => period.start)
+    .sort((a, b) => a.start.localeCompare(b.start));
+  for (let index = 1; index < sorted.length; index += 1) {
+    const previous = sorted[index - 1];
+    const current = sorted[index];
+    if (!previous.end || current.start <= previous.end) return true;
+  }
+  return false;
+}
+
+function closeOpenCapacityPeriods(periods: LoungeCapacityPeriod[]) {
+  const sorted = [...periods].sort((a, b) =>
+    a.effectiveFrom.localeCompare(b.effectiveFrom),
+  );
+  return sorted.map((period, index) => {
+    const next = sorted[index + 1];
+    if (next && !period.effectiveTo) {
+      return { ...period, effectiveTo: addDays(next.effectiveFrom, -1) };
+    }
+    return period;
+  });
+}
 function dateFromJulian(day: string, referenceDate: string) {
   if (!/^\d{3}$/.test(day)) return "";
   const refYear = Number(referenceDate.slice(0, 4));
@@ -1537,8 +1589,6 @@ export default function Home() {
     [sendingResetRequest, setSendingResetRequest] = useState(false);
   const [tab, setTab] = useState<MainTab>("access"),
     [lounges, setLounges] = useState<Lounge[]>([]),
-    [loungeCapacityHistory, setLoungeCapacityHistory] = useState<LoungeCapacityVersion[]>([]),
-    [loungePriceHistory, setLoungePriceHistory] = useState<LoungePriceVersion[]>([]),
     [visitors, setVisitors] = useState<Visitor[]>([]),
     [flights, setFlights] = useState<Flight[]>([]);
   const [reconTab, setReconTab] = useState("Visitor List"),
@@ -1624,12 +1674,12 @@ export default function Home() {
     >(["Super Admin", "Admin", "HO Admin", "Report Viewer"]),
     [languageFeatureEnabled, setLanguageFeatureEnabled] = useState(true),
     [monitoringRows, setMonitoringRows] = useState<MonitoringRow[]>([]),
-    [dashboardPeriod, setDashboardPeriod] = useState("All Periods"),
+    [dashboardPeriod, setDashboardPeriod] = useState("2026-08"),
     [dashboardArea, setDashboardArea] = useState("All Areas"),
     [dashboardBo, setDashboardBo] = useState("All BO"),
     [dashboardProvider, setDashboardProvider] = useState("All Providers"),
     [dashboardDetail, setDashboardDetail] = useState<
-      "Business Pax" | "Economy Pax"
+      "First Class Pax" | "Business Pax" | "Economy Pax"
     >("Business Pax"),
     [dashboardImportNotice, setDashboardImportNotice] =
       useState<InlineNotice | null>(null);
@@ -1720,8 +1770,9 @@ export default function Home() {
       start: localDate(),
       end: "",
       status: "Aktif",
+      pricePeriods: [],
+      capacityPeriods: [],
     });
-  const [capacityDraft, setCapacityDraft] = useState({ capacity: "", effectiveFrom: localDate(), reason: "" });
   const [showUserForm, setShowUserForm] = useState(false),
     [savingUser, setSavingUser] = useState(false),
     [editingUser, setEditingUser] = useState<string | null>(null),
@@ -1739,7 +1790,6 @@ export default function Home() {
       station: "CGK",
       scope: "Station CGK",
       organization: "Branch Office CGK",
-      loungeId: "",
       verificationScopes: ["Business Class", "VIP/CIP/VVIP"],
       status: "Aktif",
     }),
@@ -1776,7 +1826,6 @@ export default function Home() {
     [visitorTimeTo, setVisitorTimeTo] = useState(""),
     [reportLoungeFilter, setReportLoungeFilter] = useState("Semua"),
     [visitorFiltersActive, setVisitorFiltersActive] = useState(false),
-    [dashboardVisitorScope, setDashboardVisitorScope] = useState(false),
     [query, setQuery] = useState(""),
     [edit, setEdit] = useState<Visitor | null>(null),
     [scanStatus, setScanStatus] = useState("");
@@ -1975,8 +2024,6 @@ export default function Home() {
             "HO Admin",
             "HO Ancillary Coordinator",
             "HO Ancillary Verifier",
-            "Lounge Officer",
-            "Lounge Manager",
           ].includes(account.role)
             ? ["master" as MainTab]
             : []),
@@ -1991,9 +2038,7 @@ export default function Home() {
               ? "dashboard"
               : "access",
         );
-        if (account.role === "Lounge Officer" || account.role === "Lounge Manager")
-          setMasterTab("Master Lounge/Tenant");
-        else if (params.get("master")) setMasterTab(params.get("master")!);
+        if (params.get("master")) setMasterTab(params.get("master")!);
         if (params.get("recon")) setReconTab(params.get("recon")!);
         if (params.get("flight")) setFlightTab(params.get("flight")!);
         if (account.mustChangePassword) {
@@ -2096,45 +2141,6 @@ export default function Home() {
         undefined,
         subscriptionError,
       ),
-      currentAccount &&
-      ["Lounge Manager"].includes(role)
-        ? subscribeLoungeCapacityHistory<unknown>(
-            currentAccount.loungeId || null,
-            (rows) =>
-              setLoungeCapacityHistory(
-                normalizeRows<LoungeCapacityVersion>(
-                  rows,
-                  normalizeLoungeCapacity,
-                ) as LoungeCapacityVersion[],
-              ),
-            subscriptionError,
-          )
-        : role === "Lounge Officer"
-          ? () => undefined
-          : subscribeCollection<unknown>(
-              "loungeCapacityHistory",
-              (rows) =>
-                setLoungeCapacityHistory(
-                  normalizeRows<LoungeCapacityVersion>(rows, normalizeLoungeCapacity) as LoungeCapacityVersion[],
-                ),
-              undefined,
-              subscriptionError,
-            ),
-      currentAccount &&
-      role === "Lounge Manager"
-        ? subscribeLoungePriceHistory<unknown>(
-            currentAccount.loungeId || null,
-            (rows) => setLoungePriceHistory(normalizeRows<LoungePriceVersion>(rows, normalizeLoungePrice) as LoungePriceVersion[]),
-            subscriptionError,
-          )
-        : role === "Lounge Officer"
-          ? () => undefined
-          : subscribeCollection<unknown>(
-              "loungePriceHistory",
-              (rows) => setLoungePriceHistory(normalizeRows<LoungePriceVersion>(rows, normalizeLoungePrice) as LoungePriceVersion[]),
-              undefined,
-              subscriptionError,
-            ),
       subscribeCollection<unknown>(
         "flights",
         (rows) =>
@@ -2270,14 +2276,6 @@ export default function Home() {
       "HO Ancillary Verifier",
     ].includes(role),
     canManageMaster = role === "Super Admin" || role === "Admin",
-    canAccessMasterData =
-      isGlobalAdmin || role === "Lounge Officer" || role === "Lounge Manager",
-    canManageLoungeCapacity =
-      canManageMaster ||
-      (role === "Lounge Manager" && Boolean(currentAccount?.loungeId)),
-    canManageLoungeRecord =
-      canManageMaster ||
-      (role === "Lounge Manager" && Boolean(currentAccount?.loungeId)),
     canSeeDashboard = dashboardAllowedRoles.includes(role),
     canDeleteFlight = (f: Flight) =>
       isGlobalAdmin || (role === "BO Admin" && f.origin === station),
@@ -2468,19 +2466,8 @@ export default function Home() {
           bo = normalizedText(row.BO).toUpperCase(),
           stationCode = normalizedText(row.Station, bo).toUpperCase(),
           provider = normalizedText(row.Provider);
-        const existing = monitoringRows.find(
-          (item) =>
-            item.period === period &&
-            item.bo === bo &&
-            item.station === stationCode &&
-            item.provider === provider,
-        );
         const normalized = normalizeMonitoring({
-          id:
-            existing?.id ||
-            `monitor-${period}-${bo}-${stationCode}-${provider
-              .toLowerCase()
-              .replace(/[^a-z0-9]+/g, "-")}`,
+          id: `monitor-${period}-${bo}-${stationCode}-${provider.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
           period,
           area: row.Area,
           bo,
@@ -2556,9 +2543,8 @@ export default function Home() {
     provider = dashboardProvider,
   ) {
     setFilter(bo === "All BO" ? "Semua" : bo);
-    setDashboardVisitorScope(true);
     setVisitorCategoryFilter(category);
-    setVisitorStatusFilter("Accepted");
+    setVisitorStatusFilter("All Status");
     setQuery(provider === "All Providers" ? "" : provider);
     applyDashboardPeriodToVisitorFilter();
     setReconTab("Visitor List");
@@ -3069,7 +3055,7 @@ export default function Home() {
       category,
       reference: reference.trim(),
       currency: lounge.currency,
-      price: lounge.price,
+      price: getApplicableLoungePrice(lounge, travelDate),
       source: raw ? "Scan/Input" : "Manual",
       boStatus: "Pending",
       boReason: lateScan ? "Melewati STD/ETD" : "",
@@ -3138,22 +3124,11 @@ export default function Home() {
     });
   }
   const effectiveVisitorFilter = isGlobalAdmin ? filter : station;
-  const dashboardAreaBoCodes = useMemo(() => {
-    if (dashboardArea === "All Areas") return null;
-    return new Set(
-      monitoringRows
-        .filter((row) => row.area === dashboardArea)
-        .map((row) => row.bo),
-    );
-  }, [monitoringRows, dashboardArea]);
   const shown = useMemo(() => {
     const rows = visitors.filter(
       (v) =>
         (effectiveVisitorFilter === "Semua" ||
           v.airport === effectiveVisitorFilter) &&
-        (!dashboardVisitorScope ||
-          !dashboardAreaBoCodes ||
-          dashboardAreaBoCodes.has(v.airport)) &&
         (visitorCategoryFilter === "Semua" ||
           v.category === visitorCategoryFilter) &&
         (!visitorFiltersActive ||
@@ -3191,8 +3166,6 @@ export default function Home() {
   }, [
     visitors,
     effectiveVisitorFilter,
-    dashboardVisitorScope,
-    dashboardAreaBoCodes,
     visitorCategoryFilter,
     visitorStatusFilter,
     visitorFiltersActive,
@@ -3205,8 +3178,6 @@ export default function Home() {
   ]);
   const filteredLounges = lounges.filter(
       (l) =>
-        (!(role === "Lounge Officer" || role === "Lounge Manager") ||
-          l.id === currentAccount?.loungeId) &&
         (masterSelect === "Semua" || l.airport === masterSelect) &&
         (masterSelect2 === "Semua" ||
           l.type === masterSelect2 ||
@@ -3331,17 +3302,7 @@ export default function Home() {
       }),
       {},
     );
-  const dashboardPeriodOptions = Array.from(
-      new Set([
-        ...monitoringRows.map((row) => row.period),
-        ...visitors
-          .map((visitor) =>
-            (visitor.travelDate || visitor.date || "").slice(0, 7),
-          )
-          .filter((period) => /^\d{4}-\d{2}$/.test(period)),
-      ]),
-    ).sort((a, b) => b.localeCompare(a)),
-    dashboardRows = monitoringRows.filter(
+  const dashboardRows = monitoringRows.filter(
       (row) =>
         (dashboardPeriod === "All Periods" || row.period === dashboardPeriod) &&
         (dashboardArea === "All Areas" || row.area === dashboardArea) &&
@@ -3354,119 +3315,41 @@ export default function Home() {
         visitor.boStatus === "Accepted" &&
         (dashboardPeriod === "All Periods" ||
           (visitor.travelDate || visitor.date).startsWith(dashboardPeriod)) &&
-        (dashboardArea === "All Areas" ||
-          dashboardAreaBoCodes?.has(visitor.airport)) &&
         (dashboardBo === "All BO" || visitor.airport === dashboardBo) &&
         (dashboardProvider === "All Providers" ||
           visitor.lounge === dashboardProvider),
     ),
-    importedPassengerTotals = dashboardRows.reduce(
+    dashboardVisitorCount = dashboardAcceptedVisitors.length,
+    passengerVolumeTotals = dashboardRows.reduce(
       (total, row) => ({
         businessPax: total.businessPax + row.businessPax,
         economyPax: total.economyPax + row.economyPax,
       }),
       { businessPax: 0, economyPax: 0 },
     ),
-    dashboardVisitorCabin = [
-      ["First Class", dashboardAcceptedVisitors.filter((v) => /^(F|FIRST|FIRST CLASS)$/i.test(v.cabin)).length],
-      ["Business Class", dashboardAcceptedVisitors.filter((v) => /^(C|J|BUSINESS|BUSINESS CLASS)$/i.test(v.cabin)).length],
-      ["Economy Class", dashboardAcceptedVisitors.filter((v) => /^(Y|W|ECONOMY|ECONOMY CLASS)$/i.test(v.cabin)).length],
-    ] as [string, number][],
-    dashboardVisitorCabinTotal = dashboardVisitorCabin.reduce((total, [, value]) => total + value, 0),
-    dashboardVisitorCount = dashboardVisitorCabinTotal,
-    importedPassengerTotals = [
-      ["GA", dashboardAcceptedVisitors.filter((visitor) =>
-        !["Partner Airline / SkyTeam", "Kerjasama MPA"].includes(visitor.category),
-      ).length],
-      ["Non-GA / Partner", dashboardAcceptedVisitors.filter((visitor) =>
-        ["Partner Airline / SkyTeam", "Kerjasama MPA"].includes(visitor.category),
-      ).length],
-    ] as [string, number][],
-    dashboardVisitorEntitlement = [
-      "Platinum",
-      "Elite Plus",
-      "Gold Privilege",
-      "Elite",
-      "GPS",
-      "DPR",
-      "EMD",
-      "Paid Access",
-      "Partner Airline / SkyTeam",
-      "Kerjasama MPA",
-      "VIP/CIP/VVIP",
-      "Other",
-    ].map((categoryName) => [
-      categoryName,
-      dashboardAcceptedVisitors.filter((visitor) =>
-        categoryName === "Other"
-          ? ![
-              "Business Class",
-              "Platinum",
-              "Elite Plus",
-              "Gold Privilege",
-              "Elite",
-              "GPS",
-              "DPR",
-              "EMD",
-              "Paid Access",
-              "Partner Airline / SkyTeam",
-              "Kerjasama MPA",
-              "VIP/CIP/VVIP",
-            ].includes(visitor.category)
-          : visitor.category === categoryName,
-      ).length,
-    ]) as [string, number][],
+    dashboardFirstClassVisitors = dashboardAcceptedVisitors.filter(
+      (visitor) => normalizeCabinClass(visitor.cabin) === "First Class",
+    ).length,
+    dashboardBusinessClassVisitors = dashboardAcceptedVisitors.filter(
+      (visitor) => normalizeCabinClass(visitor.cabin) === "Business Class",
+    ).length,
+    dashboardEconomyClassVisitors = dashboardAcceptedVisitors.filter(
+      (visitor) => normalizeCabinClass(visitor.cabin) === "Economy Class",
+    ).length,
     dashboardTotals = {
-      ...importedPassengerTotals,
-      firstVisitors: dashboardVisitorCabin.find(([name]) => name === "First Class")?.[1] || 0,
-      businessVisitors: dashboardVisitorCabin.find(([name]) => name === "Business Class")?.[1] || 0,
-      economyVisitors: dashboardVisitorCabin.find(([name]) => name === "Economy Class")?.[1] || 0,
-      businessLounge: dashboardVisitorCabin.find(([name]) => name === "Business Class")?.[1] || 0,
+      firstClassPax: dashboardFirstClassVisitors,
+      businessPax: dashboardBusinessClassVisitors,
+      economyPax: dashboardEconomyClassVisitors,
       cost: dashboardAcceptedVisitors.reduce(
         (total, visitor) => total + visitor.price,
         0,
       ),
     },
-    dashboardCapacityReferenceDate =
-      dashboardPeriod === "All Periods"
-        ? localDate()
-        : `${dashboardPeriod}-${new Date(
-            Number(dashboardPeriod.slice(0, 4)),
-            Number(dashboardPeriod.slice(5, 7)),
-            0,
-          )
-            .getDate()
-            .toString()
-            .padStart(2, "0")}`,
-    dashboardCapacityScope = lounges
-      .filter(
-        (lounge) =>
-          (dashboardBo === "All BO" || lounge.airport === dashboardBo) &&
-          (dashboardProvider === "All Providers" ||
-            lounge.name === dashboardProvider) &&
-          (dashboardArea === "All Areas" ||
-            dashboardAreaBoCodes?.has(lounge.airport)),
-      )
-      .map((lounge) => {
-        const applicable = loungeCapacityHistory
-          .filter(
-            (item) =>
-              item.loungeId === lounge.id &&
-              item.effectiveFrom <= dashboardCapacityReferenceDate,
-          )
-          .sort((a, b) =>
-            b.effectiveFrom.localeCompare(a.effectiveFrom),
-          )[0];
-        return { lounge, capacity: applicable?.capacity || 0, effectiveFrom: applicable?.effectiveFrom || "" };
-      }),
-    dashboardCapacityTotal = dashboardCapacityScope.reduce(
-      (total, item) => total + item.capacity,
-      0,
-    ),
-    dashboardCapacityDates = dashboardCapacityScope
-      .map((item) => item.effectiveFrom)
-      .filter(Boolean),
-    dashboardComposition = dashboardVisitorEntitlement,
+    dashboardComposition = [
+      ["First Class", dashboardFirstClassVisitors],
+      ["Business Class", dashboardBusinessClassVisitors],
+      ["Economy Class", dashboardEconomyClassVisitors],
+    ] as [string, number][],
     dashboardDays = Math.max(
       1,
       new Set(
@@ -3518,10 +3401,8 @@ export default function Home() {
     dashboardTrend = (() => {
       const rows = visitors.filter(
         (visitor) =>
-          visitor.boStatus === "Accepted" &&
           (dashboardPeriod === "All Periods" ||
             (visitor.travelDate || visitor.date).startsWith(dashboardPeriod)) &&
-          (dashboardArea === "All Areas" || dashboardAreaBoCodes?.has(visitor.airport)) &&
           (dashboardBo === "All BO" || visitor.airport === dashboardBo) &&
           (dashboardProvider === "All Providers" ||
             visitor.lounge === dashboardProvider),
@@ -4328,52 +4209,151 @@ export default function Home() {
   }
   async function saveLounge(e: FormEvent) {
     e.preventDefault();
-    const targetId = editingLounge;
-    const lounge = targetId ? lounges.find((item) => item.id === targetId) : null;
-    if (!canManageLoungeRecord || (role === "Lounge Manager" && currentAccount?.loungeId !== targetId)) {
-      setLoungeNotice({ kind: "error", text: "Anda tidak berwenang mengubah lounge ini." });
+    if (!loungeDraft.airport || !loungeDraft.name || !loungeDraft.end) {
+      setLoungeNotice({
+        kind: "warn",
+        text: "Airport, nama lounge, dan tanggal berakhir wajib diisi.",
+      });
       return;
     }
-    let savedLounge = lounge;
+
+    const pricePeriods = (loungeDraft.pricePeriods || [])
+      .map((period) => ({
+        ...period,
+        start: period.start || loungeDraft.start,
+        end: period.end || loungeDraft.end,
+        id:
+          period.id.startsWith("draft-")
+            ? `price-${period.start || loungeDraft.start}-${period.end || loungeDraft.end}-${Number(period.price)}`
+            : period.id,
+        currency: (period.currency || loungeDraft.currency).toUpperCase(),
+        price: Number(period.price),
+      }))
+      .filter((period) => period.start && period.end);
+
+    if (
+      pricePeriods.some(
+        (period) =>
+          !Number.isFinite(period.price) ||
+          period.price < 0 ||
+          period.start > period.end,
+      )
+    ) {
+      setLoungeNotice({
+        kind: "warn",
+        text: "Periode harga harus memiliki harga valid dan tanggal mulai tidak boleh melewati tanggal berakhir.",
+      });
+      return;
+    }
+    if (hasOverlappingPeriods(pricePeriods)) {
+      setLoungeNotice({
+        kind: "warn",
+        text: "Periode harga tidak boleh saling tumpang tindih. Buat rentang tanggal yang terpisah untuk setiap harga.",
+      });
+      return;
+    }
+
+    const capacityPeriods = closeOpenCapacityPeriods(
+      (loungeDraft.capacityPeriods || [])
+        .map((period) => ({
+          ...period,
+          id:
+            period.id.startsWith("draft-")
+              ? `capacity-${period.effectiveFrom}-${Number(period.capacity)}`
+              : period.id,
+          capacity: Number(period.capacity),
+        }))
+        .filter((period) => period.effectiveFrom),
+    );
+    if (
+      capacityPeriods.some(
+        (period) =>
+          !Number.isInteger(period.capacity) ||
+          period.capacity < 0 ||
+          Boolean(period.effectiveTo) &&
+            period.effectiveFrom > String(period.effectiveTo),
+      )
+    ) {
+      setLoungeNotice({
+        kind: "warn",
+        text: "Periode kapasitas harus memiliki kapasitas bulat >= 0 dan tanggal efektif yang valid.",
+      });
+      return;
+    }
+    if (
+      hasOverlappingPeriods(
+        capacityPeriods.map((period) => ({
+          start: period.effectiveFrom,
+          end: period.effectiveTo,
+        })),
+      )
+    ) {
+      setLoungeNotice({
+        kind: "warn",
+        text: "Periode kapasitas tidak boleh saling tumpang tindih.",
+      });
+      return;
+    }
+
+    const fallbackPricePeriod =
+      pricePeriods[0] ||
+      ({
+        id: `${editingLounge || "lounge"}-price-initial`,
+        price: loungeDraft.price,
+        currency: loungeDraft.currency,
+        start: loungeDraft.start,
+        end: loungeDraft.end,
+      } as LoungePricePeriod);
+
+    const record = normalizeLounge({
+      ...loungeDraft,
+      id: editingLounge || undefined,
+      price: fallbackPricePeriod.price,
+      currency: loungeDraft.currency,
+      pricePeriods: pricePeriods.length ? pricePeriods : [fallbackPricePeriod],
+      capacityPeriods,
+    });
+
+    if (!record || !record.end) {
+      setLoungeNotice({
+        kind: "warn",
+        text: "Format data lounge/tenant belum valid.",
+      });
+      return;
+    }
+
+    const normalizedRecord = {
+      ...(record as Lounge),
+      pricePeriods: pricePeriods.length ? pricePeriods : [fallbackPricePeriod],
+      capacityPeriods,
+    };
+
     try {
-      if (canManageMaster) {
-        if (!loungeDraft.airport || !loungeDraft.name || !loungeDraft.end) throw new Error("Airport, nama lounge, dan tanggal berakhir wajib diisi.");
-        const record = normalizeLounge({ ...loungeDraft, id: editingLounge || undefined });
-        if (!record || !record.end) throw new Error("Format data lounge/tenant belum valid.");
-        if (editingLounge && lounge) {
-          const previousPriceId = `price-${lounge.id}-${lounge.start}-${lounge.end}`;
-          const previousExists = loungePriceHistory.some((item) => item.id === previousPriceId);
-          if (!previousExists) {
-            const previousPrice: LoungePriceVersion = {
-              id: previousPriceId, loungeId: lounge.id, price: lounge.price, currency: lounge.currency,
-              effectiveFrom: lounge.start, effectiveTo: lounge.end,
-              updatedBy: currentAccount?.name || role, updatedAt: new Date().toISOString(),
-            };
-            await saveRecord("loungePriceHistory", previousPrice);
-            setLoungePriceHistory((rows) => [...rows, previousPrice]);
-          }
-        }
-        await saveRecord("lounges", record);
-        savedLounge = record as Lounge;
-        setLounges((xs) => { const i=xs.findIndex((x)=>x.id===record.id); return i>=0 ? xs.map((x)=>x.id===record.id ? record as Lounge : x) : [...xs, record as Lounge]; });
-        const priceRecord: LoungePriceVersion = { id:`price-${record.id}-${record.start}-${record.end}`, loungeId:record.id, price:record.price, currency:record.currency, effectiveFrom:record.start, effectiveTo:record.end, updatedBy:currentAccount?.name || role, updatedAt:new Date().toISOString() };
-        await saveRecord("loungePriceHistory", priceRecord);
-        setLoungePriceHistory((rows)=>{ const i=rows.findIndex((x)=>x.id===priceRecord.id); return i>=0 ? rows.map((x)=>x.id===priceRecord.id?priceRecord:x):[...rows,priceRecord]; });
-      }
-      if (canManageLoungeCapacity && targetId) {
-        if (!savedLounge) throw new Error("Lounge target belum dipilih.");
-        const capacity = Number(capacityDraft.capacity);
-        if (!Number.isInteger(capacity) || capacity <= 0) throw new Error("Kapasitas lounge harus berupa bilangan bulat lebih dari 0.");
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(capacityDraft.effectiveFrom) || capacityDraft.effectiveFrom < savedLounge.start || capacityDraft.effectiveFrom > savedLounge.end) throw new Error(`Tanggal berlaku kapasitas harus berada dalam periode lounge ${savedLounge.start} — ${savedLounge.end}.`);
-        const old = loungeCapacityHistory.find((x)=>x.loungeId===targetId && x.effectiveFrom===capacityDraft.effectiveFrom);
-        const record: LoungeCapacityVersion = { id:old?.id || `capacity-${targetId}-${capacityDraft.effectiveFrom}`, loungeId:targetId, capacity, effectiveFrom:capacityDraft.effectiveFrom, reason:capacityDraft.reason.trim() || "Update kapasitas", updatedBy:currentAccount?.name || role, updatedAt:new Date().toISOString() };
-        await saveRecord("loungeCapacityHistory", record);
-        setLoungeCapacityHistory((rows)=>{ const i=rows.findIndex((x)=>x.id===record.id); return i>=0 ? rows.map((x)=>x.id===record.id?record:x):[...rows,record]; });
-      }
-      setShowLoungeForm(false); setEditingLounge(null);
-      setLoungeNotice({kind:"ok", text:"Perubahan Lounge/Tenant, harga, dan/atau kapasitas berhasil disimpan ke Firebase."});
+      await saveRecord("lounges", normalizedRecord);
+      setLounges((xs) => {
+        const index = xs.findIndex((x) => x.id === normalizedRecord.id);
+        return index >= 0
+          ? xs.map((x) => (x.id === normalizedRecord.id ? normalizedRecord : x))
+          : [...xs, normalizedRecord];
+      });
+      setShowLoungeForm(false);
+      setEditingLounge(null);
+      setLoungeNotice({
+        kind: "ok",
+        text: "Data lounge/tenant, kapasitas, dan periode harga berhasil disimpan.",
+      });
+      setActionDialog({
+        kind: "ok",
+        text: `Lounge/Tenant berhasil ${editingLounge ? "diperbarui" : "ditambahkan"}. Riwayat periode harga dan kapasitas tetap tersimpan di Firebase.`,
+      });
     } catch (error) {
-      setLoungeNotice({kind:"error", text:error instanceof Error?error.message:"Data lounge tidak dapat disimpan."});
+      setLoungeNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Lounge/tenant tidak dapat disimpan.",
+      });
     }
   }
   async function saveUser(e: FormEvent) {
@@ -4426,17 +4406,6 @@ export default function Home() {
       });
       return;
     }
-    if (
-      (userDraft.role === "Lounge Officer" ||
-        userDraft.role === "Lounge Manager") &&
-      !userDraft.loungeId
-    ) {
-      setUserUploadNotice({
-        kind: "warn",
-        text: "Assigned Lounge wajib diisi untuk akun petugas lounge.",
-      });
-      return;
-    }
     const roleScope =
       roleProfileSeed.find((item) => item.role === userDraft.role)?.scope ||
       "Configured authority";
@@ -4473,7 +4442,7 @@ export default function Home() {
   }
   function downloadUserTemplate() {
     const body =
-      'Full Name,Username,Temporary Password,Role,Organization,Verification Scope,Scope Type,Station Code,Lounge ID,Email,Status\nBranch Office CGK,bo.cgk,ChangeMe123!,BO Admin,Branch Office CGK,"Business Class,VIP/CIP/VVIP",Single Station,CGK,,bo.cgk@garuda-indonesia.com,Aktif\nAncillary Verifier,ancillary.verify,ChangeMe123!,HO Ancillary Verifier,HO Ancillary,"Platinum,Elite Plus,EMD,Paid Access",All Stations,ALL,,ancillary@garuda-indonesia.com,Aktif';
+      'Full Name,Username,Temporary Password,Role,Organization,Verification Scope,Scope Type,Station Code,Email,Status\nBranch Office CGK,bo.cgk,ChangeMe123!,BO Admin,Branch Office CGK,"Business Class,VIP/CIP/VVIP",Single Station,CGK,bo.cgk@garuda-indonesia.com,Aktif\nAncillary Verifier,ancillary.verify,ChangeMe123!,HO Ancillary Verifier,HO Ancillary,"Platinum,Elite Plus,EMD,Paid Access",All Stations,ALL,ancillary@garuda-indonesia.com,Aktif';
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([body], { type: "text/csv" }));
     a.download = "template-upload-akun.csv";
@@ -4512,7 +4481,6 @@ export default function Home() {
         stationCode = String(r["Station Code"] || "")
           .trim()
           .toUpperCase(),
-        loungeId = String(r["Lounge ID"] || "").trim(),
         status = (
           String(r.Status || "Aktif") === "Nonaktif" ? "Nonaktif" : "Aktif"
         ) as Account["status"];
@@ -4525,9 +4493,6 @@ export default function Home() {
         (role !== "Super Admin" && accountRole === "Super Admin") ||
         (stationCode !== "ALL" &&
           !stations.some((s) => s.code === stationCode)) ||
-        ((accountRole === "Lounge Officer" ||
-          accountRole === "Lounge Manager") &&
-          (!loungeId || !lounges.some((lounge) => lounge.id === loungeId))) ||
         accounts.some(
           (a) => a.username.toLowerCase() === username.toLowerCase(),
         ) ||
@@ -4549,7 +4514,6 @@ export default function Home() {
         station: stationCode,
         scope: `${roleProfileSeed.find((item) => item.role === accountRole)?.scope || "Configured authority"} · ${stationCode === "ALL" ? "Seluruh Station" : `Station ${stationCode}`}`,
         organization: String(r.Organization || "Garuda Indonesia"),
-        loungeId,
         verificationScopes: String(r["Verification Scope"] || "")
           .split(",")
           .map((x) => x.trim())
@@ -5191,7 +5155,7 @@ export default function Home() {
                 <span>Flight Information</span>
               </Link>
             )}
-            {canAccessMasterData && (
+            {isGlobalAdmin && (
               <Link
                 href="/?view=master"
                 className={tab === "master" ? "active" : ""}
@@ -5222,7 +5186,17 @@ export default function Home() {
                     <SearchableSelect
                       value={dashboardPeriod}
                       onChange={setDashboardPeriod}
-                      options={["All Periods", ...dashboardPeriodOptions]}
+                      options={[
+                        "All Periods",
+                        ...new Set([
+                          ...monitoringRows.map((row) => row.period),
+                          ...visitors
+                            .map((visitor) =>
+                              (visitor.travelDate || visitor.date).slice(0, 7),
+                            )
+                            .filter(Boolean),
+                        ]),
+                      ]}
                       placeholder="Select period"
                     />
                   </FilterField>
@@ -5277,20 +5251,18 @@ export default function Home() {
                   <button onClick={downloadPassengerVolumeTemplate}>
                     Download Template
                   </button>
-                  {["Super Admin", "Admin", "BO Admin"].includes(role) && (
-                    <label className="uploadButton">
-                      Import Passenger Volume
-                      <input
-                        type="file"
-                        accept=".csv,.xlsx,.xls"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) void uploadPassengerVolume(file);
-                          e.target.value = "";
-                        }}
-                      />
-                    </label>
-                  )}
+                  <label className="uploadButton">
+                    Import Passenger Volume
+                    <input
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void uploadPassengerVolume(file);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
                 </div>
                 {dashboardImportNotice && (
                   <Notice
@@ -5312,20 +5284,44 @@ export default function Home() {
                       records <i>View data →</i>
                     </small>
                   </button>
-                  <button type="button" onClick={() => openDashboardVisitors("Business Class")}>
-                    <span>Business Class Visitors</span>
-                    <b>{dashboardTotals.businessVisitors.toLocaleString("id-ID")}</b>
-                    <small>Cabin class · actual accepted visitors <i>View data →</i></small>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDashboardDetail("First Class Pax");
+                      setTab("dashboard-detail");
+                    }}
+                  >
+                    <span>First Class Pax</span>
+                    <b>{dashboardTotals.firstClassPax.toLocaleString("id-ID")}</b>
+                    <small>
+                      Accepted visitor · Cabin Class <i>View data →</i>
+                    </small>
                   </button>
-                  <button type="button" onClick={() => openDashboardVisitors("Economy Class")}>
-                    <span>Economy Class Visitors</span>
-                    <b>{dashboardTotals.economyVisitors.toLocaleString("id-ID")}</b>
-                    <small>Cabin class · actual accepted visitors <i>View data →</i></small>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDashboardDetail("Business Pax");
+                      setTab("dashboard-detail");
+                    }}
+                  >
+                    <span>Business Pax</span>
+                    <b>{dashboardTotals.businessPax.toLocaleString("id-ID")}</b>
+                    <small>
+                      Accepted visitor · Cabin Class <i>View data →</i>
+                    </small>
                   </button>
-                  <button type="button" onClick={() => openDashboardVisitors("First Class")}>
-                    <span>First Class Visitors</span>
-                    <b>{dashboardTotals.firstVisitors.toLocaleString("id-ID")}</b>
-                    <small>Cabin class · actual accepted visitors <i>View data →</i></small>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDashboardDetail("Economy Pax");
+                      setTab("dashboard-detail");
+                    }}
+                  >
+                    <span>Economy Pax</span>
+                    <b>{dashboardTotals.economyPax.toLocaleString("id-ID")}</b>
+                    <small>
+                      Accepted visitor · Cabin Class <i>View data →</i>
+                    </small>
                   </button>
                   <button type="button" onClick={() => openDashboardReport()}>
                     <span>Estimated Cost</span>
@@ -5393,31 +5389,25 @@ export default function Home() {
                       items={dashboardComposition}
                       total={dashboardVisitorCount}
                       centerLabel="Visitors"
-                      onSelect={(name) =>
-                        openDashboardVisitors(
-                          name === "Other" ? "Semua" : name,
-                        )
-                      }
+                      onSelect={(name) => {
+                        if (
+                          name === "First Class" ||
+                          name === "Business Class" ||
+                          name === "Economy Class"
+                        ) {
+                          setDashboardDetail(
+                            name === "First Class"
+                              ? "First Class Pax"
+                              : name === "Business Class"
+                                ? "Business Pax"
+                                : "Economy Pax",
+                          );
+                          setTab("dashboard-detail");
+                        }
+                      }}
                     />
                   </article>
                 )}
-                <article className="card dashboardWidget">
-                  <h2>Visitor by Cabin Class</h2>
-                  <DonutChart
-                    items={dashboardVisitorCabin}
-                    total={dashboardVisitorCount}
-                    centerLabel="Visitors"
-                  />
-                </article>
-                <article className="card dashboardWidget">
-                  <h2>Visitor by Airline Source</h2>
-                  <DonutChart
-                    items={dashboardVisitorSource}
-                    total={dashboardVisitorCount}
-                    centerLabel="Visitors"
-                  />
-                  <small>GA vs Non-GA/Partner berdasarkan access category yang tercatat.</small>
-                </article>
                 {visibleDashboardWidgets.some(
                   (widget) => widget.id === "utilization",
                 ) && (
@@ -5440,23 +5430,29 @@ export default function Home() {
                         <DonutChart
                           compact
                           items={[
-                            ["Lounge Visitors", dashboardTotals.businessVisitors],
+                            ["Lounge Visitors", dashboardTotals.businessPax],
                             [
-                              "Passenger Volume",
-                              Math.max(0, dashboardTotals.businessPax - dashboardTotals.businessVisitors),
+                              "Not used",
+                              Math.max(
+                                0,
+                                passengerVolumeTotals.businessPax -
+                                  dashboardTotals.businessPax,
+                              ),
                             ],
                           ]}
-                          total={Math.max(dashboardTotals.businessPax, dashboardTotals.businessVisitors)}
+                          total={passengerVolumeTotals.businessPax}
                           centerLabel="Business"
                         />
-                        <span>Business Visitors / Passenger Volume</span>
+                        <span>
+                          Business Lounge Visitors vs Business Passenger Volume
+                        </span>
                         <small>
-                          {dashboardTotals.businessLounge.toLocaleString(
+                          {dashboardTotals.businessPax.toLocaleString("id-ID")}{" "}
+                          lounge visitors dari{" "}
+                          {passengerVolumeTotals.businessPax.toLocaleString(
                             "id-ID",
                           )}{" "}
-                          dari{" "}
-                          {dashboardTotals.businessPax.toLocaleString("id-ID")}{" "}
-                          pax
+                          passenger volume
                         </small>
                       </button>
                       <button
@@ -5469,57 +5465,36 @@ export default function Home() {
                         <DonutChart
                           compact
                           items={[
-                            [
-                              "Lounge",
-                              dashboardVisitorCount -
-                                dashboardTotals.businessLounge,
-                            ],
+                            ["Lounge Visitors", dashboardTotals.economyPax],
                             [
                               "Not used",
                               Math.max(
                                 0,
-                                dashboardTotals.economyPax -
-                                  (dashboardVisitorCount -
-                                    dashboardTotals.businessLounge),
+                                passengerVolumeTotals.economyPax -
+                                  dashboardTotals.economyPax,
                               ),
                             ],
                           ]}
-                          total={dashboardTotals.economyPax}
+                          total={passengerVolumeTotals.economyPax}
                           centerLabel="Economy"
                         />
-                        <span>Economy Membership Lounge / Economy Pax</span>
+                        <span>
+                          Economy Lounge Visitors vs Economy Passenger Volume
+                        </span>
                         <small>
-                          {(
-                            dashboardVisitorCount -
-                            dashboardTotals.businessLounge
-                          ).toLocaleString("id-ID")}{" "}
-                          dari{" "}
                           {dashboardTotals.economyPax.toLocaleString("id-ID")}{" "}
-                          pax
+                          lounge visitors dari{" "}
+                          {passengerVolumeTotals.economyPax.toLocaleString(
+                            "id-ID",
+                          )}{" "}
+                          passenger volume
                         </small>
                       </button>
                     </div>
-                    <div className="card" style={{ marginTop: 12 }}>
-                      <b>Kapasitas Lounge</b>
-                      <div style={{ fontSize: 28, fontWeight: 700, marginTop: 6 }}>
-                        {dashboardCapacityTotal
-                          ? `${dashboardCapacityTotal.toLocaleString("id-ID")} pax`
-                          : "Belum diatur"}
-                      </div>
-                      <small>
-                        {dashboardCapacityScope.length
-                          ? `${dashboardCapacityScope.length} lounge dalam scope · referensi ${dashboardPeriod === "All Periods" ? "hari ini" : "akhir periode"}`
-                          : "Tidak ada lounge dalam scope filter."}
-                        {dashboardCapacityDates.length
-                          ? ` · berlaku dari ${dashboardCapacityDates.sort().at(-1)}`
-                          : ""}
-                      </small>
-                    </div>
                     <p className="formulaNote">
-                      Donut Business/Economy tetap menggunakan passenger volume sebagai
-                      denominator. Kapasitas lounge adalah kapasitas tampung simultan, bukan
-                      pax per jam; utilisasi kapasitas belum dihitung sebagai visitor/periode
-                      karena data visitor tidak merekam durasi okupansi.
+                      Panel ini hanya untuk perbandingan lounge visitor terhadap
+                      passenger volume/DCS. KPI utama di atas tetap 100% berasal
+                      dari visitor Accepted.
                     </p>
                   </article>
                 )}
@@ -5725,7 +5700,7 @@ export default function Home() {
                 <Title
                   eye="DASHBOARD DETAIL"
                   title={dashboardDetail}
-                  sub="Passenger volume denominator berdasarkan filter Dashboard aktif."
+                  sub="Detail visitor lounge Accepted berdasarkan Cabin Class dan filter Dashboard aktif."
                 />
                 <button
                   className="secondary"
@@ -5751,9 +5726,11 @@ export default function Home() {
                   <span>
                     Total{" "}
                     <b>
-                      {(dashboardDetail === "Business Pax"
-                        ? dashboardTotals.businessPax
-                        : dashboardTotals.economyPax
+                      {(dashboardDetail === "First Class Pax"
+                        ? dashboardTotals.firstClassPax
+                        : dashboardDetail === "Business Pax"
+                          ? dashboardTotals.businessPax
+                          : dashboardTotals.economyPax
                       ).toLocaleString("id-ID")}
                     </b>
                   </span>
@@ -5768,41 +5745,44 @@ export default function Home() {
                         <th>Station</th>
                         <th>Lounge / Provider</th>
                         <th>{dashboardDetail}</th>
-                        <th>Source</th>
+                        <th>Population</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {dashboardRows.map((row) => (
-                        <tr key={row.id}>
-                          <td>{row.period}</td>
-                          <td>{row.area}</td>
-                          <td>
-                            <button
-                              className="tableLink"
-                              onClick={() =>
-                                openDashboardVisitors(
-                                  "Semua",
-                                  row.bo,
-                                  row.provider,
-                                )
-                              }
-                            >
-                              {row.bo} →
-                            </button>
-                          </td>
-                          <td>{row.station}</td>
-                          <td>{row.provider}</td>
-                          <td>
-                            <b>
-                              {(dashboardDetail === "Business Pax"
-                                ? row.businessPax
-                                : row.economyPax
-                              ).toLocaleString("id-ID")}
-                            </b>
-                          </td>
-                          <td>{row.source}</td>
-                        </tr>
-                      ))}
+                      {dashboardAcceptedVisitors
+                        .filter((visitor) =>
+                          dashboardDetail === "First Class Pax"
+                            ? normalizeCabinClass(visitor.cabin) === "First Class"
+                            : dashboardDetail === "Business Pax"
+                              ? normalizeCabinClass(visitor.cabin) === "Business Class"
+                              : normalizeCabinClass(visitor.cabin) === "Economy Class",
+                        )
+                        .map((visitor) => (
+                          <tr key={visitor.id}>
+                            <td>{visitor.travelDate || visitor.date}</td>
+                            <td>—</td>
+                            <td>
+                              <button
+                                className="tableLink"
+                                onClick={() =>
+                                  openDashboardVisitors(
+                                    "Semua",
+                                    visitor.airport,
+                                    visitor.lounge,
+                                  )
+                                }
+                              >
+                                {visitor.airport} →
+                              </button>
+                            </td>
+                            <td>{visitor.airport}</td>
+                            <td>{visitor.lounge}</td>
+                            <td>
+                              <b>1</b>
+                            </td>
+                            <td>Accepted visitor</td>
+                          </tr>
+                        ))}
                     </tbody>
                   </table>
                 </div>
@@ -6055,6 +6035,7 @@ export default function Home() {
                           }
                         >
                           <option value="">Pilih kelas</option>
+                          <option value="F">F — First Class</option>
                           <option value="C">C — Business Class</option>
                           <option value="Y">Y — Economy Class</option>
                         </select>
@@ -6069,7 +6050,7 @@ export default function Home() {
                               cabin: e.target.value.toUpperCase(),
                             })
                           }
-                          placeholder="C / Y"
+                          placeholder="F / C / Y"
                         />
                       )}
                       <small className="fieldAlignmentHint" aria-hidden="true">
@@ -6533,10 +6514,7 @@ export default function Home() {
                         <SearchableSelect
                           value={effectiveVisitorFilter}
                           disabled={!isGlobalAdmin}
-                          onChange={(value) => {
-                            setDashboardVisitorScope(false);
-                            setFilter(value);
-                          }}
+                          onChange={setFilter}
                           options={[
                             "Semua",
                             ...new Set(visitors.map((v) => v.airport)),
@@ -7321,20 +7299,16 @@ export default function Home() {
                 sub="Data referensi dan rule operasional sesuai kewenangan pengguna."
               />
               <SubTabs
-                items={
-                  role === "Lounge Officer" || role === "Lounge Manager"
-                    ? ["Master Lounge/Tenant"]
-                    : [
-                        "Master Lounge/Tenant",
-                        "Master Station",
-                        "Master Airline",
-                        "User & Role",
-                        "Access Entitlement",
-                        "Operational Rule",
-                        ...(role === "Super Admin" ? ["Portal Management"] : []),
-                        "Activity Log",
-                      ]
-                }
+                items={[
+                  "Master Lounge/Tenant",
+                  "Master Station",
+                  "Master Airline",
+                  "User & Role",
+                  "Access Entitlement",
+                  "Operational Rule",
+                  ...(role === "Super Admin" ? ["Portal Management"] : []),
+                  "Activity Log",
+                ]}
                 value={masterTab}
                 setValue={(value) => {
                   setMasterTab(value);
@@ -7419,6 +7393,16 @@ export default function Home() {
                           start: localDate(),
                           end: "",
                           status: "Aktif",
+                          pricePeriods: [
+                            {
+                              id: `draft-price-${crypto.randomUUID()}`,
+                              price: 0,
+                              currency: "IDR",
+                              start: localDate(),
+                              end: "",
+                            },
+                          ],
+                          capacityPeriods: [],
                         });
                         setShowLoungeForm(true);
                       }}
@@ -7457,8 +7441,12 @@ export default function Home() {
               />
               <div className="loungeGrid">
                 {filteredLounges.map((l) => {
-                  const endTime = /^\d{4}-\d{2}-\d{2}$/.test(l.end) ? new Date(`${l.end}T23:59:59`).getTime() : NaN;
-                  const d = Number.isFinite(endTime) ? Math.ceil((endTime - Date.now()) / 86400000) : null;
+                  const endTime = l.end
+                    ? new Date(`${l.end}T12:00:00Z`).getTime()
+                    : Number.NaN;
+                  const d = Number.isFinite(endTime)
+                    ? Math.ceil((endTime - Date.now()) / 86400000)
+                    : null;
                   return (
                     <article className="card lounge" key={l.id}>
                       <div className="code">{l.airport}</div>
@@ -7475,60 +7463,82 @@ export default function Home() {
                         <p>
                           Harga per pax
                           <br />
-                          <b>{cash(l.price, l.currency)}</b>
+                          <b>{cash(getApplicableLoungePrice(l, localDate()), l.currency)}</b>
                         </p>
-                        {(() => {
-                          const latest = loungeCapacityHistory
-                            .filter(
-                              (item) =>
-                                item.loungeId === l.id &&
-                                item.effectiveFrom <= localDate(),
-                            )
-                            .sort((a, b) =>
-                              b.effectiveFrom.localeCompare(a.effectiveFrom),
-                            )[0];
-                          return (
-                            <p>
-                              Kapasitas lounge
-                              <br />
-                              <b>
-                                {latest
-                                  ? `${latest.capacity.toLocaleString("id-ID")} pax`
-                                  : "Belum diatur"}
-                              </b>
-                              {latest && (
-                                <>
-                                  <br />
-                                  <small>Berlaku sejak {latest.effectiveFrom}</small>
-                                </>
-                              )}
-                            </p>
-                          );
-                        })()}
-                        {canManageLoungeRecord && (canManageMaster || currentAccount?.loungeId === l.id) && (
+                        <p>
+                          Kapasitas lounge
+                          <br />
+                          <b>
+                            {getApplicableLoungeCapacity(l, localDate()) ??
+                              "Belum diatur"}
+                          </b>
+                        </p>
+                        {canManageMaster && (
                           <div className="rowAct">
                             <button
                               className="loungeEdit"
                               onClick={() => {
                                 setEditingLounge(l.id);
-                                setLoungeDraft({ airport: l.airport, name: l.name, type: l.type, currency: l.currency, price: l.price, start: l.start, end: l.end, status: l.status });
-                                const latest = loungeCapacityHistory.filter((item) => item.loungeId === l.id).sort((a,b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
-                                setCapacityDraft({ capacity: latest ? String(latest.capacity) : "", effectiveFrom: latest?.effectiveFrom || localDate(), reason: "" });
+                                setLoungeDraft({
+                                  airport: l.airport,
+                                  name: l.name,
+                                  type: l.type,
+                                  currency: l.currency,
+                                  price: l.price,
+                                  start: l.start,
+                                  end: l.end,
+                                  status: l.status,
+                                  pricePeriods:
+                                    l.pricePeriods?.length
+                                      ? l.pricePeriods
+                                      : l.start && l.end
+                                        ? [
+                                            {
+                                              id: `${l.id}-price-legacy`,
+                                              price: l.price,
+                                              currency: l.currency,
+                                              start: l.start,
+                                              end: l.end,
+                                            },
+                                          ]
+                                        : [],
+                                  capacityPeriods: l.capacityPeriods || [],
+                                });
                                 setShowLoungeForm(true);
                               }}
-                            >Update</button>
-                            {canManageMaster && (
-                              <button className="del" onClick={() => askDelete("Hapus lounge/tenant?", `${l.airport} · ${l.name}`, async () => { await removeRecord("lounges", l.id); setLounges((xs) => xs.filter((x) => x.id !== l.id)); })}>Hapus</button>
-                            )}
+                            >
+                              Update
+                            </button>
+                            <button
+                              className="del"
+                              onClick={() =>
+                                askDelete(
+                                  "Hapus lounge/tenant?",
+                                  `${l.airport} · ${l.name}`,
+                                  async () => {
+                                    await removeRecord("lounges", l.id);
+                                    setLounges((xs) =>
+                                      xs.filter((x) => x.id !== l.id),
+                                    );
+                                  },
+                                )
+                              }
+                            >
+                              Hapus
+                            </button>
                           </div>
                         )}
                       </div>
                       <mark
                         className={
-                          d == null ? "yellow" : d < 90 ? "red" : d < 150 ? "yellow" : "green"
+                          d < 90 ? "red" : d < 150 ? "yellow" : "green"
                         }
                       >
-                        {d == null ? "Tanggal berakhir tidak valid" : d < 0 ? "Kedaluwarsa" : `${d} hari tersisa`}
+                        {d === null
+                          ? "Periode tidak valid"
+                          : d < 0
+                            ? "Kedaluwarsa"
+                            : `${d} hari tersisa`}
                       </mark>
                     </article>
                   );
@@ -8094,7 +8104,6 @@ export default function Home() {
                                     scope: a.scope,
                                     organization:
                                       a.organization || "Garuda Indonesia",
-                                    loungeId: a.loungeId || "",
                                     verificationScopes:
                                       a.verificationScopes || [],
                                     status: a.status,
@@ -11315,11 +11324,6 @@ export default function Home() {
                       ...userDraft,
                       role: nextRole,
                       station: globalRole ? "ALL" : userDraft.station,
-                      loungeId:
-                        nextRole === "Lounge Officer" ||
-                        nextRole === "Lounge Manager"
-                          ? userDraft.loungeId || ""
-                          : "",
                       scope:
                         roleProfileSeed.find((item) => item.role === nextRole)
                           ?.scope || "Configured authority",
@@ -11343,11 +11347,6 @@ export default function Home() {
                     setUserDraft({
                       ...userDraft,
                       station: e.target.value,
-                      loungeId:
-                        userDraft.role === "Lounge Officer" ||
-                        userDraft.role === "Lounge Manager"
-                          ? ""
-                          : userDraft.loungeId,
                       scope:
                         e.target.value === "ALL"
                           ? "Seluruh Station"
@@ -11365,31 +11364,6 @@ export default function Home() {
                     ))}
                 </select>
               </label>
-              {(userDraft.role === "Lounge Officer" ||
-                userDraft.role === "Lounge Manager") && (
-                <label className="full">
-                  Assigned Lounge
-                  <select
-                    value={userDraft.loungeId || ""}
-                    onChange={(e) =>
-                      setUserDraft({ ...userDraft, loungeId: e.target.value })
-                    }
-                  >
-                    <option value="">Pilih lounge</option>
-                    {lounges
-                      .filter(
-                        (lounge) =>
-                          userDraft.station === "ALL" ||
-                          lounge.airport === userDraft.station,
-                      )
-                      .map((lounge) => (
-                        <option key={lounge.id} value={lounge.id}>
-                          {lounge.airport} — {lounge.name}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              )}
               <label className="full">
                 Authority
                 <textarea
@@ -11678,7 +11652,7 @@ export default function Home() {
           </form>
         </div>
       )}
-      {showLoungeForm && canManageLoungeRecord && (
+      {showLoungeForm && canManageMaster && (
         <div className="back" onMouseDown={() => setShowLoungeForm(false)}>
           <form
             className="modal"
@@ -11695,7 +11669,6 @@ export default function Home() {
               </button>
             </div>
             <div className="form">
-              {canManageMaster && <>
               <label>
                 Airport
                 <input
@@ -11732,6 +11705,26 @@ export default function Home() {
                 />
               </label>
               <label>
+                Periode kerja sama — Mulai
+                <input
+                  type="date"
+                  value={loungeDraft.start}
+                  onChange={(e) =>
+                    setLoungeDraft({ ...loungeDraft, start: e.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Periode kerja sama — Berakhir
+                <input
+                  type="date"
+                  value={loungeDraft.end}
+                  onChange={(e) =>
+                    setLoungeDraft({ ...loungeDraft, end: e.target.value })
+                  }
+                />
+              </label>
+              <label>
                 Currency
                 <input
                   value={loungeDraft.currency}
@@ -11742,40 +11735,6 @@ export default function Home() {
                     })
                   }
                   placeholder="IDR"
-                />
-              </label>
-              <label>
-                Harga per Pax
-                <input
-                  type="number"
-                  min="0"
-                  value={loungeDraft.price}
-                  onChange={(e) =>
-                    setLoungeDraft({
-                      ...loungeDraft,
-                      price: Number(e.target.value),
-                    })
-                  }
-                />
-              </label>
-              <label>
-                Tanggal Mulai
-                <input
-                  type="date"
-                  value={loungeDraft.start}
-                  onChange={(e) =>
-                    setLoungeDraft({ ...loungeDraft, start: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Tanggal Berakhir
-                <input
-                  type="date"
-                  value={loungeDraft.end}
-                  onChange={(e) =>
-                    setLoungeDraft({ ...loungeDraft, end: e.target.value })
-                  }
                 />
               </label>
               <label>
@@ -11790,14 +11749,234 @@ export default function Home() {
                   <option>Nonaktif</option>
                 </select>
               </label>
-              </>}
-              {canManageLoungeCapacity && editingLounge && (<>
-                <div className="full formulaNote"><b>Kapasitas Lounge</b><br />Histori kapasitas tersimpan di Firebase dan tidak menimpa versi sebelumnya.</div>
-                <label>Kapasitas (pax)<input type="number" min="1" step="1" value={capacityDraft.capacity} onChange={(e) => setCapacityDraft({ ...capacityDraft, capacity: e.target.value })} placeholder="150" required={Boolean(editingLounge)} /></label>
-                <label>Berlaku mulai<input type="date" value={capacityDraft.effectiveFrom} onChange={(e) => setCapacityDraft({ ...capacityDraft, effectiveFrom: e.target.value })} required={Boolean(editingLounge)} /></label>
-                <label className="full">Alasan perubahan kapasitas<textarea value={capacityDraft.reason} onChange={(e) => setCapacityDraft({ ...capacityDraft, reason: e.target.value })} placeholder="Contoh: penambahan area seating" /></label>
-                {editingLounge && loungePriceHistory.filter((item) => item.loungeId === editingLounge).length > 0 && <div className="full formulaNote"><b>Riwayat Harga / Agreement</b>{loungePriceHistory.filter((item) => item.loungeId === editingLounge).sort((a,b) => b.effectiveFrom.localeCompare(a.effectiveFrom)).map((item) => <div key={item.id}>{item.effectiveFrom} — {item.effectiveTo || "∞"} · {cash(item.price, item.currency)}</div>)}</div>}
-              </>)}
+
+              <section className="form full loungePeriodSection">
+                <div className="loungePeriodHead">
+                  <div>
+                    <b>Harga per Pax — Periode</b>
+                    <small>
+                      Satu lounge boleh memiliki beberapa harga. Harga yang
+                      tersimpan mengikuti tanggal perjalanan visitor.
+                    </small>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setLoungeDraft((draft) => ({
+                        ...draft,
+                        pricePeriods: [
+                          ...(draft.pricePeriods || []),
+                          {
+                            id: `draft-price-${crypto.randomUUID()}`,
+                            price: 0,
+                            currency: draft.currency,
+                            start: draft.start || localDate(),
+                            end: draft.end || "",
+                          },
+                        ],
+                      }))
+                    }
+                  >
+                    + Tambah Periode Harga
+                  </button>
+                </div>
+                {(loungeDraft.pricePeriods || []).map((period, index) => (
+                  <div className="loungePeriodRow" key={period.id}>
+                    <label>
+                      Harga/Pax
+                      <input
+                        type="number"
+                        min="0"
+                        value={period.price}
+                        disabled={!period.id.startsWith("draft-")}
+                        onChange={(e) =>
+                          setLoungeDraft((draft) => ({
+                            ...draft,
+                            pricePeriods: (draft.pricePeriods || []).map(
+                              (item, itemIndex) =>
+                                itemIndex === index
+                                  ? {
+                                      ...item,
+                                      price: Number(e.target.value),
+                                    }
+                                  : item,
+                            ),
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Mulai berlaku
+                      <input
+                        type="date"
+                        value={period.start}
+                        disabled={!period.id.startsWith("draft-")}
+                        onChange={(e) =>
+                          setLoungeDraft((draft) => ({
+                            ...draft,
+                            pricePeriods: (draft.pricePeriods || []).map(
+                              (item, itemIndex) =>
+                                itemIndex === index
+                                  ? { ...item, start: e.target.value }
+                                  : item,
+                            ),
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Sampai berlaku
+                      <input
+                        type="date"
+                        value={period.end}
+                        onChange={(e) =>
+                          setLoungeDraft((draft) => ({
+                            ...draft,
+                            pricePeriods: (draft.pricePeriods || []).map(
+                              (item, itemIndex) =>
+                                itemIndex === index
+                                  ? { ...item, end: e.target.value }
+                                  : item,
+                            ),
+                          }))
+                        }
+                      />
+                    </label>
+                    {period.id.startsWith("draft-") && (
+                      <button
+                        type="button"
+                        className="del"
+                        onClick={() =>
+                          setLoungeDraft((draft) => ({
+                            ...draft,
+                            pricePeriods: (draft.pricePeriods || []).filter(
+                              (_, itemIndex) => itemIndex !== index,
+                            ),
+                          }))
+                        }
+                      >
+                        Hapus periode
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                <div className="loungePeriodHead">
+                  <div>
+                    <b>Kapasitas Lounge — Periode Efektif</b>
+                    <small>
+                      Kapasitas berlaku mulai tanggal efektif dan tetap berlaku
+                      sampai ada periode kapasitas baru.
+                    </small>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setLoungeDraft((draft) => ({
+                        ...draft,
+                        capacityPeriods: closeOpenCapacityPeriods([
+                          ...(draft.capacityPeriods || []),
+                          {
+                            id: `draft-capacity-${crypto.randomUUID()}`,
+                            capacity: 0,
+                            effectiveFrom: draft.start || localDate(),
+                          },
+                        ]),
+                      }))
+                    }
+                  >
+                    + Tambah Periode Kapasitas
+                  </button>
+                </div>
+                {(loungeDraft.capacityPeriods || []).map((period, index) => (
+                  <div className="loungePeriodRow" key={period.id}>
+                    <label>
+                      Kapasitas
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={period.capacity}
+                        disabled={!period.id.startsWith("draft-")}
+                        onChange={(e) =>
+                          setLoungeDraft((draft) => ({
+                            ...draft,
+                            capacityPeriods: (draft.capacityPeriods || []).map(
+                              (item, itemIndex) =>
+                                itemIndex === index
+                                  ? {
+                                      ...item,
+                                      capacity: Number(e.target.value),
+                                    }
+                                  : item,
+                            ),
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Efektif mulai
+                      <input
+                        type="date"
+                        value={period.effectiveFrom}
+                        disabled={!period.id.startsWith("draft-")}
+                        onChange={(e) =>
+                          setLoungeDraft((draft) => ({
+                            ...draft,
+                            capacityPeriods: (draft.capacityPeriods || []).map(
+                              (item, itemIndex) =>
+                                itemIndex === index
+                                  ? {
+                                      ...item,
+                                      effectiveFrom: e.target.value,
+                                    }
+                                  : item,
+                            ),
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Sampai tanggal
+                      <input
+                        type="date"
+                        value={period.effectiveTo || ""}
+                        onChange={(e) =>
+                          setLoungeDraft((draft) => ({
+                            ...draft,
+                            capacityPeriods: (draft.capacityPeriods || []).map(
+                              (item, itemIndex) =>
+                                itemIndex === index
+                                  ? {
+                                      ...item,
+                                      effectiveTo: e.target.value || undefined,
+                                    }
+                                  : item,
+                            ),
+                          }))
+                        }
+                        placeholder="Kosong = sampai ada perubahan"
+                      />
+                    </label>
+                    {period.id.startsWith("draft-") && (
+                      <button
+                        type="button"
+                        className="del"
+                        onClick={() =>
+                          setLoungeDraft((draft) => ({
+                            ...draft,
+                            capacityPeriods: (draft.capacityPeriods || []).filter(
+                              (_, itemIndex) => itemIndex !== index,
+                            ),
+                          }))
+                        }
+                      >
+                        Hapus periode
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </section>
             </div>
             <div className="modalActions">
               <button type="button" onClick={() => setShowLoungeForm(false)}>
