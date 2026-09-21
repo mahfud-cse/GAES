@@ -7546,7 +7546,13 @@ export default function Home() {
                       </div>
                       <mark
                         className={
-                          d < 90 ? "red" : d < 150 ? "yellow" : "green"
+                          d === null
+                            ? "green"
+                            : d < 90
+                              ? "red"
+                              : d < 150
+                                ? "yellow"
+                                : "green"
                         }
                       >
                         {d === null
