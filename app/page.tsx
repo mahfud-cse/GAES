@@ -40,6 +40,7 @@ import {
   saveRecord,
   subscribeCollection,
   subscribeLoungeCapacityHistory,
+  subscribeLoungePriceHistory,
   subscribeUserNotifications,
   subscribeVisitors,
   type GaesCollection,
@@ -54,6 +55,7 @@ import {
   normalizeFlight,
   normalizeLounge,
   normalizeLoungeCapacity,
+  normalizeLoungePrice,
   normalizeMonitoring,
   normalizeStation,
   normalizeVisitor,
@@ -512,6 +514,16 @@ type LoungeCapacityVersion = {
   capacity: number;
   effectiveFrom: string;
   reason: string;
+  updatedBy: string;
+  updatedAt?: string;
+};
+type LoungePriceVersion = {
+  id: string;
+  loungeId: string;
+  price: number;
+  currency: string;
+  effectiveFrom: string;
+  effectiveTo: string;
   updatedBy: string;
   updatedAt?: string;
 };
@@ -1526,6 +1538,7 @@ export default function Home() {
   const [tab, setTab] = useState<MainTab>("access"),
     [lounges, setLounges] = useState<Lounge[]>([]),
     [loungeCapacityHistory, setLoungeCapacityHistory] = useState<LoungeCapacityVersion[]>([]),
+    [loungePriceHistory, setLoungePriceHistory] = useState<LoungePriceVersion[]>([]),
     [visitors, setVisitors] = useState<Visitor[]>([]),
     [flights, setFlights] = useState<Flight[]>([]);
   const [reconTab, setReconTab] = useState("Visitor List"),
@@ -1708,13 +1721,7 @@ export default function Home() {
       end: "",
       status: "Aktif",
     });
-  const [showCapacityForm, setShowCapacityForm] = useState(false),
-    [capacityLoungeId, setCapacityLoungeId] = useState<string | null>(null),
-    [capacityDraft, setCapacityDraft] = useState({
-      capacity: "",
-      effectiveFrom: localDate(),
-      reason: "",
-    });
+  const [capacityDraft, setCapacityDraft] = useState({ capacity: "", effectiveFrom: localDate(), reason: "" });
   const [showUserForm, setShowUserForm] = useState(false),
     [savingUser, setSavingUser] = useState(false),
     [editingUser, setEditingUser] = useState<string | null>(null),
@@ -2090,7 +2097,7 @@ export default function Home() {
         subscriptionError,
       ),
       currentAccount &&
-      ["Lounge Officer", "Lounge Manager"].includes(role)
+      ["Lounge Manager"].includes(role)
         ? subscribeLoungeCapacityHistory<unknown>(
             currentAccount.loungeId || null,
             (rows) =>
@@ -2102,18 +2109,32 @@ export default function Home() {
               ),
             subscriptionError,
           )
-        : subscribeCollection<unknown>(
-            "loungeCapacityHistory",
-            (rows) =>
-              setLoungeCapacityHistory(
-                normalizeRows<LoungeCapacityVersion>(
-                  rows,
-                  normalizeLoungeCapacity,
-                ) as LoungeCapacityVersion[],
-              ),
-            undefined,
+        : role === "Lounge Officer"
+          ? () => undefined
+          : subscribeCollection<unknown>(
+              "loungeCapacityHistory",
+              (rows) =>
+                setLoungeCapacityHistory(
+                  normalizeRows<LoungeCapacityVersion>(rows, normalizeLoungeCapacity) as LoungeCapacityVersion[],
+                ),
+              undefined,
+              subscriptionError,
+            ),
+      currentAccount &&
+      role === "Lounge Manager"
+        ? subscribeLoungePriceHistory<unknown>(
+            currentAccount.loungeId || null,
+            (rows) => setLoungePriceHistory(normalizeRows<LoungePriceVersion>(rows, normalizeLoungePrice) as LoungePriceVersion[]),
             subscriptionError,
-          ),
+          )
+        : role === "Lounge Officer"
+          ? () => undefined
+          : subscribeCollection<unknown>(
+              "loungePriceHistory",
+              (rows) => setLoungePriceHistory(normalizeRows<LoungePriceVersion>(rows, normalizeLoungePrice) as LoungePriceVersion[]),
+              undefined,
+              subscriptionError,
+            ),
       subscribeCollection<unknown>(
         "flights",
         (rows) =>
@@ -2253,7 +2274,10 @@ export default function Home() {
       isGlobalAdmin || role === "Lounge Officer" || role === "Lounge Manager",
     canManageLoungeCapacity =
       canManageMaster ||
-      (role === "Lounge Officer" && Boolean(currentAccount?.loungeId)),
+      (role === "Lounge Manager" && Boolean(currentAccount?.loungeId)),
+    canManageLoungeRecord =
+      canManageMaster ||
+      (role === "Lounge Manager" && Boolean(currentAccount?.loungeId)),
     canSeeDashboard = dashboardAllowedRoles.includes(role),
     canDeleteFlight = (f: Flight) =>
       isGlobalAdmin || (role === "BO Admin" && f.origin === station),
@@ -3344,10 +3368,16 @@ export default function Home() {
       }),
       { businessPax: 0, economyPax: 0 },
     ),
+    dashboardVisitorCabin = [
+      ["First Class", dashboardAcceptedVisitors.filter((v) => /^(F|FIRST|FIRST CLASS)$/i.test(v.cabin)).length],
+      ["Business Class", dashboardAcceptedVisitors.filter((v) => /^(C|J|BUSINESS|BUSINESS CLASS)$/i.test(v.cabin)).length],
+      ["Economy Class", dashboardAcceptedVisitors.filter((v) => /^(Y|W|ECONOMY|ECONOMY CLASS)$/i.test(v.cabin)).length],
+      ["Unspecified", dashboardAcceptedVisitors.filter((v) => !/^(F|FIRST|FIRST CLASS|C|J|BUSINESS|BUSINESS CLASS|Y|W|ECONOMY|ECONOMY CLASS)$/i.test(v.cabin || "")).length],
+    ] as [string, number][],
     dashboardTotals = {
       ...importedPassengerTotals,
       businessLounge: dashboardAcceptedVisitors.filter(
-        (visitor) => visitor.category === "Business Class",
+        (visitor) => /^(C|J|BUSINESS|BUSINESS CLASS)$/i.test(visitor.cabin),
       ).length,
       cost: dashboardAcceptedVisitors.reduce(
         (total, visitor) => total + visitor.price,
@@ -3394,27 +3424,19 @@ export default function Home() {
       .map((item) => item.effectiveFrom)
       .filter(Boolean),
     dashboardComposition = [
-      "Business Class",
       "Platinum",
+      "SkyTeam Elite Plus",
       "Elite Plus",
       "SkyTeam",
-      "Partnership",
       "DPR",
+      "Partnership",
       "Paid Access",
       "Other",
     ].map((categoryName) => [
       categoryName,
       dashboardAcceptedVisitors.filter((visitor) =>
         categoryName === "Other"
-          ? ![
-              "Business Class",
-              "Platinum",
-              "Elite Plus",
-              "SkyTeam",
-              "Partnership",
-              "DPR",
-              "Paid Access",
-            ].includes(visitor.category)
+          ? !["Platinum", "SkyTeam Elite Plus", "Elite Plus", "SkyTeam", "DPR", "Partnership", "Paid Access"].includes(visitor.category)
           : visitor.category === categoryName,
       ).length,
     ]) as [string, number][],
@@ -3469,8 +3491,10 @@ export default function Home() {
     dashboardTrend = (() => {
       const rows = visitors.filter(
         (visitor) =>
+          visitor.boStatus === "Accepted" &&
           (dashboardPeriod === "All Periods" ||
             (visitor.travelDate || visitor.date).startsWith(dashboardPeriod)) &&
+          (dashboardArea === "All Areas" || dashboardAreaBoCodes?.has(visitor.airport)) &&
           (dashboardBo === "All BO" || visitor.airport === dashboardBo) &&
           (dashboardProvider === "All Providers" ||
             visitor.lounge === dashboardProvider),
@@ -4275,129 +4299,54 @@ export default function Home() {
       });
     }
   }
-  async function saveLoungeCapacity(e: FormEvent) {
-    e.preventDefault();
-    const loungeId = capacityLoungeId;
-    const capacity = Number(capacityDraft.capacity);
-    const lounge = lounges.find((item) => item.id === loungeId);
-    const loungeScopedRole = role === "Lounge Officer";
-    if (!loungeId || !lounge) {
-      setLoungeNotice({ kind: "warn", text: "Lounge target belum dipilih." });
-      return;
-    }
-    if (loungeScopedRole && currentAccount?.loungeId !== loungeId) {
-      setLoungeNotice({
-        kind: "error",
-        text: "Anda tidak berwenang mengubah kapasitas lounge ini.",
-      });
-      return;
-    }
-    if (!Number.isInteger(capacity) || capacity <= 0) {
-      setLoungeNotice({
-        kind: "warn",
-        text: "Kapasitas lounge harus berupa bilangan bulat lebih dari 0.",
-      });
-      return;
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(capacityDraft.effectiveFrom)) {
-      setLoungeNotice({ kind: "warn", text: "Tanggal berlaku belum valid." });
-      return;
-    }
-    if (
-      capacityDraft.effectiveFrom < lounge.start ||
-      capacityDraft.effectiveFrom > lounge.end
-    ) {
-      setLoungeNotice({
-        kind: "warn",
-        text: `Tanggal berlaku harus berada dalam periode lounge ${lounge.start} — ${lounge.end}.`,
-      });
-      return;
-    }
-    const duplicate = loungeCapacityHistory.find(
-      (item) =>
-        item.loungeId === loungeId &&
-        item.effectiveFrom === capacityDraft.effectiveFrom,
-    );
-    const record: LoungeCapacityVersion = {
-      id: duplicate?.id || `capacity-${loungeId}-${capacityDraft.effectiveFrom}`,
-      loungeId,
-      capacity,
-      effectiveFrom: capacityDraft.effectiveFrom,
-      reason: capacityDraft.reason.trim() || "Update kapasitas",
-      updatedBy: currentAccount?.name || role,
-      updatedAt: new Date().toISOString(),
-    };
-    try {
-      await saveRecord("loungeCapacityHistory", record);
-      setLoungeCapacityHistory((rows) => {
-        const index = rows.findIndex((item) => item.id === record.id);
-        return index >= 0
-          ? rows.map((item) => (item.id === record.id ? record : item))
-          : [...rows, record];
-      });
-      setShowCapacityForm(false);
-      setCapacityLoungeId(null);
-      setLoungeNotice({
-        kind: "ok",
-        text: `Kapasitas ${lounge.name} disimpan ke Firebase dan berlaku mulai ${record.effectiveFrom}.`,
-      });
-    } catch (error) {
-      setLoungeNotice({
-        kind: "error",
-        text:
-          error instanceof Error
-            ? error.message
-            : "Kapasitas lounge tidak dapat disimpan.",
-      });
-    }
-  }
-
   async function saveLounge(e: FormEvent) {
     e.preventDefault();
-    if (!loungeDraft.airport || !loungeDraft.name || !loungeDraft.end) {
-      setLoungeNotice({
-        kind: "warn",
-        text: "Airport, nama lounge, dan tanggal berakhir wajib diisi.",
-      });
+    const targetId = editingLounge;
+    const lounge = targetId ? lounges.find((item) => item.id === targetId) : null;
+    if (!canManageLoungeRecord || (role === "Lounge Manager" && currentAccount?.loungeId !== targetId)) {
+      setLoungeNotice({ kind: "error", text: "Anda tidak berwenang mengubah lounge ini." });
       return;
     }
-    const record = normalizeLounge({
-      ...loungeDraft,
-      id: editingLounge || undefined,
-    });
-    if (!record || !record.end) {
-      setLoungeNotice({
-        kind: "warn",
-        text: "Format data lounge/tenant belum valid.",
-      });
-      return;
-    }
+    let savedLounge = lounge;
     try {
-      await saveRecord("lounges", record);
-      setLounges((xs) => {
-        const index = xs.findIndex((x) => x.id === record.id);
-        return index >= 0
-          ? xs.map((x) => (x.id === record.id ? (record as Lounge) : x))
-          : [...xs, record as Lounge];
-      });
-      setShowLoungeForm(false);
-      setEditingLounge(null);
-      setLoungeNotice({
-        kind: "ok",
-        text: "Data lounge/tenant berhasil disimpan.",
-      });
-      setActionDialog({
-        kind: "ok",
-        text: `Lounge/Tenant berhasil ${editingLounge ? "diperbarui" : "ditambahkan"}.`,
-      });
+      if (canManageMaster) {
+        if (!loungeDraft.airport || !loungeDraft.name || !loungeDraft.end) throw new Error("Airport, nama lounge, dan tanggal berakhir wajib diisi.");
+        const record = normalizeLounge({ ...loungeDraft, id: editingLounge || undefined });
+        if (!record || !record.end) throw new Error("Format data lounge/tenant belum valid.");
+        if (editingLounge && lounge) {
+          const previousPriceId = `price-${lounge.id}-${lounge.start}-${lounge.end}`;
+          const previousExists = loungePriceHistory.some((item) => item.id === previousPriceId);
+          if (!previousExists) {
+            const previousPrice: LoungePriceVersion = {
+              id: previousPriceId, loungeId: lounge.id, price: lounge.price, currency: lounge.currency,
+              effectiveFrom: lounge.start, effectiveTo: lounge.end,
+              updatedBy: currentAccount?.name || role, updatedAt: new Date().toISOString(),
+            };
+            await saveRecord("loungePriceHistory", previousPrice);
+            setLoungePriceHistory((rows) => [...rows, previousPrice]);
+          }
+        }
+        await saveRecord("lounges", record);
+        savedLounge = record as Lounge;
+        setLounges((xs) => { const i=xs.findIndex((x)=>x.id===record.id); return i>=0 ? xs.map((x)=>x.id===record.id ? record as Lounge : x) : [...xs, record as Lounge]; });
+        const priceRecord: LoungePriceVersion = { id:`price-${record.id}-${record.start}-${record.end}`, loungeId:record.id, price:record.price, currency:record.currency, effectiveFrom:record.start, effectiveTo:record.end, updatedBy:currentAccount?.name || role, updatedAt:new Date().toISOString() };
+        await saveRecord("loungePriceHistory", priceRecord);
+        setLoungePriceHistory((rows)=>{ const i=rows.findIndex((x)=>x.id===priceRecord.id); return i>=0 ? rows.map((x)=>x.id===priceRecord.id?priceRecord:x):[...rows,priceRecord]; });
+      }
+      if (canManageLoungeCapacity && targetId) {
+        if (!savedLounge) throw new Error("Lounge target belum dipilih.");
+        const capacity = Number(capacityDraft.capacity);
+        if (!Number.isInteger(capacity) || capacity <= 0) throw new Error("Kapasitas lounge harus berupa bilangan bulat lebih dari 0.");
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(capacityDraft.effectiveFrom) || capacityDraft.effectiveFrom < savedLounge.start || capacityDraft.effectiveFrom > savedLounge.end) throw new Error(`Tanggal berlaku kapasitas harus berada dalam periode lounge ${savedLounge.start} — ${savedLounge.end}.`);
+        const old = loungeCapacityHistory.find((x)=>x.loungeId===targetId && x.effectiveFrom===capacityDraft.effectiveFrom);
+        const record: LoungeCapacityVersion = { id:old?.id || `capacity-${targetId}-${capacityDraft.effectiveFrom}`, loungeId:targetId, capacity, effectiveFrom:capacityDraft.effectiveFrom, reason:capacityDraft.reason.trim() || "Update kapasitas", updatedBy:currentAccount?.name || role, updatedAt:new Date().toISOString() };
+        await saveRecord("loungeCapacityHistory", record);
+        setLoungeCapacityHistory((rows)=>{ const i=rows.findIndex((x)=>x.id===record.id); return i>=0 ? rows.map((x)=>x.id===record.id?record:x):[...rows,record]; });
+      }
+      setShowLoungeForm(false); setEditingLounge(null);
+      setLoungeNotice({kind:"ok", text:"Perubahan Lounge/Tenant, harga, dan/atau kapasitas berhasil disimpan ke Firebase."});
     } catch (error) {
-      setLoungeNotice({
-        kind: "error",
-        text:
-          error instanceof Error
-            ? error.message
-            : "Lounge/tenant tidak dapat disimpan.",
-      });
+      setLoungeNotice({kind:"error", text:error instanceof Error?error.message:"Data lounge tidak dapat disimpan."});
     }
   }
   async function saveUser(e: FormEvent) {
@@ -5343,7 +5292,7 @@ export default function Home() {
                       setTab("dashboard-detail");
                     }}
                   >
-                    <span>Business Pax</span>
+                    <span>Business Passenger Volume</span>
                     <b>{dashboardTotals.businessPax.toLocaleString("id-ID")}</b>
                     <small>
                       Source passenger volume <i>View data →</i>
@@ -5356,7 +5305,7 @@ export default function Home() {
                       setTab("dashboard-detail");
                     }}
                   >
-                    <span>Economy Pax</span>
+                    <span>Economy Passenger Volume</span>
                     <b>{dashboardTotals.economyPax.toLocaleString("id-ID")}</b>
                     <small>
                       Source passenger volume <i>View data →</i>
@@ -5436,6 +5385,14 @@ export default function Home() {
                     />
                   </article>
                 )}
+                <article className="card dashboardWidget">
+                  <h2>Visitor by Cabin Class</h2>
+                  <DonutChart
+                    items={dashboardVisitorCabin}
+                    total={dashboardVisitorCount}
+                    centerLabel="Visitors"
+                  />
+                </article>
                 {visibleDashboardWidgets.some(
                   (widget) => widget.id === "utilization",
                 ) && (
@@ -7479,9 +7436,8 @@ export default function Home() {
               />
               <div className="loungeGrid">
                 {filteredLounges.map((l) => {
-                  const d = Math.ceil(
-                    (new Date(l.end).getTime() - Date.now()) / 86400000,
-                  );
+                  const endTime = /^\d{4}-\d{2}-\d{2}$/.test(l.end) ? new Date(`${l.end}T23:59:59`).getTime() : NaN;
+                  const d = Number.isFinite(endTime) ? Math.ceil((endTime - Date.now()) / 86400000) : null;
                   return (
                     <article className="card lounge" key={l.id}>
                       <div className="code">{l.airport}</div>
@@ -7528,75 +7484,30 @@ export default function Home() {
                             </p>
                           );
                         })()}
-                        {canManageLoungeCapacity &&
-                          (canManageMaster || currentAccount?.loungeId === l.id) && (
-                            <button
-                              className="loungeEdit"
-                              onClick={() => {
-                                const latest = loungeCapacityHistory
-                                  .filter((item) => item.loungeId === l.id)
-                                  .sort((a, b) =>
-                                    b.effectiveFrom.localeCompare(a.effectiveFrom),
-                                  )[0];
-                                setCapacityLoungeId(l.id);
-                                setCapacityDraft({
-                                  capacity: latest ? String(latest.capacity) : "",
-                                  effectiveFrom: localDate(),
-                                  reason: "",
-                                });
-                                setShowCapacityForm(true);
-                              }}
-                            >
-                              Kapasitas
-                            </button>
-                          )}
-                        {canManageMaster && (
+                        {canManageLoungeRecord && (canManageMaster || currentAccount?.loungeId === l.id) && (
                           <div className="rowAct">
                             <button
                               className="loungeEdit"
                               onClick={() => {
                                 setEditingLounge(l.id);
-                                setLoungeDraft({
-                                  airport: l.airport,
-                                  name: l.name,
-                                  type: l.type,
-                                  currency: l.currency,
-                                  price: l.price,
-                                  start: l.start,
-                                  end: l.end,
-                                  status: l.status,
-                                });
+                                setLoungeDraft({ airport: l.airport, name: l.name, type: l.type, currency: l.currency, price: l.price, start: l.start, end: l.end, status: l.status });
+                                const latest = loungeCapacityHistory.filter((item) => item.loungeId === l.id).sort((a,b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
+                                setCapacityDraft({ capacity: latest ? String(latest.capacity) : "", effectiveFrom: latest?.effectiveFrom || localDate(), reason: "" });
                                 setShowLoungeForm(true);
                               }}
-                            >
-                              Update
-                            </button>
-                            <button
-                              className="del"
-                              onClick={() =>
-                                askDelete(
-                                  "Hapus lounge/tenant?",
-                                  `${l.airport} · ${l.name}`,
-                                  async () => {
-                                    await removeRecord("lounges", l.id);
-                                    setLounges((xs) =>
-                                      xs.filter((x) => x.id !== l.id),
-                                    );
-                                  },
-                                )
-                              }
-                            >
-                              Hapus
-                            </button>
+                            >Update</button>
+                            {canManageMaster && (
+                              <button className="del" onClick={() => askDelete("Hapus lounge/tenant?", `${l.airport} · ${l.name}`, async () => { await removeRecord("lounges", l.id); setLounges((xs) => xs.filter((x) => x.id !== l.id)); })}>Hapus</button>
+                            )}
                           </div>
                         )}
                       </div>
                       <mark
                         className={
-                          d < 90 ? "red" : d < 150 ? "yellow" : "green"
+                          d == null ? "yellow" : d < 90 ? "red" : d < 150 ? "yellow" : "green"
                         }
                       >
-                        {d < 0 ? "Kedaluwarsa" : `${d} hari tersisa`}
+                        {d == null ? "Tanggal berakhir tidak valid" : d < 0 ? "Kedaluwarsa" : `${d} hari tersisa`}
                       </mark>
                     </article>
                   );
@@ -11746,95 +11657,7 @@ export default function Home() {
           </form>
         </div>
       )}
-      {showCapacityForm &&
-        canManageLoungeCapacity &&
-        capacityLoungeId && (
-          <div className="back" onMouseDown={() => setShowCapacityForm(false)}>
-            <form
-              className="modal"
-              onMouseDown={(e) => e.stopPropagation()}
-              onSubmit={saveLoungeCapacity}
-            >
-              <div className="modalHead">
-                <div>
-                  <span>MASTER DATA · LOUNGE CAPACITY</span>
-                  <h2>Update Kapasitas Lounge</h2>
-                </div>
-                <button type="button" onClick={() => setShowCapacityForm(false)}>
-                  ×
-                </button>
-              </div>
-              <div className="form">
-                <label className="full">
-                  Lounge
-                  <input
-                    readOnly
-                    value={
-                      lounges.find((item) => item.id === capacityLoungeId)?.name ||
-                      ""
-                    }
-                  />
-                </label>
-                <label>
-                  Kapasitas (pax)
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={capacityDraft.capacity}
-                    onChange={(e) =>
-                      setCapacityDraft({
-                        ...capacityDraft,
-                        capacity: e.target.value,
-                      })
-                    }
-                    placeholder="150"
-                    required
-                  />
-                </label>
-                <label>
-                  Berlaku mulai
-                  <input
-                    type="date"
-                    value={capacityDraft.effectiveFrom}
-                    onChange={(e) =>
-                      setCapacityDraft({
-                        ...capacityDraft,
-                        effectiveFrom: e.target.value,
-                      })
-                    }
-                    required
-                  />
-                </label>
-                <label className="full">
-                  Alasan perubahan
-                  <textarea
-                    value={capacityDraft.reason}
-                    onChange={(e) =>
-                      setCapacityDraft({
-                        ...capacityDraft,
-                        reason: e.target.value,
-                      })
-                    }
-                    placeholder="Contoh: penambahan area seating"
-                  />
-                </label>
-              </div>
-              <p className="formulaNote">
-                Kapasitas berlaku terus sampai ada versi kapasitas berikutnya. Jika
-                tanggal masa depan dipilih, kapasitas baru otomatis aktif pada tanggal
-                tersebut tanpa menimpa histori sebelumnya.
-              </p>
-              <div className="modalActions">
-                <button type="button" onClick={() => setShowCapacityForm(false)}>
-                  Batal
-                </button>
-                <button className="primary">Simpan Kapasitas</button>
-              </div>
-            </form>
-          </div>
-        )}
-      {showLoungeForm && canManageMaster && (
+      {showLoungeForm && canManageLoungeRecord && (
         <div className="back" onMouseDown={() => setShowLoungeForm(false)}>
           <form
             className="modal"
@@ -11851,6 +11674,7 @@ export default function Home() {
               </button>
             </div>
             <div className="form">
+              {canManageMaster && <>
               <label>
                 Airport
                 <input
@@ -11945,6 +11769,14 @@ export default function Home() {
                   <option>Nonaktif</option>
                 </select>
               </label>
+              </>}
+              {canManageLoungeCapacity && (<>
+                <div className="full formulaNote"><b>Kapasitas Lounge</b><br />Histori kapasitas tersimpan di Firebase dan tidak menimpa versi sebelumnya.</div>
+                <label>Kapasitas (pax)<input type="number" min="1" step="1" value={capacityDraft.capacity} onChange={(e) => setCapacityDraft({ ...capacityDraft, capacity: e.target.value })} placeholder="150" required={Boolean(editingLounge)} /></label>
+                <label>Berlaku mulai<input type="date" value={capacityDraft.effectiveFrom} onChange={(e) => setCapacityDraft({ ...capacityDraft, effectiveFrom: e.target.value })} required={Boolean(editingLounge)} /></label>
+                <label className="full">Alasan perubahan kapasitas<textarea value={capacityDraft.reason} onChange={(e) => setCapacityDraft({ ...capacityDraft, reason: e.target.value })} placeholder="Contoh: penambahan area seating" /></label>
+                {editingLounge && loungePriceHistory.filter((item) => item.loungeId === editingLounge).length > 0 && <div className="full formulaNote"><b>Riwayat Harga / Agreement</b>{loungePriceHistory.filter((item) => item.loungeId === editingLounge).sort((a,b) => b.effectiveFrom.localeCompare(a.effectiveFrom)).map((item) => <div key={item.id}>{item.effectiveFrom} — {item.effectiveTo || "∞"} · {cash(item.price, item.currency)}</div>)}</div>}
+              </>)}
             </div>
             <div className="modalActions">
               <button type="button" onClick={() => setShowLoungeForm(false)}>

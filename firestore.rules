@@ -27,8 +27,12 @@ service cloud.firestore {
     }
     match /loungeCapacityHistory/{id} {
       allow read: if active() && (roleIs(['Super Admin','Admin','HO Admin','Report Viewer']) || assignedLounge(resource.data));
-      allow create: if active() && (roleIs(['Super Admin','Admin']) || (roleIs(['Lounge Officer','Lounge Manager']) && assignedLounge(request.resource.data)));
-      allow update: if active() && (roleIs(['Super Admin','Admin']) || (roleIs(['Lounge Officer','Lounge Manager']) && assignedLounge(resource.data) && assignedLounge(request.resource.data)));
+      allow create, update: if active() && (roleIs(['Super Admin','Admin']) || (roleIs(['Lounge Manager']) && assignedLounge(request.resource.data)));
+      allow delete: if roleIs(['Super Admin','Admin']);
+    }
+    match /loungePriceHistory/{id} {
+      allow read: if active() && (roleIs(['Super Admin','Admin','HO Admin','Report Viewer']) || assignedLounge(resource.data));
+      allow create, update: if active() && (roleIs(['Super Admin','Admin']) || (roleIs(['Lounge Manager']) && assignedLounge(request.resource.data)));
       allow delete: if roleIs(['Super Admin','Admin']);
     }
     match /roles/{id} { allow read: if active(); allow write: if roleIs(['Super Admin']); }

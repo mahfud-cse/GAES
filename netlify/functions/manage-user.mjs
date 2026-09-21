@@ -115,16 +115,6 @@ export default async (request) => {
     ) {
       return json(400, { error: "Email, username, atau role tidak valid." });
     }
-    const loungeScopedRole = nextRole === "Lounge Officer" || nextRole === "Lounge Manager";
-    if (loungeScopedRole && !String(input.loungeId || "").trim())
-      return json(400, { error: "Assigned Lounge wajib diisi untuk akun petugas lounge." });
-    if (loungeScopedRole) {
-      const lounge = await db.collection("lounges").doc(String(input.loungeId)).get();
-      if (!lounge.exists) return json(400, { error: "Assigned Lounge tidak ditemukan." });
-      const loungeData = lounge.data() || {};
-      if (input.station && input.station !== "ALL" && loungeData.airport !== input.station)
-        return json(400, { error: "Assigned Lounge tidak sesuai dengan station akun." });
-    }
     if (username !== before.username) {
       const owner = await db.collection("usernames").doc(username).get();
       if (owner.exists && owner.data()?.uid !== uid)

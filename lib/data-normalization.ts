@@ -157,6 +157,25 @@ export function normalizeLoungeCapacity(row: Row) {
   };
 }
 
+export function normalizeLoungePrice(row: Row) {
+  const loungeId = text(row.loungeId ?? row["Lounge ID"]);
+  const effectiveFrom = isoDate(row.effectiveFrom ?? row["Tanggal Mulai"]);
+  const effectiveTo = isoDate(row.effectiveTo ?? row["Tanggal Berakhir"]);
+  const price = numberValue(row.price ?? row["Harga per Pax"]);
+  const currency = upper(row.currency ?? row.Currency, "IDR");
+  if (!loungeId || !effectiveFrom || !effectiveTo || price < 0) return null;
+  return {
+    id: text(row.id) || `price-${loungeId}-${effectiveFrom}-${effectiveTo}`,
+    loungeId,
+    price,
+    currency,
+    effectiveFrom,
+    effectiveTo,
+    updatedBy: text(row.updatedBy, "System"),
+    updatedAt: text(row.updatedAt, ""),
+  };
+}
+
 export function normalizeVisitor(row: Row) {
   const id = text(row.id);
   const name = text(row.name);

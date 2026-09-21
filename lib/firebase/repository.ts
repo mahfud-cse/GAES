@@ -26,7 +26,8 @@ export type GaesCollection =
   | "auditLogs"
   | "portalConfiguration"
   | "monitoringRows"
-  | "loungeCapacityHistory";
+  | "loungeCapacityHistory"
+  | "loungePriceHistory";
 
 function clean<T extends Record<string, unknown>>(value: T): T {
   const sanitized = Object.fromEntries(
@@ -100,6 +101,19 @@ export function subscribeLoungeCapacityHistory<T>(
           ...item.data(),
         })) as T[],
       ),
+    (error) => onError?.(error),
+  );
+}
+
+export function subscribeLoungePriceHistory<T>(
+  loungeId: string | null,
+  callback: (rows: T[]) => void,
+  onError?: (error: Error) => void,
+) {
+  if (!db || !loungeId) return () => undefined;
+  return onSnapshot(
+    query(collection(db, "loungePriceHistory"), where("loungeId", "==", loungeId)),
+    (snapshot) => callback(snapshot.docs.map((item: QueryDocumentSnapshot<DocumentData>) => ({ id: item.id, ...item.data() })) as T[]),
     (error) => onError?.(error),
   );
 }
