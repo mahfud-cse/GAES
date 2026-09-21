@@ -1353,7 +1353,21 @@ function getApplicableLoungePrice(lounge: Lounge, date: string) {
   const periods = [...allPeriods]
     .filter((period) => dateInPeriod(date, period.start, period.end))
     .sort((a, b) => b.start.localeCompare(a.start));
-  return periods[0]?.price ?? 0;
+  return periods[0]?.price ?? lounge.price;
+}
+
+function getVisitorApplicablePrice(
+  visitor: Visitor,
+  lounges: Lounge[],
+) {
+  const travelDate = visitor.travelDate || visitor.date;
+  const lounge = lounges.find(
+    (item) =>
+      item.id === visitor.lounge ||
+      (item.airport === visitor.airport && item.name === visitor.lounge),
+  );
+  if (!lounge || !travelDate) return visitor.price;
+  return getApplicableLoungePrice(lounge, travelDate);
 }
 
 function getApplicableLoungeCapacity(lounge: Lounge, date: string) {
@@ -3341,7 +3355,8 @@ export default function Home() {
       businessPax: dashboardBusinessClassVisitors,
       economyPax: dashboardEconomyClassVisitors,
       cost: dashboardAcceptedVisitors.reduce(
-        (total, visitor) => total + visitor.price,
+        (total, visitor) =>
+          total + getVisitorApplicablePrice(visitor, lounges),
         0,
       ),
     },
