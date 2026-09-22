@@ -39,11 +39,22 @@ export function httpError(status, message, code) {
 }
 
 export async function requireUser(request, roles = []) {
-  const token = request.headers
-    .get("authorization")
-    ?.replace(/^Bearer\s+/i, "");
-  if (!token) throw httpError(401, "Authentication required.");
-  const decoded = await targetAuth().verifyIdToken(token);
+  const token =
+    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
+    request.headers.get("x-firebase-id-token") ||
+    "";
+  if (!token) throw httpError(401, "Authentication required.", "auth/missing-id-token");
+
+  let decoded;
+  try {
+    decoded = await targetAuth().verifyIdToken(token);
+  } catch (error) {
+    // Backend authentication failures are client-auth failures, not Firestore
+    // permission failures. Returning 401 lets the browser refresh its Firebase
+    // ID token once and retry the same operation safely.
+    throw httpError(401, "Firebase authentication token is invalid or expired.", error?.code || "auth/invalid-id-token");
+  }
+
   const profile = await targetDb().collection("users").doc(decoded.uid).get();
   const data = profile.data() || {};
   if (!data.active || (roles.length && !roles.includes(data.role))) {

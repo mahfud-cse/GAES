@@ -5,15 +5,41 @@ async function call<T>(
   user: User | null,
   body: unknown,
 ): Promise<T> {
-  const token = user ? await user.getIdToken() : "";
-  const response = await fetch(`/.netlify/functions/${path}`, {
+  let token = user ? await user.getIdToken() : "";
+  let response = await fetch(`/.netlify/functions/${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(token
+        ? {
+            Authorization: `Bearer ${token}`,
+            "X-Firebase-ID-Token": token,
+          }
+        : {}),
     },
     body: JSON.stringify(body),
   });
+
+  // A Firebase ID token can expire while the browser session is still alive.
+  // Retry one time with a freshly refreshed token instead of surfacing a
+  // misleading HTTP 401 to an administrator who is visibly signed in.
+  if (response.status === 401 && user) {
+    token = await user.getIdToken(true);
+    response = await fetch(`/.netlify/functions/${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token
+          ? {
+              Authorization: `Bearer ${token}`,
+              "X-Firebase-ID-Token": token,
+            }
+          : {}),
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
   const raw = await response.text();
   let payload: Record<string, unknown> = {};
   try {
