@@ -1,6 +1,6 @@
 {
   "name": "lounge-tenant-test",
-  "version": "0.22.0",
+  "version": "0.22.3",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -16,9 +16,10 @@
   },
   "dependencies": {
     "@zxing/browser": "^0.1.5",
+    "@zxing/library": "^0.21.3",
     "drizzle-orm": "0.45.2",
     "firebase": "^12.19.0",
-    "firebase-admin": "^14.4.0",
+    "firebase-admin": "13.7.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "next": "16.2.6",

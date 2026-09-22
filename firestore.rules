@@ -6,6 +6,7 @@ service cloud.firestore {
     function active() { return signedIn() && profile().active == true; }
     function roleIs(roles) { return active() && profile().role in roles; }
     function sameStation(data) { return profile().station == 'ALL' || data.airport == profile().station || data.station == profile().station; }
+    function assignedLounge(data) { return profile().loungeId != null && profile().loungeId != '' && data.loungeId == profile().loungeId; }
 
     match /usernames/{username} { allow read, write: if false; }
     match /users/{uid} {
@@ -21,12 +22,28 @@ service cloud.firestore {
     match /{master}/{id} {
       allow read: if active() && master in ['lounges','flights','stations','entitlements','airlines','monitoringRows','integrationRuns'];
       allow write: if master in ['lounges','flights','stations','entitlements','airlines','monitoringRows'] && roleIs(['Super Admin','Admin']);
+      allow create: if master == 'monitoringRows' && roleIs(['BO Admin']) && sameStation(request.resource.data);
+      allow update: if master == 'monitoringRows' && roleIs(['BO Admin']) && sameStation(resource.data) && sameStation(request.resource.data);
+    }
+    match /loungeCapacityHistory/{id} {
+      allow read: if active() && (roleIs(['Super Admin','Admin','HO Admin','Report Viewer']) || assignedLounge(resource.data));
+      allow create, update: if active() && (roleIs(['Super Admin','Admin']) || (roleIs(['Lounge Manager']) && assignedLounge(request.resource.data)));
+      allow delete: if roleIs(['Super Admin','Admin']);
+    }
+    match /loungePriceHistory/{id} {
+      allow read: if active() && (roleIs(['Super Admin','Admin','HO Admin','Report Viewer']) || assignedLounge(resource.data));
+      allow create, update: if active() && (roleIs(['Super Admin','Admin']) || (roleIs(['Lounge Manager']) && assignedLounge(request.resource.data)));
+      allow delete: if roleIs(['Super Admin','Admin']);
     }
     match /roles/{id} { allow read: if active(); allow write: if roleIs(['Super Admin']); }
     match /portalConfiguration/{id} { allow read: if active(); allow write: if roleIs(['Super Admin']); }
     match /notifications/{id} {
       allow read: if active() && resource.data.userId == request.auth.uid;
       allow update: if active() && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt','active','updatedAt']);
+      allow create, delete: if false;
+    }
+    match /passwordResetRequests/{id} {
+      allow read, update: if roleIs(['Super Admin','Admin']);
       allow create, delete: if false;
     }
     match /auditLogs/{id} { allow read: if roleIs(['Super Admin','Admin']); allow write: if false; }

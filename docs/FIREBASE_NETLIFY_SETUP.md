@@ -12,6 +12,8 @@ Use project `gaes-5d8c3`, Firestore region `asia-southeast2`, production mode, a
 
 Create every variable listed in `.env.example` in **Netlify → Site configuration → Environment variables**. Public web configuration uses `NEXT_PUBLIC_FIREBASE_*`. Both service-account private keys stay in Netlify only.
 
+Project IDs and `NEXT_PUBLIC_FIREBASE_*` values are expected to appear in the browser bundle and are listed in `SECRETS_SCAN_OMIT_KEYS` inside `netlify.toml`. `FIREBASE_PRIVATE_KEY`, `SOURCE_FIREBASE_PRIVATE_KEY`, and `INITIAL_SETUP_TOKEN` remain scanned and must never be committed.
+
 For the source project, create a dedicated service account with read-only access to:
 
 `portalData/lounges/records/{documentId}`
