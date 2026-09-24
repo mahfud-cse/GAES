@@ -1665,7 +1665,7 @@ export default function Home() {
       PassengerVolume[]
     >([]),
     [passengerVolumeFileName, setPassengerVolumeFileName] = useState(""),
-    [dashboardPeriod, setDashboardPeriod] = useState("2026-08"),
+    [dashboardPeriod, setDashboardPeriod] = useState("All Periods"),
     [dashboardArea, setDashboardArea] = useState("All Areas"),
     [dashboardBo, setDashboardBo] = useState("All BO"),
     [dashboardProvider, setDashboardProvider] = useState("All Providers"),
@@ -2500,8 +2500,9 @@ export default function Home() {
         .map(String)
         .join(" ");
       const searchedOrigin =
-        preamble.match(/Departing\s+From\s*:\s*([A-Z]{3})/i)?.[1]?.toUpperCase() ||
-        station;
+        preamble
+          .match(/Departing\s+From\s*:\s*([A-Z]{3})/i)?.[1]
+          ?.toUpperCase() || station;
       const incoming: PassengerVolume[] = [],
         errors: string[] = [];
       let activeDate = "";
@@ -2509,7 +2510,9 @@ export default function Home() {
         const rowNumber = headerIndex + offset + 2;
         const markerDate = importDate(row[dateCol >= 0 ? dateCol : 0]);
         if (markerDate) activeDate = markerDate;
-        const flight = normalizedText(row[flightCol]).toUpperCase().replace(/\s/g, "");
+        const flight = normalizedText(row[flightCol])
+          .toUpperCase()
+          .replace(/\s/g, "");
         if (!flight) return;
         const capacity = cabinCounts(row[capacityCol]);
         const booked = cabinCounts(row[bookedCol]);
@@ -2530,9 +2533,18 @@ export default function Home() {
           capacityF: capacity.F,
           capacityC: capacity.C,
           capacityY: capacity.Y,
-          passengerF: fCol >= 0 ? cabinCounts(row[fCol]).F || normalizedNumber(row[fCol]) : booked.F,
-          passengerC: cCol >= 0 ? cabinCounts(row[cCol]).C || normalizedNumber(row[cCol]) : booked.C,
-          passengerY: yCol >= 0 ? cabinCounts(row[yCol]).Y || normalizedNumber(row[yCol]) : booked.Y,
+          passengerF:
+            fCol >= 0
+              ? cabinCounts(row[fCol]).F || normalizedNumber(row[fCol])
+              : booked.F,
+          passengerC:
+            cCol >= 0
+              ? cabinCounts(row[cCol]).C || normalizedNumber(row[cCol])
+              : booked.C,
+          passengerY:
+            yCol >= 0
+              ? cabinCounts(row[yCol]).Y || normalizedNumber(row[yCol])
+              : booked.Y,
           source: "BO Import",
           sourceFile: file.name,
           uploadedBy: currentAccount?.name || role,
@@ -3414,15 +3426,38 @@ export default function Home() {
           )),
     ),
     cabinClass = (visitor: Visitor) => {
-      const value = String(visitor.cabin || "").trim().toUpperCase();
-      if (["FIRST", "FIRST CLASS", "F", "P"].includes(value)) return "First Class";
-      if (["BUSINESS", "BUSINESS CLASS", "C", "J"].includes(value)) return "Business Class";
-      if (["ECONOMY", "ECONOMY CLASS", "Y", "M", "W"].includes(value)) return "Economy Class";
+      const value = String(visitor.cabin || "")
+        .trim()
+        .toUpperCase();
+      if (["FIRST", "FIRST CLASS", "F", "P"].includes(value))
+        return "First Class";
+      if (["BUSINESS", "BUSINESS CLASS", "C", "J"].includes(value))
+        return "Business Class";
+      if (["ECONOMY", "ECONOMY CLASS", "Y", "M", "W"].includes(value))
+        return "Economy Class";
+      if (visitor.category === "Business Class") return "Business Class";
+      if (
+        [
+          "Platinum",
+          "Elite Plus",
+          "Partner Airline / SkyTeam",
+          "Kerjasama MPA",
+          "DPR",
+          "EMD",
+          "Paid Access",
+        ].includes(visitor.category)
+      )
+        return "Economy Class";
       return "";
     },
     loungeCapacityForDate = (lounge: Lounge, date: string) => {
       const history = (lounge.capacityHistory || [])
-        .filter((item) => item.capacity >= 0 && item.effectiveFrom && item.effectiveFrom <= date)
+        .filter(
+          (item) =>
+            item.capacity >= 0 &&
+            item.effectiveFrom &&
+            item.effectiveFrom <= date,
+        )
         .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
       return history[0]?.capacity ?? lounge.capacity ?? 0;
     },
@@ -3430,8 +3465,7 @@ export default function Home() {
       const travelDate = visitor.travelDate || visitor.date;
       const lounge = lounges.find(
         (item) =>
-          item.airport === visitor.airport &&
-          item.name === visitor.lounge,
+          item.airport === visitor.airport && item.name === visitor.lounge,
       );
       if (!lounge) return visitor.price;
       const periods = (lounge.pricePeriods || []).filter(
@@ -3442,10 +3476,17 @@ export default function Home() {
           travelDate <= period.end,
       );
       if (periods.length) {
-        const current = periods.sort((a, b) => b.start.localeCompare(a.start))[0];
+        const current = periods.sort((a, b) =>
+          b.start.localeCompare(a.start),
+        )[0];
         return current.price;
       }
-      if (lounge.start && lounge.end && travelDate >= lounge.start && travelDate <= lounge.end) {
+      if (
+        lounge.start &&
+        lounge.end &&
+        travelDate >= lounge.start &&
+        travelDate <= lounge.end
+      ) {
         return lounge.price;
       }
       return visitor.price;
@@ -3553,6 +3594,7 @@ export default function Home() {
     dashboardTrend = (() => {
       const rows = visitors.filter(
         (visitor) =>
+          visitor.boStatus === "Accepted" &&
           (dashboardPeriod === "All Periods" ||
             (visitor.travelDate || visitor.date).startsWith(dashboardPeriod)) &&
           (dashboardBo === "All BO" || visitor.airport === dashboardBo) &&
@@ -4368,20 +4410,23 @@ export default function Home() {
       });
       return;
     }
-    const pricePeriods = (loungeDraft.pricePeriods?.length
-      ? loungeDraft.pricePeriods
-      : [{
-          id: `${editingLounge || crypto.randomUUID()}-default`,
-          currency: loungeDraft.currency,
-          price: loungeDraft.price,
-          start: loungeDraft.start,
-          end: loungeDraft.end,
-        }])
-      .map((period) => ({
-        ...period,
-        currency: (period.currency || loungeDraft.currency).toUpperCase(),
-        price: Number(period.price) || 0,
-      }));
+    const pricePeriods = (
+      loungeDraft.pricePeriods?.length
+        ? loungeDraft.pricePeriods
+        : [
+            {
+              id: `${editingLounge || crypto.randomUUID()}-default`,
+              currency: loungeDraft.currency,
+              price: loungeDraft.price,
+              start: loungeDraft.start,
+              end: loungeDraft.end,
+            },
+          ]
+    ).map((period) => ({
+      ...period,
+      currency: (period.currency || loungeDraft.currency).toUpperCase(),
+      price: Number(period.price) || 0,
+    }));
     const invalidPricePeriod = pricePeriods.some(
       (period) =>
         !period.start ||
@@ -4413,7 +4458,11 @@ export default function Home() {
     const latestCapacity = capacityHistory
       .slice()
       .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
-    if (nextCapacity > 0 && (nextCapacity !== previousCapacity || latestCapacity?.effectiveFrom !== effectiveFrom)) {
+    if (
+      nextCapacity > 0 &&
+      (nextCapacity !== previousCapacity ||
+        latestCapacity?.effectiveFrom !== effectiveFrom)
+    ) {
       capacityHistory.push({
         id: crypto.randomUUID(),
         capacity: nextCapacity,
@@ -4999,10 +5048,7 @@ export default function Home() {
         <section className="loginPanel">
           <form className="loginCard" onSubmit={login}>
             <div className="loginBrand">
-              <img
-                src="/garuda-indonesia-logo.png"
-                alt="Garuda Indonesia"
-              />
+              <img src="/garuda-indonesia-logo.png" alt="Garuda Indonesia" />
               <h1>Garuda Access Entitlement System</h1>
             </div>
             <h2>Sign In</h2>
@@ -5118,10 +5164,7 @@ export default function Home() {
       <header className="top">
         <div className="brand">
           <div className="officialLogo">
-            <img
-              src="/garuda-indonesia-logo.png"
-              alt="Garuda Indonesia"
-            />
+            <img src="/garuda-indonesia-logo.png" alt="Garuda Indonesia" />
           </div>
           <div>
             <b>GARUDA ACCESS ENTITLEMENT SYSTEM</b>
@@ -5136,8 +5179,8 @@ export default function Home() {
               onChange={(event) => setDashboardPeriod(event.target.value)}
             >
               {[
-                "All Periods",
                 ...new Set([
+                  "All Periods",
                   dashboardPeriod,
                   ...monitoringRows.map((row) => row.period),
                   ...passengerVolumes.map((row) => row.period),
@@ -5153,11 +5196,12 @@ export default function Home() {
             aria-label={tr("Notifikasi", "Notifications")}
             onClick={() => setShowInbox(true)}
           >
-            ♢
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+            </svg>
             <strong>
-              {visitors.filter(
-                (visitor) => visitor.boStatus !== "Accepted",
-              ).length + portalNotifications.length}
+              {visitors.filter((visitor) => visitor.boStatus !== "Accepted")
+                .length + portalNotifications.length}
             </strong>
           </button>
           <button
@@ -5202,7 +5246,6 @@ export default function Home() {
                 <b>{currentAccount.name}</b>
                 <small>{role}</small>
               </span>
-              <em>⌄</em>
             </button>
             {showProfileMenu && (
               <div className="profileMenu">
@@ -5420,38 +5463,33 @@ export default function Home() {
                       records <i>View data →</i>
                     </small>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFlightTab("Passenger Volume");
-                      setTab("flights");
-                    }}
-                  >
+                  <button type="button" onClick={() => openDashboardVisitors()}>
                     <span>First Class Pax</span>
-                    <b>{dashboardTotals.firstPax.toLocaleString("id-ID")}</b>
-                    <small>Departed passenger volume <i>View data →</i></small>
+                    <b>{dashboardTotals.firstLounge.toLocaleString("id-ID")}</b>
+                    <small>
+                      Accepted lounge visitors <i>View data →</i>
+                    </small>
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setFlightTab("Passenger Volume");
-                      setTab("flights");
-                    }}
+                    onClick={() => openDashboardVisitors("Business Class")}
                   >
                     <span>Business Class Pax</span>
-                    <b>{dashboardTotals.businessPax.toLocaleString("id-ID")}</b>
-                    <small>Departed passenger volume <i>View data →</i></small>
+                    <b>
+                      {dashboardTotals.businessLounge.toLocaleString("id-ID")}
+                    </b>
+                    <small>
+                      Accepted lounge visitors <i>View data →</i>
+                    </small>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFlightTab("Passenger Volume");
-                      setTab("flights");
-                    }}
-                  >
+                  <button type="button" onClick={() => openDashboardVisitors()}>
                     <span>Economy Class Pax</span>
-                    <b>{dashboardTotals.economyPax.toLocaleString("id-ID")}</b>
-                    <small>Departed passenger volume <i>View data →</i></small>
+                    <b>
+                      {dashboardTotals.economyLounge.toLocaleString("id-ID")}
+                    </b>
+                    <small>
+                      Accepted lounge visitors <i>View data →</i>
+                    </small>
                   </button>
                   <button type="button" onClick={() => openDashboardReport()}>
                     <span>Estimated Cost</span>
@@ -5973,6 +6011,25 @@ export default function Home() {
                       Pilih tanggal penerbangan sebelum memulai scan.
                     </small>
                   </label>
+                  <label className="accessCategoryStep">
+                    Kategori Akses
+                    <select
+                      value={category}
+                      onChange={(e) => {
+                        setCategory(e.target.value);
+                        setReference("");
+                        setMemberStatus("Belum diverifikasi");
+                      }}
+                    >
+                      {cats.map((x) => (
+                        <option key={x}>{x}</option>
+                      ))}
+                    </select>
+                    <small>
+                      Pilih kategori lebih dahulu agar aturan akses yang sesuai
+                      diterapkan sejak proses scan.
+                    </small>
+                  </label>
                   <div className="selectRow">
                     <label>
                       Airport
@@ -6258,21 +6315,6 @@ export default function Home() {
                         }
                         readOnly
                       />
-                    </label>
-                    <label>
-                      Kategori Akses
-                      <select
-                        value={category}
-                        onChange={(e) => {
-                          setCategory(e.target.value);
-                          setReference("");
-                          setMemberStatus("Belum diverifikasi");
-                        }}
-                      >
-                        {cats.map((x) => (
-                          <option key={x}>{x}</option>
-                        ))}
-                      </select>
                     </label>
                     {required && (
                       <label className="full">
@@ -7571,7 +7613,9 @@ export default function Home() {
               />
               <div className="loungeGrid">
                 {filteredLounges.map((l) => {
-                  const endTime = l.end ? new Date(`${l.end}T23:59:59`).getTime() : NaN;
+                  const endTime = l.end
+                    ? new Date(`${l.end}T23:59:59`).getTime()
+                    : NaN;
                   const d = Number.isFinite(endTime)
                     ? Math.ceil((endTime - Date.now()) / 86400000)
                     : NaN;
@@ -7596,10 +7640,18 @@ export default function Home() {
                         <p>
                           Kapasitas lounge
                           <br />
-                          <b>{loungeCapacityForDate(l, localDate()).toLocaleString("id-ID")} pax</b>
+                          <b>
+                            {loungeCapacityForDate(
+                              l,
+                              localDate(),
+                            ).toLocaleString("id-ID")}{" "}
+                            pax
+                          </b>
                         </p>
                         {l.pricePeriods && l.pricePeriods.length > 1 && (
-                          <p><b>{l.pricePeriods.length} periode harga</b></p>
+                          <p>
+                            <b>{l.pricePeriods.length} periode harga</b>
+                          </p>
                         )}
                         {canManageMaster && (
                           <div className="rowAct">
@@ -7619,19 +7671,26 @@ export default function Home() {
                                   capacity: l.capacity || 0,
                                   capacityEffectiveFrom:
                                     l.capacityEffectiveFrom ||
-                                    l.capacityHistory?.slice().sort((a, b) =>
-                                      b.effectiveFrom.localeCompare(a.effectiveFrom),
-                                    )[0]?.effectiveFrom || localDate(),
+                                    l.capacityHistory
+                                      ?.slice()
+                                      .sort((a, b) =>
+                                        b.effectiveFrom.localeCompare(
+                                          a.effectiveFrom,
+                                        ),
+                                      )[0]?.effectiveFrom ||
+                                    localDate(),
                                   capacityHistory: l.capacityHistory || [],
                                   pricePeriods: l.pricePeriods?.length
                                     ? l.pricePeriods
-                                    : [{
-                                        id: `${l.id}-default`,
-                                        currency: l.currency,
-                                        price: l.price,
-                                        start: l.start,
-                                        end: l.end,
-                                      }],
+                                    : [
+                                        {
+                                          id: `${l.id}-default`,
+                                          currency: l.currency,
+                                          price: l.price,
+                                          start: l.start,
+                                          end: l.end,
+                                        },
+                                      ],
                                 });
                                 setShowLoungeForm(true);
                               }}
@@ -9438,9 +9497,7 @@ export default function Home() {
                         onChange={setFlightStatusFilter}
                         options={[
                           "Semua",
-                          ...new Set(
-                            passengerVolumes.map((row) => row.status),
-                          ),
+                          ...new Set(passengerVolumes.map((row) => row.status)),
                         ]}
                         placeholder="Flight Status"
                       />
@@ -9457,7 +9514,7 @@ export default function Home() {
                     <section className="passengerPreview">
                       <div>
                         <span>
-                          Preview <b>{passengerVolumeFileName}</b> · {" "}
+                          Preview <b>{passengerVolumeFileName}</b> ·{" "}
                           {passengerVolumePreview.length} flight
                         </span>
                         <div className="rowAct">
@@ -9494,10 +9551,18 @@ export default function Home() {
                               <tr key={row.id}>
                                 <td>{row.flightDate}</td>
                                 <td>{row.flight}</td>
-                                <td>{row.origin}–{row.destination}</td>
+                                <td>
+                                  {row.origin}–{row.destination}
+                                </td>
                                 <td>{row.status}</td>
-                                <td>{row.capacityF}/{row.capacityC}/{row.capacityY}</td>
-                                <td>{row.passengerF}/{row.passengerC}/{row.passengerY}</td>
+                                <td>
+                                  {row.capacityF}/{row.capacityC}/
+                                  {row.capacityY}
+                                </td>
+                                <td>
+                                  {row.passengerF}/{row.passengerC}/
+                                  {row.passengerY}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -9572,12 +9637,19 @@ export default function Home() {
                             <tr key={row.id}>
                               <td>{row.flightDate}</td>
                               <td>{row.station}</td>
-                              <td><b>{row.flight}</b></td>
+                              <td>
+                                <b>{row.flight}</b>
+                              </td>
                               <td>{row.destination}</td>
                               <td>{row.status}</td>
                               <td>{row.aircraft || "—"}</td>
-                              <td>{row.capacityF}/{row.capacityC}/{row.capacityY}</td>
-                              <td>{row.passengerF}/{row.passengerC}/{row.passengerY}</td>
+                              <td>
+                                {row.capacityF}/{row.capacityC}/{row.capacityY}
+                              </td>
+                              <td>
+                                {row.passengerF}/{row.passengerC}/
+                                {row.passengerY}
+                              </td>
                               <td>{row.sourceFile || row.source}</td>
                             </tr>
                           ))}
@@ -9780,7 +9852,13 @@ export default function Home() {
                   )}
                 </article>
               )}
-              <div className={flightTab === "Passenger Volume" ? "passengerVolumeHidden" : "flightTools"}>
+              <div
+                className={
+                  flightTab === "Passenger Volume"
+                    ? "passengerVolumeHidden"
+                    : "flightTools"
+                }
+              >
                 <button type="button" onClick={downloadFlightTemplate}>
                   Unduh Template Flight
                 </button>
@@ -9832,7 +9910,13 @@ export default function Home() {
                   dan tanggal dapat dibaca dari header.
                 </span>
               </div>
-              <div className={flightTab === "Passenger Volume" ? "passengerVolumeHidden" : "fallbackExplanation"}>
+              <div
+                className={
+                  flightTab === "Passenger Volume"
+                    ? "passengerVolumeHidden"
+                    : "fallbackExplanation"
+                }
+              >
                 <b>Passenger List — Manual Import</b>
                 <span>
                   Dipakai oleh petugas berwenang hanya jika Passenger List/DCS
@@ -9855,14 +9939,22 @@ export default function Home() {
                   close={() => setPassengerImportNotice("")}
                 />
               )}
-              <div className={flightTab === "Passenger Volume" ? "passengerVolumeHidden" : "info"}>
+              <div
+                className={
+                  flightTab === "Passenger Volume"
+                    ? "passengerVolumeHidden"
+                    : "info"
+                }
+              >
                 <b>Hak pengelolaan data</b>
                 <br />
                 Super Admin, Admin/HO, dan BO dapat upload atau menambah flight.
                 Lounge Officer dapat menambah flight operasional station-nya,
                 tetapi perubahan ETD/status tetap dibatasi kepada Admin/HO/BO.
               </div>
-              <article className={`card tableCard flightCard ${flightTab === "Passenger Volume" ? "passengerVolumeHidden" : ""}`}>
+              <article
+                className={`card tableCard flightCard ${flightTab === "Passenger Volume" ? "passengerVolumeHidden" : ""}`}
+              >
                 <div className="filters threeFilters">
                   <FilterField label="Flight Date">
                     <input
@@ -12118,7 +12210,10 @@ export default function Home() {
                   min="0"
                   value={loungeDraft.capacity || 0}
                   onChange={(e) =>
-                    setLoungeDraft({ ...loungeDraft, capacity: Number(e.target.value) || 0 })
+                    setLoungeDraft({
+                      ...loungeDraft,
+                      capacity: Number(e.target.value) || 0,
+                    })
                   }
                 />
               </label>
@@ -12128,25 +12223,111 @@ export default function Home() {
                   type="date"
                   value={loungeDraft.capacityEffectiveFrom || localDate()}
                   onChange={(e) =>
-                    setLoungeDraft({ ...loungeDraft, capacityEffectiveFrom: e.target.value })
+                    setLoungeDraft({
+                      ...loungeDraft,
+                      capacityEffectiveFrom: e.target.value,
+                    })
                   }
                 />
               </label>
               <div className="full" style={{ marginTop: 8 }}>
                 <strong>Periode Harga</strong>
                 <div className="info" style={{ marginTop: 8 }}>
-                  Harga dapat memiliki beberapa periode. Dashboard menggunakan harga yang berlaku pada Date of Travel visitor.
+                  Harga dapat memiliki beberapa periode. Dashboard menggunakan
+                  harga yang berlaku pada Date of Travel visitor.
                 </div>
                 {(loungeDraft.pricePeriods?.length
                   ? loungeDraft.pricePeriods
-                  : [{ id: "default", currency: loungeDraft.currency, price: loungeDraft.price, start: loungeDraft.start, end: loungeDraft.end }]
+                  : [
+                      {
+                        id: "default",
+                        currency: loungeDraft.currency,
+                        price: loungeDraft.price,
+                        start: loungeDraft.start,
+                        end: loungeDraft.end,
+                      },
+                    ]
                 ).map((period, index, source) => (
-                  <div className="form" key={period.id} style={{ marginTop: 8 }}>
-                    <label>Currency<input value={period.currency} onChange={(e) => { const rows = source.map((item) => ({ ...item })); rows[index].currency = e.target.value.toUpperCase(); setLoungeDraft({ ...loungeDraft, pricePeriods: rows }); }} /></label>
-                    <label>Harga per Pax<input type="number" min="0" value={period.price} onChange={(e) => { const rows = source.map((item) => ({ ...item })); rows[index].price = Number(e.target.value) || 0; setLoungeDraft({ ...loungeDraft, pricePeriods: rows }); }} /></label>
-                    <label>Tanggal Mulai<input type="date" value={period.start} onChange={(e) => { const rows = source.map((item) => ({ ...item })); rows[index].start = e.target.value; setLoungeDraft({ ...loungeDraft, pricePeriods: rows }); }} /></label>
-                    <label>Tanggal Berakhir<input type="date" value={period.end} onChange={(e) => { const rows = source.map((item) => ({ ...item })); rows[index].end = e.target.value; setLoungeDraft({ ...loungeDraft, pricePeriods: rows }); }} /></label>
-                    {source.length > 1 && <button type="button" onClick={() => setLoungeDraft({ ...loungeDraft, pricePeriods: source.filter((_, rowIndex) => rowIndex !== index) })}>Hapus Periode</button>}
+                  <div
+                    className="form"
+                    key={period.id}
+                    style={{ marginTop: 8 }}
+                  >
+                    <label>
+                      Currency
+                      <input
+                        value={period.currency}
+                        onChange={(e) => {
+                          const rows = source.map((item) => ({ ...item }));
+                          rows[index].currency = e.target.value.toUpperCase();
+                          setLoungeDraft({
+                            ...loungeDraft,
+                            pricePeriods: rows,
+                          });
+                        }}
+                      />
+                    </label>
+                    <label>
+                      Harga per Pax
+                      <input
+                        type="number"
+                        min="0"
+                        value={period.price}
+                        onChange={(e) => {
+                          const rows = source.map((item) => ({ ...item }));
+                          rows[index].price = Number(e.target.value) || 0;
+                          setLoungeDraft({
+                            ...loungeDraft,
+                            pricePeriods: rows,
+                          });
+                        }}
+                      />
+                    </label>
+                    <label>
+                      Tanggal Mulai
+                      <input
+                        type="date"
+                        value={period.start}
+                        onChange={(e) => {
+                          const rows = source.map((item) => ({ ...item }));
+                          rows[index].start = e.target.value;
+                          setLoungeDraft({
+                            ...loungeDraft,
+                            pricePeriods: rows,
+                          });
+                        }}
+                      />
+                    </label>
+                    <label>
+                      Tanggal Berakhir
+                      <input
+                        type="date"
+                        value={period.end}
+                        onChange={(e) => {
+                          const rows = source.map((item) => ({ ...item }));
+                          rows[index].end = e.target.value;
+                          setLoungeDraft({
+                            ...loungeDraft,
+                            pricePeriods: rows,
+                          });
+                        }}
+                      />
+                    </label>
+                    {source.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLoungeDraft({
+                            ...loungeDraft,
+                            pricePeriods: source.filter(
+                              (_, rowIndex) => rowIndex !== index,
+                            ),
+                          })
+                        }
+                      >
+                        Hapus Periode
+                      </button>
+                    )}
                   </div>
                 ))}
                 <button
@@ -12154,9 +12335,25 @@ export default function Home() {
                   onClick={() => {
                     const rows = loungeDraft.pricePeriods?.length
                       ? [...loungeDraft.pricePeriods]
-                      : [{ id: crypto.randomUUID(), currency: loungeDraft.currency, price: loungeDraft.price, start: loungeDraft.start, end: loungeDraft.end }];
-                    const nextStart = loungeDraft.end ? addDays(loungeDraft.end, 1) : localDate();
-                    rows.push({ id: crypto.randomUUID(), currency: loungeDraft.currency, price: loungeDraft.price, start: nextStart, end: addDays(nextStart, 30) });
+                      : [
+                          {
+                            id: crypto.randomUUID(),
+                            currency: loungeDraft.currency,
+                            price: loungeDraft.price,
+                            start: loungeDraft.start,
+                            end: loungeDraft.end,
+                          },
+                        ];
+                    const nextStart = loungeDraft.end
+                      ? addDays(loungeDraft.end, 1)
+                      : localDate();
+                    rows.push({
+                      id: crypto.randomUUID(),
+                      currency: loungeDraft.currency,
+                      price: loungeDraft.price,
+                      start: nextStart,
+                      end: addDays(nextStart, 30),
+                    });
                     setLoungeDraft({ ...loungeDraft, pricePeriods: rows });
                   }}
                 >
