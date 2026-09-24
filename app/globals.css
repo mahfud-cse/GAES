@@ -53,8 +53,8 @@
 }
 .dashboardKpis > button:hover,
 .dashboardKpis > button:focus-visible {
-  border-color: #58aeba;
-  box-shadow: 0 10px 28px #073b5714;
+  border-color: #2e6597;
+  box-shadow: 0 10px 28px #062b5c1f;
   transform: translateY(-2px);
 }
 .dashboardKpis span,
@@ -62,7 +62,7 @@
   color: #718991;
 }
 .dashboardKpis b {
-  color: #084d62;
+  color: #062b5c;
   font-size: 24px;
 }
 .dashboardKpis small {
@@ -71,7 +71,7 @@
   gap: 8px;
 }
 .dashboardKpis small i {
-  color: #087c96;
+  color: #2e6597;
   font-style: normal;
 }
 .dashboardGrid {
@@ -85,7 +85,7 @@
 }
 .dashboardWidget h2 {
   margin: 0 0 16px;
-  color: #084d62;
+  color: #062b5c;
   font-size: 18px;
 }
 .donutChart {
@@ -119,7 +119,7 @@
   color: #6e858f;
 }
 .donutGraphic b {
-  color: #084d62;
+  color: #062b5c;
   font-size: 20px;
 }
 .donutGraphic small {
@@ -146,7 +146,7 @@
 }
 .donutLegend button:hover,
 .donutLegend button:focus-visible {
-  background: #edf7f8;
+  background: #edf3fa;
 }
 .donutLegend i {
   width: 9px;
@@ -164,14 +164,14 @@
 }
 .utilizationDonuts {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
 .utilizationDonuts > button {
   padding: 14px;
   border: 1px solid #d8e7e9;
   border-radius: 12px;
-  background: #f5fafb;
+  background: #f4f7fb;
   display: grid;
   justify-items: center;
   gap: 7px;
@@ -180,8 +180,8 @@
 }
 .utilizationDonuts > button:hover,
 .utilizationDonuts > button:focus-visible {
-  border-color: #58aeba;
-  background: #edf8f9;
+  border-color: #2e6597;
+  background: #eaf0f8;
 }
 .donutChart.compact {
   display: block;
@@ -224,7 +224,7 @@
   border: 0;
   background: none;
   padding: 2px 0;
-  color: #087c96;
+  color: #0b3e75;
   font-weight: 600;
   text-align: left;
 }
@@ -277,7 +277,7 @@
   min-height: 8px;
   margin: auto auto 0;
   border-radius: 7px 7px 2px 2px;
-  background: linear-gradient(180deg, #27a4af, #087b98);
+  background: linear-gradient(180deg, #2e6597, #0b3e75);
 }
 .trendPlot > button small {
   white-space: nowrap;
@@ -314,7 +314,7 @@
 }
 .dashboardWorkflow button b {
   font-size: 24px;
-  color: #08778e;
+  color: #0b3e75;
 }
 .dashboardFootnote {
   margin: 14px 2px 0;
@@ -371,7 +371,7 @@
 }
 .portalSectionHead h2 {
   margin: 0 0 4px;
-  color: #084d62;
+  color: #062b5c;
 }
 .portalSectionHead p {
   margin: 0;
@@ -478,7 +478,7 @@
   place-items: center;
 }
 .translationSummary b {
-  color: #08778e;
+  color: #0b3e75;
   font-size: 20px;
 }
 .translationSummary span {
@@ -554,8 +554,8 @@
 .scopeBadge {
   padding: 9px 12px;
   border-radius: 20px;
-  background: #e5f4f6;
-  color: #08758f;
+  background: #e8eff8;
+  color: #0b3e75;
   font-size: 11px;
   font-weight: 700;
 }
@@ -669,8 +669,8 @@
   opacity: 1;
 }
 .modalActions .primary {
-  background: #087f98;
-  border-color: #087f98;
+  background: #0b3e75;
+  border-color: #0b3e75;
   color: #fff !important;
 }
 .modalActions .danger {
@@ -849,11 +849,11 @@
   top: calc(100% + 9px);
   width: 260px;
   padding: 8px;
-  border: 1px solid #d2e3e7;
+  border: 1px solid #cbd8e6;
   border-radius: 13px;
   background: #fff;
-  box-shadow: 0 18px 48px #002c3b38;
-  color: #1b4a58;
+  box-shadow: 0 18px 48px #062b5c2e;
+  color: #17324d;
 }
 .profileMenuIdentity {
   padding: 10px 11px 12px;
@@ -870,13 +870,13 @@
   margin-top: 4px;
   border-color: transparent;
   background: transparent;
-  color: #245462;
+  color: #173b63;
   text-align: left;
   display: flex;
   justify-content: space-between;
 }
 .profileMenu button:hover {
-  background: #edf7f8;
+  background: #edf3fa;
 }
 .profileMenu strong {
   min-width: 20px;
@@ -914,7 +914,7 @@
   padding: 15px;
   border: 1px solid #cee2e6;
   border-radius: 12px;
-  background: #f5fafb;
+  background: #f4f7fb;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
@@ -931,7 +931,7 @@
 .verificationActions > button {
   min-height: 40px;
   padding: 9px 16px;
-  border: 1px solid #087c96 !important;
+  border: 1px solid #0b3e75 !important;
   border-radius: 9px;
   font-weight: 700;
 }
@@ -1000,8 +1000,8 @@
 }
 .searchableOptions button:hover,
 .searchableOptions button.selected {
-  background: #dff3f4;
-  color: #08768b;
+  background: #e8eff8;
+  color: #0b3e75;
   font-weight: 400;
 }
 .searchableOptions > span {
@@ -1014,7 +1014,7 @@
 .formulaPreview {
   padding: 13px 15px;
   border-radius: 10px;
-  background: #eef7f8;
+  background: #edf3fa;
   display: grid;
   gap: 4px;
   color: #285766;
@@ -1082,8 +1082,8 @@
   min-height: 36px;
   border: 1px solid #c9dfe4;
   border-radius: 8px;
-  background: #f4fafb;
-  color: #0b708a;
+  background: #f4f7fb;
+  color: #0b3e75;
   font-weight: 800;
 }
 .clearFormula {
@@ -1121,7 +1121,7 @@
 .costToggle {
   border: 1px solid #c9dfe4;
   border-radius: 9px;
-  background: #f4fafb;
+  background: #f4f7fb;
   color: #275967;
   padding: 0 13px;
   min-height: 42px;
@@ -1228,7 +1228,7 @@
   padding: 13px 16px;
   border: 1px solid #cbe1e5;
   border-radius: 12px;
-  background: linear-gradient(100deg, #edf8f9, #fff);
+  background: linear-gradient(100deg, #edf3fa, #fff);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1240,7 +1240,7 @@
 }
 .timeStrip span,
 .trafficHead span {
-  color: #11849a;
+  color: #2e6597;
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 1.2px;
@@ -1308,7 +1308,7 @@
   font-size: 9px;
 }
 .trafficSummary b {
-  color: #0b708a;
+  color: #0b3e75;
 }
 .trafficChart {
   height: 175px;
@@ -1333,7 +1333,7 @@
   width: 70%;
   min-height: 1px;
   border-radius: 4px 4px 0 0;
-  background: linear-gradient(#15aeb6, #087493);
+  background: linear-gradient(#2e6597, #0b3e75);
   transition: height 0.2s ease;
 }
 .trafficBarCell small {
@@ -1368,8 +1368,8 @@
 .reportButtons button {
   border: 1px solid #c9dfe4;
   border-radius: 8px;
-  background: #f4fafb;
-  color: #0b708a;
+  background: #f4f7fb;
+  color: #0b3e75;
   padding: 9px 11px;
 }
 .confirmModal {
@@ -1415,7 +1415,7 @@
   gap: 3px;
 }
 .notificationList i {
-  color: #0a8da1;
+  color: #2e6597;
   font-size: 8px;
   font-style: normal;
   font-weight: 800;
@@ -1432,7 +1432,7 @@
   margin-bottom: 15px;
   padding: 12px;
   border-radius: 10px;
-  background: #eef7f8;
+  background: #edf3fa;
   display: grid;
   gap: 3px;
   color: #1d5261;
@@ -1635,7 +1635,7 @@
   justify-self: center;
   border: 0;
   background: transparent;
-  color: #087b9d;
+  color: #0b3e75;
   font-size: 12px;
   font-weight: 500;
 }
@@ -1643,7 +1643,7 @@
   padding: 15px;
   border: 1px solid #d4e4e8;
   border-radius: 12px;
-  background: #f5fafb;
+  background: #f4f7fb;
   display: grid;
   gap: 10px;
 }
@@ -1661,9 +1661,9 @@
 }
 .forgotPasswordPanel > button:last-child {
   min-height: 40px;
-  border: 1px solid #087f98;
+  border: 1px solid #0b3e75;
   border-radius: 9px;
-  background: #087f98;
+  background: #0b3e75;
   color: #fff;
   font-weight: 600;
 }
@@ -1689,15 +1689,15 @@
   padding: 14px;
   border: 1px solid #d5e5e9;
   border-radius: 12px;
-  background: #f5fafb;
+  background: #f4f7fb;
   color: #164d5f;
   text-align: left;
   display: grid;
   gap: 4px;
 }
 .accountList button:hover {
-  border-color: #1597aa;
-  background: #eaf7f8;
+  border-color: #2e6597;
+  background: #eaf0f8;
 }
 .accountList span {
   color: #6c8790;
@@ -1705,13 +1705,13 @@
 }
 .accountList code {
   overflow-wrap: anywhere;
-  color: #087a91;
+  color: #0b3e75;
   font-size: 9px;
 }
 .signedUser {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   color: #fff;
 }
 .signedUser div {
@@ -1727,12 +1727,86 @@
   font-size: 9px;
 }
 .signedUser button {
-  border: 1px solid #78aeba;
+  border: 1px solid #8cadd0;
   border-radius: 9px;
   background: #ffffff12;
   color: #fff;
   padding: 8px 11px;
 }
+.headerPeriod {
+  min-width: 165px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid #7899bf;
+  border-radius: 10px;
+  padding: 5px 9px;
+  color: #dbe8f6;
+  font-weight: 400;
+}
+.headerPeriod > span {
+  color: #dbe8f6;
+  font-size: 9px;
+}
+.headerPeriod select {
+  min-width: 90px;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  padding: 4px 24px 4px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  box-shadow: none;
+}
+.headerPeriod option { color: #17324d; }
+.signedUser .headerIconButton {
+  position: relative;
+  min-width: 38px;
+  min-height: 38px;
+  padding: 7px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 17px;
+}
+.headerIconButton strong {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 16px;
+  border-radius: 20px;
+  background: #e5484d;
+  padding: 2px 4px;
+  color: #fff;
+  font-size: 8px;
+}
+.signedUser .headerIdentity {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 190px;
+  border-color: transparent;
+  background: transparent;
+  text-align: left;
+}
+.headerIdentity > i {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #aac2dc;
+  border-radius: 50%;
+  background: #2e6597;
+  color: #fff;
+  font-style: normal;
+  font-weight: 700;
+}
+.headerIdentity > span {
+  flex: 1;
+  display: grid;
+  color: #fff;
+}
+.headerIdentity > span small { color: #dbe8f6; }
+.headerIdentity > em { color: #dbe8f6; font-style: normal; }
 .masterFilters {
   margin: 15px 0 18px;
 }
@@ -1769,7 +1843,7 @@
   gap: 12px;
 }
 .signParty > span {
-  color: #087b91;
+  color: #0b3e75;
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 1.2px;
@@ -1838,12 +1912,81 @@
 .fallbackExplanation b {
   color: #19566a;
 }
+.passengerVolumeHidden {
+  display: none !important;
+}
+.passengerVolumeCard {
+  display: grid;
+  gap: 16px;
+}
+.passengerVolumeFilters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  padding: 0 0 16px;
+}
+.passengerVolumeFilters > .filterField {
+  width: auto !important;
+}
+.passengerVolumeCard .miniHead {
+  align-items: start;
+  margin-bottom: 0;
+}
+.passengerVolumeCard .miniHead > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+.passengerVolumeCard .miniHead p {
+  margin: 0;
+  color: #2e6597;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+}
+.passengerVolumeCard .miniHead h2 {
+  margin: 0;
+  color: #062b5c;
+}
+.passengerVolumeCard .miniHead span {
+  max-width: 680px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.passengerPreview {
+  border: 1px solid #b8c9dc;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.passengerPreview > div:first-child {
+  padding: 12px 14px;
+  background: #edf3fa;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.passengerVolumeSummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.passengerVolumeSummary span {
+  padding: 13px;
+  border: 1px solid #cbd8e6;
+  border-radius: 10px;
+  background: #f4f7fb;
+  color: #64748b;
+}
+.passengerVolumeSummary b {
+  color: #062b5c;
+  font-size: 18px;
+}
 .uploadButton {
   display: block;
-  border: 1px solid #bfd3da;
+  border: 1px solid #062b5c;
   border-radius: 9px;
   background: #fff;
-  color: #286477;
+  color: #062b5c;
   padding: 11px 14px;
   font-size: 12px;
   font-weight: 700;
@@ -1863,6 +2006,17 @@
   }
   .flightTools > span {
     line-height: 1.5;
+  }
+  .passengerVolumeCard .miniHead,
+  .passengerPreview > div:first-child {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .passengerVolumeSummary {
+    grid-template-columns: 1fr;
+  }
+  .passengerVolumeFilters {
+    grid-template-columns: 1fr;
   }
 }
 .officialLogo {
@@ -1962,7 +2116,7 @@
   font-size: 11px;
 }
 .scanHelp b {
-  color: #08758f;
+  color: #0b3e75;
 }
 .scanHelp span {
   font-weight: 700;
@@ -1997,7 +2151,7 @@
   border: 0;
   border-radius: 8px;
   background: #e6f3f6;
-  color: #087593;
+  color: #0b3e75;
   padding: 8px 12px;
   font-size: 11px;
   font-weight: 700;
@@ -2024,17 +2178,17 @@ tfoot td {
 }
 .subTabs button {
   white-space: nowrap;
-  border: 1px solid #c7dce2;
+  border: 1px solid #b8c9dc;
   border-radius: 20px;
   background: #fff;
-  color: #50717e;
+  color: #31506f;
   padding: 9px 13px;
   font-size: 10px;
   font-weight: 700;
 }
 .subTabs .selected {
-  border-color: #087b9d;
-  background: #087b9d;
+  border-color: #062b5c;
+  background: #062b5c;
   color: #fff;
 }
 .processPanel > p {
@@ -2058,7 +2212,7 @@ tfoot td {
 }
 .processList i {
   font-style: normal;
-  color: #087b9d;
+  color: #0b3e75;
   font-weight: 700;
 }
 .miniHead {
@@ -2164,19 +2318,20 @@ tfoot td {
   margin-top: 14px;
 }
 :root {
-  --navy: #073b57;
-  --blue: #087b9d;
-  --ink: #193b49;
-  --muted: #6e858f;
-  --line: #d9e5e9;
-  --soft: #f1f6f7;
+  --navy: #062b5c;
+  --navy-hover: #0b3e75;
+  --blue: #2e6597;
+  --ink: #17324d;
+  --muted: #64748b;
+  --line: #cbd8e6;
+  --soft: #f2f6fb;
 }
 * {
   box-sizing: border-box;
 }
 body {
   margin: 0;
-  background: #edf3f5;
+  background: #f2f6fb;
   color: var(--ink);
   font-family: "Segoe UI", Arial, Helvetica, sans-serif;
 }
@@ -2188,6 +2343,13 @@ textarea {
 }
 button {
   cursor: pointer;
+  min-height: 38px;
+  border: 1px solid var(--navy);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--navy);
+  padding: 9px 13px;
+  font-weight: 600;
   transition:
     transform 0.15s ease,
     box-shadow 0.15s ease,
@@ -2198,8 +2360,8 @@ button {
 button:not(:disabled):hover,
 .uploadButton:hover {
   transform: translateY(-1px);
-  filter: brightness(0.98);
-  box-shadow: 0 6px 16px #073b5718;
+  border-color: var(--navy);
+  box-shadow: 0 7px 18px #062b5c24;
 }
 button:disabled {
   cursor: not-allowed;
@@ -2212,10 +2374,11 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   color: #fff;
-  background: linear-gradient(105deg, #073b57, #075f7b);
-  box-shadow: 0 4px 20px #082f4040;
-  position: relative;
-  z-index: 80;
+  background: linear-gradient(105deg, #041f45, #0b3e75);
+  box-shadow: 0 4px 20px #062b5c38;
+  position: sticky;
+  top: 0;
+  z-index: 100;
   overflow: visible;
 }
 .top > span {
@@ -2238,7 +2401,7 @@ button:disabled {
 .brand small {
   display: block;
   margin-top: 4px;
-  color: #c8e3e9;
+  color: #dbe8f6;
 }
 .wing {
   display: flex;
@@ -2293,7 +2456,7 @@ aside {
   border: 1px solid var(--line);
   border-radius: 50%;
   background: #fff;
-  color: #087f98;
+  color: var(--navy);
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -2310,7 +2473,7 @@ aside {
   padding-inline: 8px;
 }
 .sidebarCollapsed aside nav a i {
-  color: #087f98;
+  color: var(--navy);
   font-size: 10px;
   font-weight: 700;
 }
@@ -2347,13 +2510,14 @@ nav a i {
   color: #9aafb7;
 }
 nav a:hover {
-  background: #f3f8f9;
+  background: #edf3fa;
+  color: var(--navy);
 }
 nav .active {
-  background: #e5f4f6;
-  color: #056d89;
+  background: #e8eff8;
+  color: var(--navy);
   font-weight: 700;
-  box-shadow: inset 3px 0 #0b8fa6;
+  box-shadow: inset 3px 0 var(--navy);
 }
 .local {
   margin-top: auto;
@@ -2368,7 +2532,8 @@ nav .active {
   padding: 31px;
   max-width: 1500px;
   width: 100%;
-  margin: auto;
+  margin: 0 auto;
+  align-self: start;
 }
 .title {
   margin-bottom: 23px;
@@ -2377,14 +2542,14 @@ nav .active {
 .cardTitle span,
 .modalHead span {
   margin: 0 0 7px;
-  color: #16849a;
+  color: var(--blue);
   font-size: 10px;
   letter-spacing: 1.7px;
   font-weight: 700;
 }
 .title h1 {
   margin: 0 0 6px;
-  color: #103f54;
+  color: var(--navy);
   font-size: 28px;
 }
 .title > span {
@@ -2455,13 +2620,13 @@ textarea {
   padding: 11px 12px;
   font-size: 13px;
   font-weight: 400;
-  color: #173a48;
+  color: #64748b;
   outline: none;
 }
 input::placeholder,
 textarea::placeholder {
-  color: #879aa2;
-  opacity: 0.78;
+  color: #94a3b8;
+  opacity: 0.76;
   font-weight: 400;
 }
 select option {
@@ -2475,8 +2640,8 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: #1595a9;
-  box-shadow: 0 0 0 3px #1595a915;
+  border-color: var(--navy-hover);
+  box-shadow: 0 0 0 3px #0b3e7518;
 }
 textarea {
   min-height: 74px;
@@ -2537,9 +2702,9 @@ textarea {
 }
 .primary,
 .confirm {
-  border: 0;
+  border: 1px solid var(--navy);
   border-radius: 9px;
-  background: linear-gradient(100deg, #087b9d, #0b9aaa);
+  background: var(--navy);
   color: #fff;
   padding: 12px 15px;
   font-size: 12px;
@@ -2549,13 +2714,26 @@ textarea {
 .scannerOn,
 .actionTitle button,
 .modalActions > button {
-  border: 1px solid #bfd3da;
+  border: 1px solid var(--navy);
   border-radius: 9px;
   background: #fff;
-  color: #286477;
+  color: var(--navy);
   padding: 11px 14px;
   font-size: 12px;
   font-weight: 700;
+}
+.secondary:not(:disabled):hover,
+.actionTitle button:not(.primary):not(.danger):not(:disabled):hover,
+.modalActions > button:not(.primary):not(.danger):not(:disabled):hover,
+.uploadButton:hover {
+  border-color: var(--navy);
+  background: var(--navy);
+  color: #fff;
+}
+.primary:not(:disabled):hover,
+.confirm:not(:disabled):hover {
+  border-color: var(--navy-hover);
+  background: var(--navy-hover);
 }
 .scannerOn {
   background: #e4f7f3;
@@ -2581,7 +2759,7 @@ textarea {
 .link {
   border: 0;
   background: none;
-  color: #087b9d;
+  color: #0b3e75;
   padding: 11px 0 0;
   font-size: 11px;
   font-weight: 700;
@@ -2795,7 +2973,7 @@ td small {
   border-radius: 50%;
 }
 .coreDot {
-  background: #087c96;
+  background: #0b3e75;
 }
 .customDot {
   background: #d9a12b;
@@ -2821,7 +2999,7 @@ td small {
   padding: 16px;
   border: 1px solid #cfe3e7;
   border-radius: 13px;
-  background: #f5fafb;
+  background: #f4f7fb;
 }
 .builderAddPanel > div:first-child {
   display: grid;
@@ -2850,7 +3028,7 @@ td small {
   color: #365f6b;
 }
 .builderPublishBar .primary {
-  border: 1px solid #087c96;
+  border: 1px solid #0b3e75;
 }
 @media (max-width: 980px) {
   .builderSchema > div {
@@ -2979,7 +3157,7 @@ td small {
 .code {
   height: 50px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #0b7596, #10a5ae);
+  background: linear-gradient(135deg, #0b3e75, #2e6597);
   display: grid;
   place-items: center;
   color: #fff;

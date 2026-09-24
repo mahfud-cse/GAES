@@ -5,6 +5,7 @@ import {
   isoDate,
   numberValue,
   normalizeFlight,
+  normalizePassengerVolume,
   normalizeVisitor,
   timeValue,
 } from "../lib/data-normalization.ts";
@@ -44,6 +45,26 @@ test("accepts a valid flight and rejects an incomplete row", () => {
     },
   );
   assert.equal(normalizeFlight({ Date: "", Flight: "GA204" }), null);
+});
+
+test("normalizes flight-level passenger volume with First, Business, and Economy", () => {
+  const row = normalizePassengerVolume({
+    Date: "2026-09-24",
+    Flight: "GA 204",
+    From: "cgk",
+    To: "jog",
+    "Flight Status": "departed",
+    capacityF: 8,
+    capacityC: 26,
+    capacityY: 267,
+    passengerF: 0,
+    passengerC: 18,
+    passengerY: 201,
+  });
+  assert.equal(row?.id, "pax-2026-09-24-ga204-cgk-jog");
+  assert.equal(row?.status, "DEPARTED");
+  assert.equal(row?.totalPassengers, 219);
+  assert.equal(normalizePassengerVolume({ Date: "", Flight: "GA204" }), null);
 });
 
 test("skips corrupt visitor documents instead of exposing them to the page", () => {

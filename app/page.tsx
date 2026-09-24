@@ -53,6 +53,7 @@ import {
   normalizeFlight,
   normalizeLounge,
   normalizeMonitoring,
+  normalizePassengerVolume,
   normalizeStation,
   normalizeVisitor,
   numberValue as normalizedNumber,
@@ -669,6 +670,31 @@ type MonitoringRow = {
   other: number;
   unitPrice: number;
   source: "API/DCS" | "BO Import" | "Manual" | "Sample";
+};
+type PassengerVolume = {
+  id: string;
+  flightDate: string;
+  period: string;
+  flight: string;
+  station: string;
+  origin: string;
+  destination: string;
+  time: string;
+  gate: string;
+  location: string;
+  status: string;
+  aircraft: string;
+  capacityF: number;
+  capacityC: number;
+  capacityY: number;
+  passengerF: number;
+  passengerC: number;
+  passengerY: number;
+  totalPassengers: number;
+  source: string;
+  sourceFile: string;
+  uploadedBy: string;
+  uploadedAt: string;
 };
 
 const partnershipSeed: Partnership[] = [
@@ -1298,6 +1324,25 @@ function sortData<T>(
     return sort.direction === "asc" ? result : -result;
   });
 }
+
+function cabinCounts(value: unknown) {
+  const result = { F: 0, C: 0, Y: 0 };
+  const source = String(value ?? "").toUpperCase();
+  for (const match of source.matchAll(/(\d+(?:[.,]\d+)?)\s*(F|C|Y)\b/g)) {
+    result[match[2] as keyof typeof result] = Math.max(
+      0,
+      normalizedNumber(match[1]),
+    );
+  }
+  return result;
+}
+
+function importDate(value: unknown) {
+  if (value instanceof Date) return isoDate(value);
+  if (typeof value === "number" && value > 20000) return isoDate(value);
+  const raw = String(value ?? "").trim();
+  return /\d{4}/.test(raw) ? isoDate(raw) : "";
+}
 function nextSort(current: SortState, key: string): SortState {
   return {
     key,
@@ -1615,12 +1660,17 @@ export default function Home() {
     >(["Super Admin", "Admin", "HO Admin", "Report Viewer"]),
     [languageFeatureEnabled, setLanguageFeatureEnabled] = useState(true),
     [monitoringRows, setMonitoringRows] = useState<MonitoringRow[]>([]),
+    [passengerVolumes, setPassengerVolumes] = useState<PassengerVolume[]>([]),
+    [passengerVolumePreview, setPassengerVolumePreview] = useState<
+      PassengerVolume[]
+    >([]),
+    [passengerVolumeFileName, setPassengerVolumeFileName] = useState(""),
     [dashboardPeriod, setDashboardPeriod] = useState("2026-08"),
     [dashboardArea, setDashboardArea] = useState("All Areas"),
     [dashboardBo, setDashboardBo] = useState("All BO"),
     [dashboardProvider, setDashboardProvider] = useState("All Providers"),
     [dashboardDetail, setDashboardDetail] = useState<
-      "Business Pax" | "Economy Pax"
+      "First Pax" | "Business Pax" | "Economy Pax"
     >("Business Pax"),
     [dashboardImportNotice, setDashboardImportNotice] =
       useState<InlineNotice | null>(null);
@@ -2150,6 +2200,18 @@ export default function Home() {
         undefined,
         subscriptionError,
       ),
+      subscribeCollection<unknown>(
+        "passengerVolumes",
+        (rows) =>
+          setPassengerVolumes(
+            normalizeRows<PassengerVolume>(
+              rows,
+              normalizePassengerVolume,
+            ) as PassengerVolume[],
+          ),
+        undefined,
+        subscriptionError,
+      ),
       subscribeCollection<Record<string, unknown>>(
         "portalConfiguration",
         (rows) => {
@@ -2343,104 +2405,176 @@ export default function Home() {
 
   function downloadPassengerVolumeTemplate() {
     const headers = [
-      "Period",
-      "Area",
-      "BO",
-      "Station",
-      "Provider",
-      "Business Pax",
-      "Economy Pax",
-      "Business Lounge",
-      "Platinum",
-      "Elite Plus",
-      "SkyTeam",
-      "Partnership",
-      "DPR",
-      "Paid Access",
-      "Other",
-      "Unit Price",
-      "Source",
+      "Date",
+      "From",
+      "Flight",
+      "To",
+      "Time",
+      "Gate",
+      "Location",
+      "Flight Status",
+      "Aircraft",
+      "Capacity",
+      "F Class",
+      "C Class",
+      "Y Class",
     ];
     const sample = [
-      "2026-08",
-      "West Indonesia",
+      localDate(),
       "CGK",
-      "CGK",
-      "Garuda Indonesia Executive Lounge T3",
-      "12500",
-      "88500",
-      "7380",
-      "2140",
-      "1270",
-      "680",
-      "420",
-      "95",
-      "315",
-      "140",
-      "102800",
-      "BO Import",
+      "GA204",
+      "JOG",
+      "08:30 ATD",
+      "12",
+      "G38",
+      "DEPARTED",
+      "738",
+      "8F 26C 267Y",
+      "0F",
+      "18C",
+      "201Y",
     ];
     const body = [headers, sample]
       .map((row) => row.map((value) => `"${value}"`).join(","))
       .join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([body], { type: "text/csv" }));
-    a.download = "template-passenger-volume-dashboard.csv";
+    a.download = "template-passenger-volume-per-flight.csv";
     a.click();
     URL.revokeObjectURL(a.href);
   }
 
-  async function uploadPassengerVolume(file: File) {
+  async function previewPassengerVolumeFile(file: File) {
     try {
       if (!file.size)
         throw new Error("File kosong. Tidak ada data yang diproses.");
       const XLSX = await import("xlsx");
-      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const wb = XLSX.read(await file.arrayBuffer(), {
+        type: "array",
+        cellDates: true,
+      });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       if (!sheet) throw new Error("Worksheet tidak ditemukan.");
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+        header: 1,
         defval: "",
+        raw: true,
       });
-      const incoming: MonitoringRow[] = [],
+      const key = (value: unknown) =>
+        String(value ?? "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, "");
+      const headerIndex = matrix.findIndex((row) => {
+        const keys = row.map(key);
+        return (
+          keys.includes("flight") &&
+          keys.includes("flightstatus") &&
+          (keys.includes("capacity") || keys.includes("booked"))
+        );
+      });
+      if (headerIndex < 0)
+        throw new Error(
+          "Header Flight, Flight Status, serta Capacity/Booked tidak ditemukan.",
+        );
+      const headers = matrix[headerIndex].map(key);
+      const column = (...names: string[]) =>
+        headers.findIndex((item) => names.includes(item));
+      const dateCol = column("date", "flightdate", "departuredate");
+      const fromCol = column("from", "origin", "station");
+      const flightCol = column("flight", "flightnumber");
+      const toCol = column("to", "destination");
+      const timeCol = column("time", "std", "atd");
+      const gateCol = column("gate");
+      const locationCol = column("location");
+      const statusCol = column("flightstatus", "status");
+      const aircraftCol = column("aircraft", "aircrafttype");
+      const capacityCol = column("capacity", "configuration");
+      const bookedCol = column("booked", "passengers", "pax");
+      const fCol = column("fclass", "firstclass", "passengerf");
+      const cCol = column("cclass", "businessclass", "passengerc");
+      const yCol = column("yclass", "economyclass", "passengery");
+      const preamble = matrix
+        .slice(0, headerIndex + 1)
+        .flat()
+        .map(String)
+        .join(" ");
+      const searchedOrigin =
+        preamble.match(/Departing\s+From\s*:\s*([A-Z]{3})/i)?.[1]?.toUpperCase() ||
+        station;
+      const incoming: PassengerVolume[] = [],
         errors: string[] = [];
-      rows.forEach((row, index) => {
-        if (Object.values(row).every((value) => !normalizedText(value))) return;
-        const period = normalizedText(row.Period),
-          bo = normalizedText(row.BO).toUpperCase(),
-          stationCode = normalizedText(row.Station, bo).toUpperCase(),
-          provider = normalizedText(row.Provider);
-        const normalized = normalizeMonitoring({
-          id: `monitor-${period}-${bo}-${stationCode}-${provider.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
-          period,
-          area: row.Area,
-          bo,
+      let activeDate = "";
+      matrix.slice(headerIndex + 1).forEach((row, offset) => {
+        const rowNumber = headerIndex + offset + 2;
+        const markerDate = importDate(row[dateCol >= 0 ? dateCol : 0]);
+        if (markerDate) activeDate = markerDate;
+        const flight = normalizedText(row[flightCol]).toUpperCase().replace(/\s/g, "");
+        if (!flight) return;
+        const capacity = cabinCounts(row[capacityCol]);
+        const booked = cabinCounts(row[bookedCol]);
+        const stationCode = normalizedText(
+          fromCol >= 0 ? row[fromCol] : searchedOrigin,
+          searchedOrigin,
+        ).toUpperCase();
+        const normalized = normalizePassengerVolume({
+          flightDate: markerDate || activeDate,
+          flight,
           station: stationCode,
-          provider,
-          businessPax: row["Business Pax"],
-          economyPax: row["Economy Pax"],
-          businessLounge: row["Business Lounge"],
-          platinum: row.Platinum,
-          elitePlus: row["Elite Plus"],
-          skyteam: row.SkyTeam,
-          partnership: row.Partnership,
-          dpr: row.DPR,
-          paidAccess: row["Paid Access"],
-          other: row.Other,
-          unitPrice: row["Unit Price"],
+          destination: row[toCol],
+          time: row[timeCol],
+          gate: row[gateCol],
+          location: row[locationCol],
+          status: row[statusCol],
+          aircraft: row[aircraftCol],
+          capacityF: capacity.F,
+          capacityC: capacity.C,
+          capacityY: capacity.Y,
+          passengerF: fCol >= 0 ? cabinCounts(row[fCol]).F || normalizedNumber(row[fCol]) : booked.F,
+          passengerC: cCol >= 0 ? cabinCounts(row[cCol]).C || normalizedNumber(row[cCol]) : booked.C,
+          passengerY: yCol >= 0 ? cabinCounts(row[yCol]).Y || normalizedNumber(row[yCol]) : booked.Y,
           source: "BO Import",
+          sourceFile: file.name,
+          uploadedBy: currentAccount?.name || role,
+          uploadedAt: new Date().toISOString(),
         });
         if (!normalized || (role === "BO Admin" && stationCode !== station)) {
-          errors.push(`Baris ${index + 2}`);
+          errors.push(`Baris ${rowNumber}`);
           return;
         }
-        incoming.push(normalized as MonitoringRow);
+        incoming.push(normalized as PassengerVolume);
       });
       if (!incoming.length)
         throw new Error(
-          `Tidak ada Passenger Volume yang valid.${errors.length ? ` Periksa ${errors.join(", ")}.` : ""}`,
+          `Tidak ada Passenger Volume yang valid.${errors.length ? ` Periksa ${errors.slice(0, 10).join(", ")}.` : ""}`,
         );
-      const result = await persistRecords("monitoringRows", incoming);
-      setMonitoringRows((current) => {
+      setPassengerVolumePreview(incoming);
+      setPassengerVolumeFileName(file.name);
+      setDashboardImportNotice({
+        kind: errors.length ? "warn" : "ok",
+        text: `${incoming.length} flight siap diperiksa.${errors.length ? ` ${errors.length} baris tidak valid diabaikan.` : ""} Belum ada data yang disimpan.`,
+      });
+    } catch (error) {
+      setPassengerVolumePreview([]);
+      setPassengerVolumeFileName("");
+      setDashboardImportNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Passenger Volume tidak dapat dibaca. Gunakan template yang tersedia.",
+      });
+    }
+  }
+
+  async function savePassengerVolumePreview() {
+    if (!passengerVolumePreview.length) return;
+    try {
+      const result = await persistRecords(
+        "passengerVolumes",
+        passengerVolumePreview,
+      );
+      setPassengerVolumes((current) => {
         const next = [...current];
         result.saved.forEach((item) => {
           const existing = next.findIndex((row) => row.id === item.id);
@@ -2450,16 +2584,21 @@ export default function Home() {
         return next;
       });
       setDashboardImportNotice({
-        kind: errors.length + result.failed ? "warn" : "ok",
-        text: `${result.saved.length} Passenger Volume berhasil disimpan.${errors.length + result.failed ? ` ${errors.length + result.failed} baris gagal/diabaikan.` : ""}`,
+        kind: result.failed ? "warn" : "ok",
+        text: `${result.saved.length} flight berhasil disimpan.${result.failed ? ` ${result.failed} flight gagal disimpan.` : ""}`,
       });
+      if (!result.failed) {
+        setFlightDateFilter(result.saved[0]?.flightDate || "");
+        setPassengerVolumePreview([]);
+        setPassengerVolumeFileName("");
+      }
     } catch (error) {
       setDashboardImportNotice({
         kind: "error",
         text:
           error instanceof Error
             ? error.message
-            : "Passenger Volume tidak dapat dibaca. Gunakan template yang tersedia.",
+            : "Passenger Volume tidak dapat disimpan.",
       });
     }
   }
@@ -3263,6 +3402,17 @@ export default function Home() {
           visitor.lounge === dashboardProvider),
     ),
     dashboardVisitorCount = dashboardAcceptedVisitors.length,
+    dashboardPassengerVolumes = passengerVolumes.filter(
+      (row) =>
+        row.status === "DEPARTED" &&
+        (dashboardPeriod === "All Periods" || row.period === dashboardPeriod) &&
+        (dashboardBo === "All BO" || row.station === dashboardBo) &&
+        (dashboardArea === "All Areas" ||
+          monitoringRows.some(
+            (item) =>
+              item.area === dashboardArea && item.station === row.station,
+          )),
+    ),
     cabinClass = (visitor: Visitor) => {
       const value = String(visitor.cabin || "").trim().toUpperCase();
       if (["FIRST", "FIRST CLASS", "F", "P"].includes(value)) return "First Class";
@@ -3301,11 +3451,26 @@ export default function Home() {
       return visitor.price;
     },
     dashboardTotals = {
-      firstPax: dashboardAcceptedVisitors.filter((visitor) => cabinClass(visitor) === "First Class").length,
-      businessPax: dashboardAcceptedVisitors.filter((visitor) => cabinClass(visitor) === "Business Class").length,
-      economyPax: dashboardAcceptedVisitors.filter((visitor) => cabinClass(visitor) === "Economy Class").length,
+      firstPax: dashboardPassengerVolumes.reduce(
+        (total, row) => total + row.passengerF,
+        0,
+      ),
+      businessPax: dashboardPassengerVolumes.reduce(
+        (total, row) => total + row.passengerC,
+        0,
+      ),
+      economyPax: dashboardPassengerVolumes.reduce(
+        (total, row) => total + row.passengerY,
+        0,
+      ),
+      firstLounge: dashboardAcceptedVisitors.filter(
+        (visitor) => cabinClass(visitor) === "First Class",
+      ).length,
       businessLounge: dashboardAcceptedVisitors.filter(
-        (visitor) => visitor.category === "Business Class",
+        (visitor) => cabinClass(visitor) === "Business Class",
+      ).length,
+      economyLounge: dashboardAcceptedVisitors.filter(
+        (visitor) => cabinClass(visitor) === "Economy Class",
       ).length,
       cost: dashboardAcceptedVisitors.reduce(
         (total, visitor) => total + loungePriceForVisitor(visitor),
@@ -4835,8 +5000,8 @@ export default function Home() {
           <form className="loginCard" onSubmit={login}>
             <div className="loginBrand">
               <img
-                src="/garuda-indonesia-logo-skyteam.png"
-                alt="Garuda Indonesia — SkyTeam"
+                src="/garuda-indonesia-logo.png"
+                alt="Garuda Indonesia"
               />
               <h1>Garuda Access Entitlement System</h1>
             </div>
@@ -4954,8 +5119,8 @@ export default function Home() {
         <div className="brand">
           <div className="officialLogo">
             <img
-              src="/garuda-indonesia-logo-skyteam.png"
-              alt="Garuda Indonesia — SkyTeam"
+              src="/garuda-indonesia-logo.png"
+              alt="Garuda Indonesia"
             />
           </div>
           <div>
@@ -4964,6 +5129,50 @@ export default function Home() {
           </div>
         </div>
         <div className="signedUser">
+          <label className="headerPeriod">
+            <span>{tr("Periode", "Period")}</span>
+            <select
+              value={dashboardPeriod}
+              onChange={(event) => setDashboardPeriod(event.target.value)}
+            >
+              {[
+                "All Periods",
+                ...new Set([
+                  dashboardPeriod,
+                  ...monitoringRows.map((row) => row.period),
+                  ...passengerVolumes.map((row) => row.period),
+                ]),
+              ].map((period) => (
+                <option key={period}>{period}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="headerIconButton"
+            aria-label={tr("Notifikasi", "Notifications")}
+            onClick={() => setShowInbox(true)}
+          >
+            ♢
+            <strong>
+              {visitors.filter(
+                (visitor) => visitor.boStatus !== "Accepted",
+              ).length + portalNotifications.length}
+            </strong>
+          </button>
+          <button
+            type="button"
+            className="headerIconButton"
+            aria-label={tr("Bantuan", "Help")}
+            onClick={() =>
+              setActionDialog({
+                kind: "ok",
+                text: "Gunakan menu di sidebar untuk membuka modul. Hubungi Super Admin bila otorisasi atau data station tidak sesuai.",
+              })
+            }
+          >
+            ?
+          </button>
           {languageFeatureEnabled && (
             <button
               type="button"
@@ -4977,11 +5186,23 @@ export default function Home() {
           <div className="profileMenuWrap" ref={profileMenuRef}>
             <button
               type="button"
-              className="headerAction"
+              className="headerIdentity"
               aria-expanded={showProfileMenu}
               onClick={() => setShowProfileMenu((x) => !x)}
             >
-              {tr("Profil Saya", "My Profile")} <span>⌄</span>
+              <i>
+                {currentAccount.name
+                  .split(/\s+/)
+                  .slice(0, 2)
+                  .map((part) => part[0])
+                  .join("")
+                  .toUpperCase()}
+              </i>
+              <span>
+                <b>{currentAccount.name}</b>
+                <small>{role}</small>
+              </span>
+              <em>⌄</em>
             </button>
             {showProfileMenu && (
               <div className="profileMenu">
@@ -5016,7 +5237,7 @@ export default function Home() {
                     setShowProfileMenu(false);
                   }}
                 >
-                  {tr("Ganti Password", "Change Password")}
+                  {tr("Profil & Password", "Profile & Password")}
                 </button>
                 <button type="button" onClick={logout}>
                   {tr("Keluar", "Sign Out")}
@@ -5133,6 +5354,7 @@ export default function Home() {
                         "All Periods",
                         ...new Set([
                           ...monitoringRows.map((row) => row.period),
+                          ...passengerVolumes.map((row) => row.period),
                           ...visitors
                             .map((visitor) =>
                               (visitor.travelDate || visitor.date).slice(0, 7),
@@ -5162,6 +5384,7 @@ export default function Home() {
                         "All BO",
                         ...new Set([
                           ...monitoringRows.map((row) => row.bo),
+                          ...passengerVolumes.map((row) => row.station),
                           ...visitors.map((visitor) => visitor.airport),
                         ]),
                       ]}
@@ -5183,36 +5406,6 @@ export default function Home() {
                     />
                   </FilterField>
                 </div>
-                <div className="dashboardDataTools">
-                  <span>
-                    <b>Passenger Volume</b>
-                    <small>
-                      Import denominator Business/Economy pax dari DCS/source
-                      system atau file BO.
-                    </small>
-                  </span>
-                  <button onClick={downloadPassengerVolumeTemplate}>
-                    Download Template
-                  </button>
-                  <label className="uploadButton">
-                    Import Passenger Volume
-                    <input
-                      type="file"
-                      accept=".csv,.xlsx,.xls"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) void uploadPassengerVolume(file);
-                        e.target.value = "";
-                      }}
-                    />
-                  </label>
-                </div>
-                {dashboardImportNotice && (
-                  <Notice
-                    n={dashboardImportNotice}
-                    close={() => setDashboardImportNotice(null)}
-                  />
-                )}
               </article>
 
               {visibleDashboardWidgets.some(
@@ -5227,20 +5420,38 @@ export default function Home() {
                       records <i>View data →</i>
                     </small>
                   </button>
-                  <button type="button" onClick={() => openDashboardVisitors()}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFlightTab("Passenger Volume");
+                      setTab("flights");
+                    }}
+                  >
                     <span>First Class Pax</span>
                     <b>{dashboardTotals.firstPax.toLocaleString("id-ID")}</b>
-                    <small>Accepted visitor records <i>View data →</i></small>
+                    <small>Departed passenger volume <i>View data →</i></small>
                   </button>
-                  <button type="button" onClick={() => openDashboardVisitors()}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFlightTab("Passenger Volume");
+                      setTab("flights");
+                    }}
+                  >
                     <span>Business Class Pax</span>
                     <b>{dashboardTotals.businessPax.toLocaleString("id-ID")}</b>
-                    <small>Accepted visitor records <i>View data →</i></small>
+                    <small>Departed passenger volume <i>View data →</i></small>
                   </button>
-                  <button type="button" onClick={() => openDashboardVisitors()}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFlightTab("Passenger Volume");
+                      setTab("flights");
+                    }}
+                  >
                     <span>Economy Class Pax</span>
                     <b>{dashboardTotals.economyPax.toLocaleString("id-ID")}</b>
-                    <small>Accepted visitor records <i>View data →</i></small>
+                    <small>Departed passenger volume <i>View data →</i></small>
                   </button>
                   <button type="button" onClick={() => openDashboardReport()}>
                     <span>Estimated Cost</span>
@@ -5331,6 +5542,36 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={() => {
+                          setDashboardDetail("First Pax");
+                          setTab("dashboard-detail");
+                        }}
+                      >
+                        <DonutChart
+                          compact
+                          items={[
+                            ["Lounge", dashboardTotals.firstLounge],
+                            [
+                              "Not used",
+                              Math.max(
+                                0,
+                                dashboardTotals.firstPax -
+                                  dashboardTotals.firstLounge,
+                              ),
+                            ],
+                          ]}
+                          total={dashboardTotals.firstPax}
+                          centerLabel="First"
+                        />
+                        <span>First Class Lounge / First Class Pax</span>
+                        <small>
+                          {dashboardTotals.firstPax
+                            ? `${dashboardTotals.firstLounge.toLocaleString("id-ID")} dari ${dashboardTotals.firstPax.toLocaleString("id-ID")} pax`
+                            : "Data passenger belum tersedia"}
+                        </small>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
                           setDashboardDetail("Business Pax");
                           setTab("dashboard-detail");
                         }}
@@ -5353,12 +5594,9 @@ export default function Home() {
                         />
                         <span>Business Lounge / Business Pax</span>
                         <small>
-                          {dashboardTotals.businessLounge.toLocaleString(
-                            "id-ID",
-                          )}{" "}
-                          dari{" "}
-                          {dashboardTotals.businessPax.toLocaleString("id-ID")}{" "}
-                          pax
+                          {dashboardTotals.businessPax
+                            ? `${dashboardTotals.businessLounge.toLocaleString("id-ID")} dari ${dashboardTotals.businessPax.toLocaleString("id-ID")} pax`
+                            : "Data passenger belum tersedia"}
                         </small>
                       </button>
                       <button
@@ -5371,18 +5609,13 @@ export default function Home() {
                         <DonutChart
                           compact
                           items={[
-                            [
-                              "Lounge",
-                              dashboardVisitorCount -
-                                dashboardTotals.businessLounge,
-                            ],
+                            ["Lounge", dashboardTotals.economyLounge],
                             [
                               "Not used",
                               Math.max(
                                 0,
                                 dashboardTotals.economyPax -
-                                  (dashboardVisitorCount -
-                                    dashboardTotals.businessLounge),
+                                  dashboardTotals.economyLounge,
                               ),
                             ],
                           ]}
@@ -5391,13 +5624,9 @@ export default function Home() {
                         />
                         <span>Economy Membership Lounge / Economy Pax</span>
                         <small>
-                          {(
-                            dashboardVisitorCount -
-                            dashboardTotals.businessLounge
-                          ).toLocaleString("id-ID")}{" "}
-                          dari{" "}
-                          {dashboardTotals.economyPax.toLocaleString("id-ID")}{" "}
-                          pax
+                          {dashboardTotals.economyPax
+                            ? `${dashboardTotals.economyLounge.toLocaleString("id-ID")} dari ${dashboardTotals.economyPax.toLocaleString("id-ID")} pax`
+                            : "Data passenger belum tersedia"}
                         </small>
                       </button>
                     </div>
@@ -5598,9 +5827,8 @@ export default function Home() {
               </div>
               <p className="dashboardFootnote">
                 Dashboard membaca data operasional Firebase sesuai scope akun.
-                Flight Schedule, Passenger List/DCS, membership, payment, dan
-                evidence memerlukan endpoint serta kredensial produksi yang
-                dikonfigurasi Tim IT.
+                Denominator First, Business, dan Economy berasal dari tab
+                Passenger Volume dan hanya menghitung flight DEPARTED.
               </p>
             </>
           )}
@@ -5638,7 +5866,9 @@ export default function Home() {
                     <b>
                       {(dashboardDetail === "Business Pax"
                         ? dashboardTotals.businessPax
-                        : dashboardTotals.economyPax
+                        : dashboardDetail === "First Pax"
+                          ? dashboardTotals.firstPax
+                          : dashboardTotals.economyPax
                       ).toLocaleString("id-ID")}
                     </b>
                   </span>
@@ -5648,44 +5878,46 @@ export default function Home() {
                     <thead>
                       <tr>
                         <th>Period</th>
-                        <th>Area</th>
-                        <th>Branch Office</th>
+                        <th>Date</th>
                         <th>Station</th>
-                        <th>Lounge / Provider</th>
+                        <th>Flight</th>
+                        <th>Destination</th>
+                        <th>Status</th>
                         <th>{dashboardDetail}</th>
                         <th>Source</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {dashboardRows.map((row) => (
+                      {dashboardPassengerVolumes.map((row) => (
                         <tr key={row.id}>
                           <td>{row.period}</td>
-                          <td>{row.area}</td>
+                          <td>{row.flightDate}</td>
+                          <td>{row.station}</td>
                           <td>
                             <button
                               className="tableLink"
-                              onClick={() =>
-                                openDashboardVisitors(
-                                  "Semua",
-                                  row.bo,
-                                  row.provider,
-                                )
-                              }
+                              onClick={() => {
+                                setFlightQuery(row.flight);
+                                setFlightTab("Passenger Volume");
+                                setTab("flights");
+                              }}
                             >
-                              {row.bo} →
+                              {row.flight} →
                             </button>
                           </td>
-                          <td>{row.station}</td>
-                          <td>{row.provider}</td>
+                          <td>{row.destination}</td>
+                          <td>{row.status}</td>
                           <td>
                             <b>
                               {(dashboardDetail === "Business Pax"
-                                ? row.businessPax
-                                : row.economyPax
+                                ? row.passengerC
+                                : dashboardDetail === "First Pax"
+                                  ? row.passengerF
+                                  : row.passengerY
                               ).toLocaleString("id-ID")}
                             </b>
                           </td>
-                          <td>{row.source}</td>
+                          <td>{row.sourceFile || row.source}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -9131,10 +9363,229 @@ export default function Home() {
                 </div>
               </div>
               <SubTabs
-                items={["Daily Flight", "Seasonal Schedule", "Irregularity"]}
+                items={[
+                  "Daily Flight",
+                  "Seasonal Schedule",
+                  "Irregularity",
+                  "Passenger Volume",
+                ]}
                 value={flightTab}
                 setValue={setFlightTab}
               />
+              {flightTab === "Passenger Volume" && (
+                <article className="card passengerVolumeCard">
+                  <div className="actionTitle miniHead">
+                    <div>
+                      <p>FLIGHT-LEVEL PASSENGER DATA</p>
+                      <h2>Passenger Volume</h2>
+                      <span>
+                        Denominator Lounge Utilization per flight dan cabin
+                        class. Dashboard hanya memakai flight berstatus
+                        DEPARTED.
+                      </span>
+                    </div>
+                    <div>
+                      <button onClick={downloadPassengerVolumeTemplate}>
+                        Unduh Template
+                      </button>
+                      <label className="uploadButton">
+                        Upload Excel/CSV
+                        <input
+                          type="file"
+                          accept=".csv,.xlsx,.xls"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) void previewPassengerVolumeFile(file);
+                            event.target.value = "";
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  {dashboardImportNotice && (
+                    <Notice
+                      n={dashboardImportNotice}
+                      close={() => setDashboardImportNotice(null)}
+                    />
+                  )}
+                  <div className="filters passengerVolumeFilters">
+                    <FilterField label="Flight Date">
+                      <input
+                        type="date"
+                        value={flightDateFilter}
+                        onChange={(event) =>
+                          setFlightDateFilter(event.target.value)
+                        }
+                      />
+                    </FilterField>
+                    <FilterField label="Station">
+                      <SearchableSelect
+                        value={isGlobalAdmin ? flightFilter : station}
+                        disabled={!isGlobalAdmin}
+                        onChange={setFlightFilter}
+                        options={[
+                          "Semua",
+                          ...new Set(
+                            passengerVolumes.map((row) => row.station),
+                          ),
+                        ]}
+                        placeholder="Station"
+                      />
+                    </FilterField>
+                    <FilterField label="Flight Status">
+                      <SearchableSelect
+                        value={flightStatusFilter}
+                        onChange={setFlightStatusFilter}
+                        options={[
+                          "Semua",
+                          ...new Set(
+                            passengerVolumes.map((row) => row.status),
+                          ),
+                        ]}
+                        placeholder="Flight Status"
+                      />
+                    </FilterField>
+                    <FilterField label="Search Flight">
+                      <input
+                        value={flightQuery}
+                        onChange={(event) => setFlightQuery(event.target.value)}
+                        placeholder="Flight / route"
+                      />
+                    </FilterField>
+                  </div>
+                  {passengerVolumePreview.length > 0 && (
+                    <section className="passengerPreview">
+                      <div>
+                        <span>
+                          Preview <b>{passengerVolumeFileName}</b> · {" "}
+                          {passengerVolumePreview.length} flight
+                        </span>
+                        <div className="rowAct">
+                          <button
+                            onClick={() => {
+                              setPassengerVolumePreview([]);
+                              setPassengerVolumeFileName("");
+                            }}
+                          >
+                            Batal
+                          </button>
+                          <button
+                            className="primary"
+                            onClick={() => void savePassengerVolumePreview()}
+                          >
+                            Simpan Data
+                          </button>
+                        </div>
+                      </div>
+                      <div className="tableWrap">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Flight</th>
+                              <th>Route</th>
+                              <th>Status</th>
+                              <th>Capacity F/C/Y</th>
+                              <th>Pax F/C/Y</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {passengerVolumePreview.slice(0, 25).map((row) => (
+                              <tr key={row.id}>
+                                <td>{row.flightDate}</td>
+                                <td>{row.flight}</td>
+                                <td>{row.origin}–{row.destination}</td>
+                                <td>{row.status}</td>
+                                <td>{row.capacityF}/{row.capacityC}/{row.capacityY}</td>
+                                <td>{row.passengerF}/{row.passengerC}/{row.passengerY}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  )}
+                  <div className="passengerVolumeSummary">
+                    <span>
+                      <b>{passengerVolumes.length}</b> Flight tersimpan
+                    </span>
+                    <span>
+                      <b>
+                        {
+                          passengerVolumes.filter(
+                            (row) => row.status === "DEPARTED",
+                          ).length
+                        }
+                      </b>{" "}
+                      Departed
+                    </span>
+                    <span>
+                      <b>
+                        {passengerVolumes
+                          .filter((row) => row.status === "DEPARTED")
+                          .reduce(
+                            (total, row) => total + row.totalPassengers,
+                            0,
+                          )
+                          .toLocaleString("id-ID")}
+                      </b>{" "}
+                      Total pax
+                    </span>
+                  </div>
+                  <div className="tableWrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Station</th>
+                          <th>Flight</th>
+                          <th>To</th>
+                          <th>Status</th>
+                          <th>Aircraft</th>
+                          <th>Capacity F/C/Y</th>
+                          <th>Pax F/C/Y</th>
+                          <th>Source</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {passengerVolumes
+                          .filter(
+                            (row) =>
+                              (isGlobalAdmin || row.station === station) &&
+                              (!flightDateFilter ||
+                                row.flightDate === flightDateFilter) &&
+                              (flightFilter === "Semua" ||
+                                row.station === flightFilter) &&
+                              (flightStatusFilter === "Semua" ||
+                                row.status === flightStatusFilter) &&
+                              (!flightQuery ||
+                                `${row.flight} ${row.station} ${row.destination}`
+                                  .toLowerCase()
+                                  .includes(flightQuery.toLowerCase())),
+                          )
+                          .sort((a, b) =>
+                            `${b.flightDate}-${b.flight}`.localeCompare(
+                              `${a.flightDate}-${a.flight}`,
+                            ),
+                          )
+                          .map((row) => (
+                            <tr key={row.id}>
+                              <td>{row.flightDate}</td>
+                              <td>{row.station}</td>
+                              <td><b>{row.flight}</b></td>
+                              <td>{row.destination}</td>
+                              <td>{row.status}</td>
+                              <td>{row.aircraft || "—"}</td>
+                              <td>{row.capacityF}/{row.capacityC}/{row.capacityY}</td>
+                              <td>{row.passengerF}/{row.passengerC}/{row.passengerY}</td>
+                              <td>{row.sourceFile || row.source}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </article>
+              )}
               {flightTab === "Seasonal Schedule" && (
                 <article className="card seasonCard">
                   <CardTitle
@@ -9329,7 +9780,7 @@ export default function Home() {
                   )}
                 </article>
               )}
-              <div className="flightTools">
+              <div className={flightTab === "Passenger Volume" ? "passengerVolumeHidden" : "flightTools"}>
                 <button type="button" onClick={downloadFlightTemplate}>
                   Unduh Template Flight
                 </button>
@@ -9381,7 +9832,7 @@ export default function Home() {
                   dan tanggal dapat dibaca dari header.
                 </span>
               </div>
-              <div className="fallbackExplanation">
+              <div className={flightTab === "Passenger Volume" ? "passengerVolumeHidden" : "fallbackExplanation"}>
                 <b>Passenger List — Manual Import</b>
                 <span>
                   Dipakai oleh petugas berwenang hanya jika Passenger List/DCS
@@ -9404,14 +9855,14 @@ export default function Home() {
                   close={() => setPassengerImportNotice("")}
                 />
               )}
-              <div className="info">
+              <div className={flightTab === "Passenger Volume" ? "passengerVolumeHidden" : "info"}>
                 <b>Hak pengelolaan data</b>
                 <br />
                 Super Admin, Admin/HO, dan BO dapat upload atau menambah flight.
                 Lounge Officer dapat menambah flight operasional station-nya,
                 tetapi perubahan ETD/status tetap dibatasi kepada Admin/HO/BO.
               </div>
-              <article className="card tableCard flightCard">
+              <article className={`card tableCard flightCard ${flightTab === "Passenger Volume" ? "passengerVolumeHidden" : ""}`}>
                 <div className="filters threeFilters">
                   <FilterField label="Flight Date">
                     <input
@@ -12186,10 +12637,10 @@ function DonutChart({
   onSelect?: (name: string) => void;
 }) {
   const colors = [
-    "#087c96",
-    "#32a6b1",
-    "#1c5f82",
-    "#70c7c9",
+    "#062b5c",
+    "#2e6597",
+    "#174a7e",
+    "#6f94bb",
     "#eea84a",
     "#8067a7",
     "#d76969",

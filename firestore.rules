@@ -20,10 +20,13 @@ service cloud.firestore {
       allow delete: if roleIs(['Super Admin','Admin']);
     }
     match /{master}/{id} {
-      allow read: if active() && master in ['lounges','flights','stations','entitlements','airlines','monitoringRows','integrationRuns'];
-      allow write: if master in ['lounges','flights','stations','entitlements','airlines','monitoringRows'] && roleIs(['Super Admin','Admin']);
+      allow read: if active() && master in ['lounges','flights','stations','entitlements','airlines','monitoringRows','passengerVolumes','integrationRuns']
+        && (master != 'passengerVolumes' || roleIs(['Super Admin','Admin','HO Admin','Report Viewer']) || sameStation(resource.data));
+      allow write: if master in ['lounges','flights','stations','entitlements','airlines','monitoringRows','passengerVolumes'] && roleIs(['Super Admin','Admin']);
       allow create: if master == 'monitoringRows' && roleIs(['BO Admin']) && sameStation(request.resource.data);
       allow update: if master == 'monitoringRows' && roleIs(['BO Admin']) && sameStation(resource.data) && sameStation(request.resource.data);
+      allow create: if master == 'passengerVolumes' && roleIs(['BO Admin']) && sameStation(request.resource.data);
+      allow update: if master == 'passengerVolumes' && roleIs(['BO Admin']) && sameStation(resource.data) && sameStation(request.resource.data);
     }
     match /loungeCapacityHistory/{id} {
       allow read: if active() && (roleIs(['Super Admin','Admin','HO Admin','Report Viewer']) || assignedLounge(resource.data));
