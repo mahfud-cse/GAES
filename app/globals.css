@@ -3226,6 +3226,54 @@ td small {
   border-radius: 20px;
   padding: 5px 8px;
 }
+.originBadges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.originBadge {
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid #b8c9dc;
+  border-radius: 999px;
+  padding: 4px 7px;
+  background: #fff;
+  color: #31506f;
+  font-size: 9px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.originBadge.synced {
+  border-color: #8cadd0;
+  background: #e8eff8;
+  color: #062b5c;
+}
+.originBadge.manual {
+  background: #f4f7fb;
+}
+.originBadge.missing {
+  border-color: #efbfbb;
+  background: #feecea;
+  color: #953c37;
+}
+.readOnlyHint,
+.readOnlyText,
+.sourceMissingText {
+  display: block;
+  margin-top: 7px;
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.readOnlyText {
+  margin-top: 0;
+  color: #31506f;
+}
+.sourceMissingText {
+  color: #953c37;
+}
 .lounge h3 {
   margin: 10px 0 15px;
   font-size: 14px;

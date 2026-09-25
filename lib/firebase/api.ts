@@ -103,7 +103,16 @@ export const importManagedUsers = (user: User, users: unknown[]) =>
   );
 
 export const syncSourceLounges = (user: User) =>
-  call<{ imported: number; skipped: number }>("sync-source-lounges", user, {});
+  call<{
+    imported: number;
+    skipped: number;
+    deactivated: number;
+    stationsImported: number;
+    stationsSkipped: number;
+    stationsDeactivated: number;
+    loungeSourcePath: string;
+    stationSourcePath: string;
+  }>("sync-source-lounges", user, {});
 
 export const createVisitor = (user: User, visitor: unknown) =>
   call<{ id: string; lateScan: boolean }>("create-visitor", user, { visitor });

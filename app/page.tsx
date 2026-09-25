@@ -88,6 +88,11 @@ type Visitor = {
   reference: string;
   currency: string;
   price: number;
+  loungeId?: string;
+  agreementId?: string;
+  pricePeriodId?: string;
+  priceSource?: "SYNC" | "MANUAL";
+  pricingDate?: string;
   source: string;
   boStatus: "Pending" | "Accepted" | "Rejected";
   boReason: string;
@@ -500,6 +505,12 @@ type LoungePricePeriod = {
   price: number;
   start: string;
   end: string;
+  agreementId?: string;
+  agreementType?: string;
+  documentNumber?: string;
+  status?: string;
+  sourceRecordId?: string;
+  sourceStatus?: "ACTIVE" | "SOURCE_NOT_FOUND";
 };
 type LoungeCapacityHistory = {
   id: string;
@@ -521,6 +532,14 @@ type Lounge = {
   capacityEffectiveFrom?: string;
   capacityHistory?: LoungeCapacityHistory[];
   pricePeriods?: LoungePricePeriod[];
+  dataOrigin?: "SYNC" | "MANUAL";
+  readOnly?: boolean;
+  sourceProject?: string;
+  sourceRecordId?: string;
+  sourcePath?: string;
+  sourceIdentityKey?: string;
+  sourceStatus?: "ACTIVE" | "SOURCE_NOT_FOUND";
+  lastSyncedAt?: string;
 };
 type FlightStatus =
   "Scheduled" | "Delayed" | "Rescheduled" | "Postponed" | "Cancelled";
@@ -577,6 +596,13 @@ type Station = {
   timeZone: string;
   utcLabel: string;
   status: "Aktif" | "Nonaktif";
+  dataOrigin?: "SYNC" | "MANUAL";
+  readOnly?: boolean;
+  sourceProject?: string;
+  sourceRecordId?: string;
+  sourcePath?: string;
+  sourceStatus?: "ACTIVE" | "SOURCE_NOT_FOUND";
+  lastSyncedAt?: string;
 };
 type Partnership = {
   id: string;
@@ -2615,6 +2641,50 @@ export default function Home() {
     }
   }
 
+  async function syncPortalMasterData(
+    setResultNotice: (notice: InlineNotice) => void,
+  ) {
+    if (!firebaseUser) {
+      setResultNotice({
+        kind: "error",
+        text: "Sesi Firebase tidak aktif. Silakan login ulang.",
+      });
+      return;
+    }
+    try {
+      const result = await syncSourceLounges(firebaseUser);
+      const details = [
+        `${result.imported} master lounge/tenant`,
+        `${result.stationsImported} master station`,
+        result.deactivated
+          ? `${result.deactivated} lounge ditandai nonaktif`
+          : "",
+        result.stationsDeactivated
+          ? `${result.stationsDeactivated} station ditandai nonaktif`
+          : "",
+        result.skipped + result.stationsSkipped
+          ? `${result.skipped + result.stationsSkipped} data sumber tidak valid diabaikan`
+          : "",
+      ].filter(Boolean);
+      setResultNotice({
+        kind:
+          result.skipped || result.stationsSkipped || !result.stationSourcePath
+            ? "warn"
+            : "ok",
+        text: `Sinkronisasi Ground Experience Portal selesai: ${details.join(", ")}.${
+          result.stationSourcePath
+            ? ""
+            : " Collection Airport/Station belum ditemukan; atur SOURCE_FIREBASE_STATIONS_PATH bila path sumber berbeda."
+        }`,
+      });
+    } catch (error) {
+      setResultNotice({
+        kind: "error",
+        text: error instanceof Error ? error.message : "Sinkronisasi gagal.",
+      });
+    }
+  }
+
   function applyDashboardPeriodToVisitorFilter() {
     if (/^\d{4}-\d{2}$/.test(dashboardPeriod)) {
       const [year, month] = dashboardPeriod.split("-").map(Number);
@@ -3081,6 +3151,36 @@ export default function Home() {
       return;
     }
     if (!lounge) return;
+    const applicablePricePeriods = (lounge.pricePeriods || []).filter(
+      (period) =>
+        period.status !== "Nonaktif" &&
+        period.sourceStatus !== "SOURCE_NOT_FOUND" &&
+        period.start &&
+        period.end &&
+        period.start <= travelDate &&
+        period.end >= travelDate,
+    );
+    if (applicablePricePeriods.length > 1) {
+      setNotice({
+        kind: "error",
+        text: "Terdapat lebih dari satu periode harga yang berlaku pada DOT ini. Hubungi Admin untuk menyelesaikan konflik periode harga.",
+      });
+      return;
+    }
+    const appliedPricePeriod = applicablePricePeriods[0];
+    const fallbackPriceApplies =
+      !lounge.pricePeriods?.length &&
+      Boolean(lounge.start) &&
+      Boolean(lounge.end) &&
+      lounge.start <= travelDate &&
+      lounge.end >= travelDate;
+    if (!appliedPricePeriod && !fallbackPriceApplies) {
+      setNotice({
+        kind: "error",
+        text: "Tidak ditemukan harga lounge yang berlaku pada Date of Travel ini. Data belum disimpan.",
+      });
+      return;
+    }
     if (required && !reference.trim()) {
       setNotice({
         kind: "error",
@@ -3148,8 +3248,13 @@ export default function Home() {
       eligible: "Y",
       category,
       reference: reference.trim(),
-      currency: lounge.currency,
-      price: lounge.price,
+      currency: appliedPricePeriod?.currency || lounge.currency,
+      price: appliedPricePeriod?.price ?? lounge.price,
+      loungeId: lounge.id,
+      agreementId: appliedPricePeriod?.agreementId || "",
+      pricePeriodId: appliedPricePeriod?.id || `${lounge.id}-default`,
+      priceSource: lounge.dataOrigin || "MANUAL",
+      pricingDate: travelDate,
       source: raw ? "Scan/Input" : "Manual",
       boStatus: "Pending",
       boReason: lateScan ? "Melewati STD/ETD" : "",
@@ -3462,6 +3567,8 @@ export default function Home() {
       return history[0]?.capacity ?? lounge.capacity ?? 0;
     },
     loungePriceForVisitor = (visitor: Visitor) => {
+      if (visitor.pricingDate || visitor.pricePeriodId || visitor.agreementId)
+        return Number(visitor.price) || 0;
       const travelDate = visitor.travelDate || visitor.date;
       const lounge = lounges.find(
         (item) =>
@@ -4403,6 +4510,16 @@ export default function Home() {
   }
   async function saveLounge(e: FormEvent) {
     e.preventDefault();
+    if (
+      editingLounge &&
+      lounges.find((item) => item.id === editingLounge)?.readOnly
+    ) {
+      setLoungeNotice({
+        kind: "error",
+        text: "Data hasil sinkronisasi bersifat read-only. Lakukan perubahan pada Ground Experience Portal lalu sinkronkan ulang.",
+      });
+      return;
+    }
     if (!loungeDraft.airport || !loungeDraft.name || !loungeDraft.end) {
       setLoungeNotice({
         kind: "warn",
@@ -4768,6 +4885,16 @@ export default function Home() {
   async function saveStation(e: FormEvent) {
     e.preventDefault();
     const code = stationDraft.code.trim().toUpperCase();
+    if (
+      editingStation &&
+      stations.find((item) => item.code === editingStation)?.readOnly
+    ) {
+      setStationNotice({
+        kind: "error",
+        text: "Station hasil sinkronisasi bersifat read-only. Lakukan perubahan pada Ground Experience Portal lalu sinkronkan ulang.",
+      });
+      return;
+    }
     if (
       !/^[A-Z]{3}$/.test(code) ||
       !stationDraft.name ||
@@ -7515,33 +7642,9 @@ export default function Home() {
                       Kelola Tabel
                     </button>
                     <button
-                      onClick={async () => {
-                        if (!firebaseUser) return;
-                        try {
-                          const result = await syncSourceLounges(firebaseUser);
-                          setLoungeNotice(
-                            result.imported > 0
-                              ? {
-                                  kind: result.skipped ? "warn" : "ok",
-                                  text: `${result.imported} data lounge/tenant berhasil disinkronkan dari Ground Experience Portal.${result.skipped ? ` ${result.skipped} data sumber tidak valid diabaikan.` : ""}`,
-                                }
-                              : {
-                                  kind: "warn",
-                                  text: "Sinkronisasi selesai, tetapi tidak ada data lounge/tenant yang ditemukan.",
-                                },
-                          );
-                        } catch (error) {
-                          setLoungeNotice({
-                            kind: "error",
-                            text:
-                              error instanceof Error
-                                ? error.message
-                                : "Sinkronisasi gagal.",
-                          });
-                        }
-                      }}
+                      onClick={() => void syncPortalMasterData(setLoungeNotice)}
                     >
-                      Sinkronisasi Data
+                      Sinkronisasi Lounge &amp; Station
                     </button>
                     <button onClick={downloadLoungeTemplate}>
                       Unduh Template CSV
@@ -7623,7 +7726,25 @@ export default function Home() {
                     <article className="card lounge" key={l.id}>
                       <div className="code">{l.airport}</div>
                       <div>
-                        <span className="type">{l.type}</span>
+                        <div className="originBadges">
+                          <span className="type">{l.type}</span>
+                          <span
+                            className={
+                              l.dataOrigin === "SYNC"
+                                ? "originBadge synced"
+                                : "originBadge manual"
+                            }
+                          >
+                            {l.dataOrigin === "SYNC"
+                              ? "Portal Sync · Read-only"
+                              : "Manual Entry"}
+                          </span>
+                          {l.sourceStatus === "SOURCE_NOT_FOUND" && (
+                            <span className="originBadge missing">
+                              Source tidak ditemukan
+                            </span>
+                          )}
+                        </div>
                         <h3>{l.name}</h3>
                         <p>
                           Periode kerja sama
@@ -7653,7 +7774,7 @@ export default function Home() {
                             <b>{l.pricePeriods.length} periode harga</b>
                           </p>
                         )}
-                        {canManageMaster && (
+                        {canManageMaster && !l.readOnly && (
                           <div className="rowAct">
                             <button
                               className="loungeEdit"
@@ -7716,6 +7837,12 @@ export default function Home() {
                             </button>
                           </div>
                         )}
+                        {canManageMaster && l.readOnly && (
+                          <small className="readOnlyHint">
+                            Perubahan dilakukan pada Ground Experience Portal,
+                            lalu jalankan sinkronisasi ulang.
+                          </small>
+                        )}
                       </div>
                       <mark
                         className={
@@ -7735,9 +7862,11 @@ export default function Home() {
               <div className="info">
                 <b>Hak pengelolaan</b>
                 <br />
-                Penambahan, upload CSV, update, dan hapus daftar lounge tersedia
-                untuk Super Admin dan Admin. Perubahan harga tidak mengubah
-                transaksi visitor yang sudah tercatat.
+                Data Portal Sync bersifat read-only dan diperbarui melalui
+                sinkronisasi. Data Manual Entry dapat ditambah, diperbarui, dan
+                dihapus oleh Super Admin/Admin. Harga yang diterapkan pada
+                transaksi visitor dikunci berdasarkan DOT sehingga perubahan
+                agreement tidak mengubah transaksi historis.
               </div>
             </>
           )}
@@ -7757,6 +7886,13 @@ export default function Home() {
                       onClick={() => setMasterTableTarget("Master Station")}
                     >
                       Kelola Tabel
+                    </button>
+                    <button
+                      onClick={() =>
+                        void syncPortalMasterData(setStationNotice)
+                      }
+                    >
+                      Sinkronisasi Lounge &amp; Station
                     </button>
                     <button onClick={downloadStationTemplate}>
                       Unduh Template
@@ -7832,6 +7968,7 @@ export default function Home() {
                       <th>Time Zone</th>
                       <th>UTC</th>
                       <th>Status</th>
+                      <th>Sumber</th>
                       <th>Aksi</th>
                     </tr>
                   </thead>
@@ -7863,7 +8000,25 @@ export default function Home() {
                             </mark>
                           </td>
                           <td>
-                            {canManageMaster ? (
+                            <span
+                              className={
+                                s.dataOrigin === "SYNC"
+                                  ? "originBadge synced"
+                                  : "originBadge manual"
+                              }
+                            >
+                              {s.dataOrigin === "SYNC"
+                                ? "Portal Sync"
+                                : "Manual Entry"}
+                            </span>
+                            {s.sourceStatus === "SOURCE_NOT_FOUND" && (
+                              <small className="sourceMissingText">
+                                Source tidak ditemukan
+                              </small>
+                            )}
+                          </td>
+                          <td>
+                            {canManageMaster && !s.readOnly ? (
                               <div className="rowAct">
                                 <button
                                   onClick={() => {
@@ -7902,6 +8057,8 @@ export default function Home() {
                                   Hapus
                                 </button>
                               </div>
+                            ) : s.readOnly ? (
+                              <span className="readOnlyText">Read-only</span>
                             ) : (
                               "View only"
                             )}
@@ -7912,9 +8069,10 @@ export default function Home() {
                 </table>
               </div>
               <div className="info">
-                Station yang sudah digunakan oleh akun atau lounge tidak dapat
-                dihapus. Nonaktifkan terlebih dahulu setelah relasinya
-                diselesaikan.
+                Station Portal Sync bersifat read-only. Jika station tidak lagi
+                ditemukan pada sumber, statusnya otomatis menjadi Nonaktif dan
+                tetap disimpan untuk kebutuhan audit. Station Manual Entry yang
+                sudah digunakan oleh akun atau lounge tidak dapat dihapus.
               </div>
             </article>
           )}
