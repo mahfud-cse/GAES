@@ -1,5 +1,25 @@
 type Row = Record<string, unknown>;
 
+/**
+ * Treat every record carrying source-system metadata as synchronized. This is
+ * intentionally broader than checking `readOnly` alone so a partial/legacy
+ * sync record can never become editable in the UI.
+ */
+export function isSynchronizedRecord(row: Row | null | undefined) {
+  if (!row) return false;
+  return (
+    upper(row.dataOrigin) === "SYNC" ||
+    row.readOnly === true ||
+    Boolean(
+      text(row.sourceProject) ||
+        text(row.sourceRecordId) ||
+        text(row.sourcePath) ||
+        text(row.sourceIdentityKey) ||
+        text(row.sourceStatus),
+    )
+  );
+}
+
 export const text = (value: unknown, fallback = "") =>
   value == null ? fallback : String(value).trim();
 
@@ -122,16 +142,7 @@ export function normalizeLounge(row: Row) {
   const airport = upper(row.airport ?? row.Airport);
   const name = text(row.name ?? row["Nama Lounge/Tenant"]);
   if (!/^[A-Z]{3}$/.test(airport) || !name) return null;
-  const synchronized =
-    upper(row.dataOrigin) === "SYNC" ||
-    row.readOnly === true ||
-    Boolean(
-      text(row.sourceProject) ||
-      text(row.sourceRecordId) ||
-      text(row.sourcePath) ||
-      text(row.sourceIdentityKey) ||
-      text(row.sourceStatus),
-    );
+  const synchronized = isSynchronizedRecord(row);
   return {
     ...row,
     id:
@@ -289,15 +300,7 @@ export function normalizeStation(row: Row) {
   const code = upper(row.code ?? row.id);
   const name = text(row.name);
   if (!/^[A-Z]{3}$/.test(code) || !name) return null;
-  const synchronized =
-    upper(row.dataOrigin) === "SYNC" ||
-    row.readOnly === true ||
-    Boolean(
-      text(row.sourceProject) ||
-      text(row.sourceRecordId) ||
-      text(row.sourcePath) ||
-      text(row.sourceStatus),
-    );
+  const synchronized = isSynchronizedRecord(row);
   return {
     ...row,
     code,

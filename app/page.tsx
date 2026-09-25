@@ -47,6 +47,7 @@ import { uploadEvidence } from "../lib/firebase/evidence";
 import { parseBoardingPass } from "../lib/boarding-pass";
 import {
   deduplicateLounges,
+  isSynchronizedRecord,
   isoDate,
   normalizeAccount,
   normalizeAirline,
@@ -4875,14 +4876,27 @@ export default function Home() {
           return item ? { ...item, id: item.code } : null;
         })
         .filter(Boolean) as Array<Station & { id: string }>;
-      if (!incoming.length)
+      const protectedCodes = new Set(
+        stations
+          .filter((item) =>
+            isSynchronizedRecord(item as unknown as Record<string, unknown>),
+          )
+          .map((item) => item.code),
+      );
+      const editableIncoming = incoming.filter(
+        (item) => !protectedCodes.has(item.code),
+      );
+      const protectedCount = incoming.length - editableIncoming.length;
+      if (!editableIncoming.length)
         throw new Error(
-          `Tidak ada station valid.${invalid.length ? ` Periksa baris ${invalid.join(", ")}.` : ""}`,
+          protectedCount
+            ? "Seluruh station pada file merupakan data Portal Sync dan tidak dapat ditimpa melalui upload manual."
+            : `Tidak ada station valid.${invalid.length ? ` Periksa baris ${invalid.join(", ")}.` : ""}`,
         );
-      const result = await persistRecords("stations", incoming);
+      const result = await persistRecords("stations", editableIncoming);
       setStationNotice({
-        kind: invalid.length + result.failed ? "warn" : "ok",
-        text: `${result.saved.length} station berhasil disimpan.${invalid.length + result.failed ? ` ${invalid.length + result.failed} baris gagal/diabaikan.` : ""}`,
+        kind: invalid.length + result.failed + protectedCount ? "warn" : "ok",
+        text: `${result.saved.length} station berhasil disimpan.${protectedCount ? ` ${protectedCount} station Portal Sync dilindungi dan tidak ditimpa.` : ""}${invalid.length + result.failed ? ` ${invalid.length + result.failed} baris gagal/diabaikan.` : ""}`,
       });
     } catch (error) {
       setStationNotice({
@@ -4899,7 +4913,11 @@ export default function Home() {
     const code = stationDraft.code.trim().toUpperCase();
     if (
       editingStation &&
-      stations.find((item) => item.code === editingStation)?.readOnly
+      isSynchronizedRecord(
+        stations.find((item) => item.code === editingStation) as unknown as
+          | Record<string, unknown>
+          | undefined,
+      )
     ) {
       setStationNotice({
         kind: "error",
@@ -8030,7 +8048,10 @@ export default function Home() {
                             )}
                           </td>
                           <td>
-                            {canManageMaster && !s.readOnly ? (
+                            {canManageMaster &&
+                            !isSynchronizedRecord(
+                              s as unknown as Record<string, unknown>,
+                            ) ? (
                               <div className="rowAct">
                                 <button
                                   onClick={() => {
@@ -8069,7 +8090,9 @@ export default function Home() {
                                   Hapus
                                 </button>
                               </div>
-                            ) : s.readOnly ? (
+                            ) : isSynchronizedRecord(
+                                s as unknown as Record<string, unknown>,
+                              ) ? (
                               <span className="readOnlyText">Read-only</span>
                             ) : (
                               "View only"

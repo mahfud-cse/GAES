@@ -3,11 +3,13 @@ import test from "node:test";
 
 import {
   deduplicateLounges,
+  isSynchronizedRecord,
   isoDate,
   numberValue,
   normalizeFlight,
   normalizeLounge,
   normalizePassengerVolume,
+  normalizeStation,
   normalizeVisitor,
   timeValue,
 } from "../lib/data-normalization.ts";
@@ -133,4 +135,29 @@ test("recognizes legacy synchronized lounge metadata and deduplicates its card",
   assert.equal(result[0].id, "sync-lounge-current");
   assert.equal(result[0].dataOrigin, "SYNC");
   assert.equal(result[0].pricePeriods.length, 1);
+});
+
+test("keeps every synchronized station read-only, including legacy metadata", () => {
+  for (const metadata of [
+    { dataOrigin: "SYNC" },
+    { readOnly: true },
+    { sourceProject: "ground-experience-portal" },
+    { sourceRecordId: "airport-cgk" },
+    { sourcePath: "portalData/airports/records/airport-cgk" },
+    { sourceStatus: "SOURCE_NOT_FOUND" },
+  ]) {
+    const station = normalizeStation({
+      code: "CGK",
+      name: "Soekarno-Hatta",
+      ...metadata,
+    });
+    assert.equal(station?.dataOrigin, "SYNC");
+    assert.equal(station?.readOnly, true);
+    assert.equal(isSynchronizedRecord(station), true);
+  }
+
+  const manual = normalizeStation({ code: "DPS", name: "I Gusti Ngurah Rai" });
+  assert.equal(manual?.dataOrigin, "MANUAL");
+  assert.equal(manual?.readOnly, false);
+  assert.equal(isSynchronizedRecord(manual), false);
 });
