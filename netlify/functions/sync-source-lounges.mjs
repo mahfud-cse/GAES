@@ -234,6 +234,7 @@ export default async (request) => {
           item.ref,
           {
             status: "Nonaktif",
+            dataOrigin: "SYNC",
             readOnly: true,
             sourceStatus: "SOURCE_NOT_FOUND",
             lastSyncedAt: syncedAt,
@@ -301,6 +302,7 @@ export default async (request) => {
           item.ref,
           {
             status: "Nonaktif",
+            dataOrigin: "SYNC",
             readOnly: true,
             sourceStatus: "SOURCE_NOT_FOUND",
             lastSyncedAt: syncedAt,

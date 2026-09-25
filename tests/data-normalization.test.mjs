@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  deduplicateLounges,
   isoDate,
   numberValue,
   normalizeFlight,
+  normalizeLounge,
   normalizePassengerVolume,
   normalizeVisitor,
   timeValue,
@@ -94,4 +96,41 @@ test("parses arbitrary IATA BCBP and labelled QR payloads", () => {
 
   const unknown = parseBoardingPass("ANOTHER-UNSUPPORTED-CODE");
   assert.equal(unknown.recognized, false);
+});
+
+test("recognizes legacy synchronized lounge metadata and deduplicates its card", () => {
+  const legacy = normalizeLounge({
+    id: "legacy-lounge",
+    airport: "CGK",
+    name: "Blue Sky Lounge",
+    type: "Lounge",
+    sourceProject: "ground-experience-portal",
+    sourceStatus: "SOURCE_NOT_FOUND",
+  });
+  const synced = normalizeLounge({
+    id: "sync-lounge-current",
+    airport: "CGK",
+    name: "Blue Sky Lounge",
+    type: "Lounge",
+    dataOrigin: "SYNC",
+    readOnly: true,
+    sourceRecordId: "1001",
+    pricePeriods: [
+      {
+        id: "period-1",
+        start: "2026-01-01",
+        end: "2026-12-31",
+        currency: "IDR",
+        price: 120000,
+      },
+    ],
+  });
+
+  assert.equal(legacy?.dataOrigin, "SYNC");
+  assert.equal(legacy?.readOnly, true);
+  const result = deduplicateLounges([legacy, synced].filter(Boolean));
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, "sync-lounge-current");
+  assert.equal(result[0].dataOrigin, "SYNC");
+  assert.equal(result[0].pricePeriods.length, 1);
 });

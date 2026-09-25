@@ -122,6 +122,16 @@ export function normalizeLounge(row: Row) {
   const airport = upper(row.airport ?? row.Airport);
   const name = text(row.name ?? row["Nama Lounge/Tenant"]);
   if (!/^[A-Z]{3}$/.test(airport) || !name) return null;
+  const synchronized =
+    upper(row.dataOrigin) === "SYNC" ||
+    row.readOnly === true ||
+    Boolean(
+      text(row.sourceProject) ||
+      text(row.sourceRecordId) ||
+      text(row.sourcePath) ||
+      text(row.sourceIdentityKey) ||
+      text(row.sourceStatus),
+    );
   return {
     ...row,
     id:
@@ -135,8 +145,14 @@ export function normalizeLounge(row: Row) {
     start: isoDate(row.start ?? row["Tanggal Mulai"]),
     end: isoDate(row.end ?? row["Tanggal Berakhir"]),
     status: text(row.status ?? row.Status, "Aktif"),
-    dataOrigin: text(row.dataOrigin, "MANUAL"),
-    readOnly: row.readOnly === true,
+    dataOrigin: synchronized ? "SYNC" : "MANUAL",
+    readOnly: synchronized,
+    sourceProject: text(row.sourceProject),
+    sourceRecordId: text(row.sourceRecordId),
+    sourcePath: text(row.sourcePath),
+    sourceIdentityKey: text(row.sourceIdentityKey),
+    sourceStatus: text(row.sourceStatus),
+    lastSyncedAt: text(row.lastSyncedAt),
     capacity: numberValue(row.capacity ?? row.Capacity),
     capacityEffectiveFrom: isoDate(row.capacityEffectiveFrom),
     capacityHistory: Array.isArray(row.capacityHistory)
@@ -166,6 +182,75 @@ export function normalizeLounge(row: Row) {
           .filter((period) => period.start && period.end)
       : [],
   };
+}
+
+const loungeIdentity = (row: NonNullable<ReturnType<typeof normalizeLounge>>) =>
+  `${row.airport}|${text(row.name)
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")}|${text(row.type, "Lounge")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")}`;
+
+/**
+ * Prevents the same business lounge from appearing twice when a legacy/manual
+ * row and its synchronized replacement are briefly present together. The
+ * synchronized row wins, while unique historical price periods are retained.
+ */
+export function deduplicateLounges(
+  rows: Array<NonNullable<ReturnType<typeof normalizeLounge>>>,
+) {
+  const grouped = new Map<
+    string,
+    NonNullable<ReturnType<typeof normalizeLounge>>
+  >();
+
+  for (const row of rows) {
+    const key = loungeIdentity(row);
+    const current = grouped.get(key);
+    if (!current) {
+      grouped.set(key, row);
+      continue;
+    }
+
+    const rowIsSync = row.dataOrigin === "SYNC" || row.readOnly === true;
+    const currentIsSync =
+      current.dataOrigin === "SYNC" || current.readOnly === true;
+    const priority = (item: NonNullable<ReturnType<typeof normalizeLounge>>) =>
+      (item.dataOrigin === "SYNC" || item.readOnly === true ? 10 : 0) +
+      (text(item.sourceStatus) !== "SOURCE_NOT_FOUND" ? 4 : 0) +
+      (text(item.id).startsWith("sync-lounge-") ? 2 : 0) +
+      (item.pricePeriods?.length ? 1 : 0);
+    const preferred = priority(row) > priority(current) ? row : current;
+    const secondary = preferred === row ? current : row;
+    const periods = new Map<string, (typeof row.pricePeriods)[number]>();
+
+    for (const period of [
+      ...(secondary.pricePeriods || []),
+      ...(preferred.pricePeriods || []),
+    ]) {
+      const periodKey =
+        text(period.sourceRecordId) ||
+        text(period.id) ||
+        `${period.start}|${period.end}|${period.currency}|${period.price}`;
+      periods.set(periodKey, period);
+    }
+
+    grouped.set(key, {
+      ...secondary,
+      ...preferred,
+      dataOrigin: rowIsSync || currentIsSync ? "SYNC" : "MANUAL",
+      readOnly: rowIsSync || currentIsSync,
+      pricePeriods: [...periods.values()].sort((a, b) =>
+        a.start.localeCompare(b.start),
+      ),
+    });
+  }
+
+  return [...grouped.values()];
 }
 
 export function normalizeVisitor(row: Row) {
@@ -204,6 +289,15 @@ export function normalizeStation(row: Row) {
   const code = upper(row.code ?? row.id);
   const name = text(row.name);
   if (!/^[A-Z]{3}$/.test(code) || !name) return null;
+  const synchronized =
+    upper(row.dataOrigin) === "SYNC" ||
+    row.readOnly === true ||
+    Boolean(
+      text(row.sourceProject) ||
+      text(row.sourceRecordId) ||
+      text(row.sourcePath) ||
+      text(row.sourceStatus),
+    );
   return {
     ...row,
     code,
@@ -211,8 +305,8 @@ export function normalizeStation(row: Row) {
     timeZone: text(row.timeZone, "Asia/Jakarta"),
     utcLabel: text(row.utcLabel, "UTC+7"),
     status: text(row.status, "Aktif"),
-    dataOrigin: text(row.dataOrigin, "MANUAL"),
-    readOnly: row.readOnly === true,
+    dataOrigin: synchronized ? "SYNC" : "MANUAL",
+    readOnly: synchronized,
   };
 }
 

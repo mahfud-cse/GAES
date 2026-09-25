@@ -46,6 +46,7 @@ import {
 import { uploadEvidence } from "../lib/firebase/evidence";
 import { parseBoardingPass } from "../lib/boarding-pass";
 import {
+  deduplicateLounges,
   isoDate,
   normalizeAccount,
   normalizeAirline,
@@ -2155,8 +2156,19 @@ export default function Home() {
       ),
       subscribeCollection<unknown>(
         "lounges",
-        (rows) =>
-          setLounges(normalizeRows<Lounge>(rows, normalizeLounge) as Lounge[]),
+        (rows) => {
+          const normalized = normalizeRows<Lounge>(
+            rows,
+            normalizeLounge,
+          ) as Lounge[];
+          setLounges(
+            deduplicateLounges(
+              normalized as Array<
+                NonNullable<ReturnType<typeof normalizeLounge>>
+              >,
+            ) as Lounge[],
+          );
+        },
         undefined,
         subscriptionError,
       ),
