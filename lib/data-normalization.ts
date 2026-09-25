@@ -123,6 +123,7 @@ export function normalizeLounge(row: Row) {
   const name = text(row.name ?? row["Nama Lounge/Tenant"]);
   if (!/^[A-Z]{3}$/.test(airport) || !name) return null;
   return {
+    ...row,
     id:
       text(row.id) ||
       `lounge-${airport}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
@@ -134,19 +135,32 @@ export function normalizeLounge(row: Row) {
     start: isoDate(row.start ?? row["Tanggal Mulai"]),
     end: isoDate(row.end ?? row["Tanggal Berakhir"]),
     status: text(row.status ?? row.Status, "Aktif"),
+    dataOrigin: text(row.dataOrigin, "MANUAL"),
+    readOnly: row.readOnly === true,
     capacity: numberValue(row.capacity ?? row.Capacity),
     capacityEffectiveFrom: isoDate(row.capacityEffectiveFrom),
-    capacityHistory: Array.isArray(row.capacityHistory) ? row.capacityHistory : [],
+    capacityHistory: Array.isArray(row.capacityHistory)
+      ? row.capacityHistory
+      : [],
     pricePeriods: Array.isArray(row.pricePeriods)
       ? row.pricePeriods
           .map((period) => {
             const item = period as Record<string, unknown>;
             return {
               id: text(item.id) || crypto.randomUUID(),
-              currency: upper(item.currency, upper(row.currency ?? row.Currency, "IDR")),
+              currency: upper(
+                item.currency,
+                upper(row.currency ?? row.Currency, "IDR"),
+              ),
               price: numberValue(item.price),
               start: isoDate(item.start),
               end: isoDate(item.end),
+              agreementId: text(item.agreementId),
+              agreementType: text(item.agreementType),
+              documentNumber: text(item.documentNumber),
+              status: text(item.status, "Aktif"),
+              sourceRecordId: text(item.sourceRecordId),
+              sourceStatus: text(item.sourceStatus, "ACTIVE"),
             };
           })
           .filter((period) => period.start && period.end)
@@ -191,11 +205,14 @@ export function normalizeStation(row: Row) {
   const name = text(row.name);
   if (!/^[A-Z]{3}$/.test(code) || !name) return null;
   return {
+    ...row,
     code,
     name,
     timeZone: text(row.timeZone, "Asia/Jakarta"),
     utcLabel: text(row.utcLabel, "UTC+7"),
     status: text(row.status, "Aktif"),
+    dataOrigin: text(row.dataOrigin, "MANUAL"),
+    readOnly: row.readOnly === true,
   };
 }
 
@@ -285,5 +302,51 @@ export function normalizeMonitoring(row: Row) {
     other: numberValue(row.other),
     unitPrice: numberValue(row.unitPrice),
     source: text(row.source, "Manual"),
+  };
+}
+
+export function normalizePassengerVolume(row: Row) {
+  const flightDate = isoDate(row.flightDate ?? row.Date ?? row.date);
+  const flight = upper(row.flight ?? row.Flight).replace(/\s/g, "");
+  const station = upper(row.station ?? row.origin ?? row.From);
+  const destination = upper(row.destination ?? row.To);
+  if (
+    !flightDate ||
+    !/^[A-Z0-9]{2,3}\d{1,5}$/.test(flight) ||
+    !/^[A-Z]{3}$/.test(station) ||
+    !/^[A-Z]{3}$/.test(destination)
+  )
+    return null;
+  const status = upper(row.status ?? row["Flight Status"], "UNKNOWN");
+  const passengerF = Math.max(0, numberValue(row.passengerF ?? row["F Class"]));
+  const passengerC = Math.max(0, numberValue(row.passengerC ?? row["C Class"]));
+  const passengerY = Math.max(0, numberValue(row.passengerY ?? row["Y Class"]));
+  return {
+    ...row,
+    id:
+      text(row.id) ||
+      `pax-${flightDate}-${flight}-${station}-${destination}`.toLowerCase(),
+    flightDate,
+    period: flightDate.slice(0, 7),
+    flight,
+    station,
+    origin: station,
+    destination,
+    time: text(row.time ?? row.Time),
+    gate: text(row.gate ?? row.Gate),
+    location: text(row.location ?? row.Location),
+    status,
+    aircraft: upper(row.aircraft ?? row.Aircraft),
+    capacityF: Math.max(0, numberValue(row.capacityF)),
+    capacityC: Math.max(0, numberValue(row.capacityC)),
+    capacityY: Math.max(0, numberValue(row.capacityY)),
+    passengerF,
+    passengerC,
+    passengerY,
+    totalPassengers: passengerF + passengerC + passengerY,
+    source: text(row.source, "BO Import"),
+    sourceFile: text(row.sourceFile),
+    uploadedBy: text(row.uploadedBy, "System"),
+    uploadedAt: text(row.uploadedAt, "—"),
   };
 }

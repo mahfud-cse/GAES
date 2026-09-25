@@ -26,6 +26,7 @@ export type GaesCollection =
   | "auditLogs"
   | "portalConfiguration"
   | "monitoringRows"
+  | "passengerVolumes"
   | "loungeCapacityHistory"
   | "loungePriceHistory";
 
