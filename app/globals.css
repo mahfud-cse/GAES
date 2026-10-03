@@ -1,5 +1,136 @@
 @import "tailwindcss";
 
+/* Canonical UI foundation: tokens and element defaults live here only. */
+:root {
+  --color-navy-900: #062b5c;
+  --color-navy-800: #0b3e75;
+  --color-blue-600: #2e6597;
+  --color-text: #17324d;
+  --color-text-muted: #64748b;
+  --color-border: #cbd8e6;
+  --color-surface: #ffffff;
+  --color-surface-soft: #f2f6fb;
+  --color-danger-700: #a4413d;
+  --color-danger-600: #bd443e;
+  --color-danger-soft: #faecea;
+  --color-success-700: #24705b;
+  --color-success-soft: #e5f6f0;
+  --color-warning-700: #87621a;
+  --color-warning-soft: #fff1c9;
+
+  --font-ui: "Segoe UI", Arial, Helvetica, sans-serif;
+  --font-size-xs: 10px;
+  --font-size-sm: 11px;
+  --font-size-md: 12px;
+  --font-size-control: 13px;
+  --font-size-title: 25px;
+  --font-weight-regular: 400;
+  --font-weight-medium: 600;
+  --font-weight-bold: 700;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --control-height: 40px;
+  --touch-target: 44px;
+  --shadow-focus: 0 0 0 3px #2e659733;
+  --shadow-control: 0 7px 18px #062b5c24;
+  --shadow-modal: 0 20px 70px #00151f66;
+  --z-dropdown: 50;
+  --z-header: 100;
+  --z-popover: 120;
+  --z-modal: 200;
+
+  /* Backward-compatible aliases used by existing modules. */
+  --navy: var(--color-navy-900);
+  --navy-hover: var(--color-navy-800);
+  --blue: var(--color-blue-600);
+  --ink: var(--color-text);
+  --muted: var(--color-text-muted);
+  --line: var(--color-border);
+  --soft: var(--color-surface-soft);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: var(--color-surface-soft);
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface-soft);
+  color: var(--color-text);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-control);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+.uploadButton {
+  min-height: var(--control-height);
+  border: 1px solid var(--color-navy-900);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-navy-900);
+  padding: 9px 13px;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+button:not(:disabled):hover,
+button:not(:disabled):focus-visible,
+.uploadButton:hover,
+.uploadButton:focus-within {
+  border-color: var(--color-navy-900);
+  background: var(--color-navy-900);
+  color: #fff;
+  box-shadow: var(--shadow-control);
+  transform: translateY(-1px);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.uploadButton:focus-within {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+button:disabled,
+.uploadButton:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.58;
+  transform: none;
+  box-shadow: none;
+}
+
 /* v0.19 management dashboard and portal controls */
 .dashboardFilterCard {
   margin-bottom: 16px;
@@ -617,14 +748,14 @@
 
 /* v0.17 operational governance and alignment */
 .filterField {
-  width: minmax(170px, 1fr) !important;
+  width: 100%;
   min-width: 170px;
   display: grid;
   align-content: end;
   gap: 6px;
   color: #466773;
   font-size: 10px;
-  font-weight: 650;
+  font-weight: var(--font-weight-medium);
 }
 .filterField > span {
   min-height: 13px;
@@ -641,11 +772,11 @@
   grid-template-columns: repeat(4, minmax(170px, 1fr));
   align-items: end;
 }
-.reportFilters {
-  grid-template-columns: repeat(3, minmax(190px, 1fr)) !important;
+.filters.threeFilters.reportFilters {
+  grid-template-columns: repeat(3, minmax(190px, 1fr));
 }
-.masterFilters {
-  grid-template-columns: repeat(3, minmax(190px, 1fr)) auto !important;
+.filters.threeFilters.masterFilters {
+  grid-template-columns: repeat(3, minmax(190px, 1fr)) auto;
 }
 .filters > .filterField:first-child,
 .filters > .filterField:nth-child(2) {
@@ -659,8 +790,8 @@
 .dotPreviewField input,
 .cabinPreviewField input,
 .cabinPreviewField select {
-  height: 46px !important;
-  min-height: 46px !important;
+  height: 46px;
+  min-height: 46px;
   box-sizing: border-box;
 }
 .fieldAlignmentHint {
@@ -675,19 +806,19 @@
   border: 1px solid #bfd7dc;
   border-radius: 9px;
   background: #fff;
-  color: #174f60 !important;
-  font-weight: 800;
+  color: var(--color-navy-900);
+  font-weight: var(--font-weight-bold);
   opacity: 1;
 }
 .modalActions .primary {
-  background: #0b3e75;
-  border-color: #0b3e75;
-  color: #fff !important;
+  background: var(--color-navy-900);
+  border-color: var(--color-navy-900);
+  color: #fff;
 }
 .modalActions .danger {
-  background: #bd443e;
-  border-color: #bd443e;
-  color: #fff !important;
+  background: var(--color-danger-600);
+  border-color: var(--color-danger-600);
+  color: #fff;
 }
 .customColumnList > div:not(.empty) {
   grid-template-columns: minmax(150px, 0.8fr) minmax(190px, 1.2fr) auto;
@@ -805,10 +936,10 @@
   .reportFilters,
   .masterFilters,
   .integrationGrid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: 1fr;
   }
   .filterField {
-    width: 100% !important;
+    width: 100%;
     min-width: 0;
   }
   .schemaManager > div {
@@ -849,9 +980,9 @@
   min-width: 76px;
   min-height: 38px;
 }
-.profileMenuWrap {
+.signedUser .profileMenuWrap {
   position: relative;
-  display: block !important;
+  display: block;
 }
 .profileMenu {
   position: absolute;
@@ -866,11 +997,11 @@
   box-shadow: 0 18px 48px #062b5c2e;
   color: #17324d;
 }
-.profileMenuIdentity {
+.signedUser .profileMenu .profileMenuIdentity {
   padding: 10px 11px 12px;
-  display: grid !important;
+  display: grid;
   gap: 3px;
-  text-align: left !important;
+  text-align: left;
   border-bottom: 1px solid #e3edef;
 }
 .profileMenuIdentity span {
@@ -929,9 +1060,11 @@
   font-weight: 400;
   line-height: 1.4;
 }
-.autoField {
-  background: #edf1f2 !important;
-  color: #60727a !important;
+input.autoField,
+select.autoField,
+textarea.autoField {
+  background: #edf1f2;
+  color: var(--color-text-muted);
   cursor: not-allowed;
 }
 .companionPanel {
@@ -955,12 +1088,12 @@
 .verificationActions > button {
   min-height: 40px;
   padding: 9px 16px;
-  border: 1px solid #0b3e75 !important;
+  border: 1px solid var(--color-navy-800);
   border-radius: 9px;
   font-weight: 700;
 }
 .verificationActions > button.danger {
-  border-color: #b83f39 !important;
+  border-color: var(--color-danger-600);
 }
 .verificationHeaderActions {
   display: flex;
@@ -983,7 +1116,7 @@
 }
 .searchableSelect input {
   width: 100%;
-  padding-right: 40px !important;
+  padding-right: 40px;
 }
 .searchableSelect > button {
   position: absolute;
@@ -1211,7 +1344,7 @@
 }
 @media (max-width: 760px) {
   .signedUser .profileMenu {
-    display: block !important;
+    display: block;
     position: fixed;
     z-index: 120;
     top: 64px;
@@ -1221,14 +1354,14 @@
     text-align: left;
     touch-action: manipulation;
   }
-  .profileMenuWrap {
-    display: block !important;
+  .signedUser .profileMenuWrap {
+    display: block;
     position: static;
   }
   .languageToggle,
   .headerAction {
     min-width: 54px;
-    padding: 7px 8px !important;
+    padding: 7px 8px;
   }
   .companionPanel,
   .reportConfigGrid {
@@ -1512,7 +1645,7 @@
     display: none;
   }
   .headerAction {
-    padding: 7px 8px !important;
+    padding: 7px 8px;
     font-size: 9px;
   }
 }
@@ -1952,7 +2085,7 @@
   color: #174a7e;
 }
 .passengerVolumeHidden {
-  display: none !important;
+  display: none;
 }
 .passengerVolumeCard {
   display: grid;
@@ -1964,7 +2097,7 @@
   padding: 0 0 16px;
 }
 .passengerVolumeFilters > .filterField {
-  width: auto !important;
+  width: auto;
 }
 .passengerVolumeCard .miniHead {
   align-items: start;
@@ -2091,10 +2224,12 @@
     display: none;
   }
 }
-.eligibleField {
-  background: #e5f6f0 !important;
-  border-color: #8fd3bc !important;
-  color: #24705b !important;
+input.eligibleField,
+select.eligibleField,
+textarea.eligibleField {
+  background: var(--color-success-soft);
+  border-color: #8fd3bc;
+  color: var(--color-success-700);
   font-weight: 700;
 }
 .confirm:disabled {
@@ -2363,57 +2498,6 @@ tfoot td {
 }
 .seasonCard > .primary {
   margin-top: 14px;
-}
-:root {
-  --navy: #062b5c;
-  --navy-hover: #0b3e75;
-  --blue: #2e6597;
-  --ink: #17324d;
-  --muted: #64748b;
-  --line: #cbd8e6;
-  --soft: #f2f6fb;
-}
-* {
-  box-sizing: border-box;
-}
-body {
-  margin: 0;
-  background: #f2f6fb;
-  color: var(--ink);
-  font-family: "Segoe UI", Arial, Helvetica, sans-serif;
-}
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
-button {
-  cursor: pointer;
-  min-height: 36px;
-  border: 1px solid var(--navy);
-  border-radius: 9px;
-  background: #fff;
-  color: var(--navy);
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  transition:
-    transform 0.15s ease,
-    box-shadow 0.15s ease,
-    border-color 0.15s ease,
-    background-color 0.15s ease,
-    color 0.15s ease;
-}
-button:not(:disabled):hover,
-.uploadButton:hover {
-  transform: translateY(-1px);
-  border-color: var(--navy);
-  box-shadow: 0 7px 18px #062b5c24;
-}
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
 }
 .top {
   height: 64px;
@@ -2753,25 +2837,17 @@ textarea {
 }
 .primary,
 .confirm {
-  border: 1px solid var(--navy);
-  border-radius: 9px;
-  background: var(--navy);
+  border-color: var(--color-navy-900);
+  background: var(--color-navy-900);
   color: #fff;
-  padding: 9px 13px;
-  font-size: 12px;
-  font-weight: 700;
 }
 .secondary,
 .scannerOn,
 .actionTitle button,
 .modalActions > button {
-  border: 1px solid var(--navy);
-  border-radius: 9px;
-  background: #fff;
-  color: var(--navy);
-  padding: 9px 13px;
-  font-size: 12px;
-  font-weight: 700;
+  border-color: var(--color-navy-900);
+  background: var(--color-surface);
+  color: var(--color-navy-900);
 }
 .secondary:not(:disabled):hover,
 .actionTitle button:not(.primary):not(.danger):not(:disabled):hover,
@@ -3241,7 +3317,7 @@ td small {
   background: #fff;
   color: #31506f;
   font-size: 9px;
-  font-weight: 650;
+  font-weight: var(--font-weight-medium);
   white-space: nowrap;
 }
 .originBadge.synced {
@@ -3374,21 +3450,29 @@ td small {
 .back {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: var(--z-modal);
   background: #092c3b99;
   display: grid;
   place-items: center;
-  padding: 20px;
+  padding: clamp(12px, 3vw, 20px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .modal {
-  width: min(510px, 100%);
-  background: #fff;
-  border-radius: 14px;
-  padding: 18px;
-  box-shadow: 0 20px 70px #00151f66;
-  max-height: calc(100vh - 40px);
+  width: min(510px, calc(100vw - 24px));
+  max-width: 100%;
+  min-width: 0;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: clamp(14px, 3vw, 18px);
+  box-shadow: var(--shadow-modal);
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
   overflow: auto;
   overscroll-behavior: contain;
+}
+.modal > * {
+  min-width: 0;
 }
 .actionDialog {
   width: min(470px, 100%);
@@ -3410,8 +3494,9 @@ td small {
   color: #a36b00;
 }
 .wideModal {
-  width: min(920px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
+  width: min(920px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
   overflow: auto;
 }
 .modalHead {
@@ -3459,8 +3544,9 @@ td small {
   bottom: -22px;
   z-index: 4;
   padding: 14px 0 22px;
-  background: #fff;
-  border-top: 1px solid #e4edef;
+  flex-wrap: wrap;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
 }
 .modalActions .primary {
   border: 0;
@@ -3478,6 +3564,46 @@ td small {
   }
 }
 @media (max-width: 720px) {
+  .back {
+    place-items: start center;
+    padding: 12px;
+  }
+  .modal,
+  .wideModal,
+  .inboxModal,
+  .integrationModal,
+  .confirmModal,
+  .rejectModal {
+    width: 100%;
+    max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+    margin: auto;
+    padding: 14px;
+    border-radius: 12px;
+  }
+  .modalHead {
+    top: -14px;
+    padding: 14px 0 10px;
+  }
+  .modalActions {
+    bottom: -14px;
+    align-items: stretch;
+    flex-direction: column;
+    padding: 12px 0 14px;
+  }
+  .modalActions > button,
+  .modalActions > .primary,
+  .modalActions > .danger {
+    width: 100%;
+    min-height: var(--touch-target);
+  }
+  .modal .form,
+  .modal .integrationGrid,
+  .modal .roleSignGrid,
+  .modal .reportConfigGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .top {
     height: 68px;
     padding: 0 15px;
@@ -3594,9 +3720,5 @@ td small {
   }
   .subTabs {
     margin-right: -13px;
-  }
-  .modal {
-    max-height: 90vh;
-    overflow: auto;
   }
 }
