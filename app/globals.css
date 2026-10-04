@@ -60,15 +60,20 @@
 /* Facility & Room Operations — canonical module foundation */
 .facilityModule {
   display: grid;
-  gap: 18px;
+  gap: 20px;
   min-width: 0;
 }
 
 .facilityTitle {
   align-items: end;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px #062b5c12;
   display: flex;
-  justify-content: space-between;
   gap: 20px;
+  justify-content: space-between;
+  padding: 20px;
 }
 
 .facilityTitle > div:first-child {
@@ -99,12 +104,28 @@
 }
 
 .facilityTabs {
+  background: #e7edf5;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(6, minmax(132px, 1fr));
   overflow-x: auto;
+  padding: 4px;
   scrollbar-width: thin;
 }
 
 .facilityTabs button {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
   white-space: nowrap;
+}
+
+.facilityTabs button:hover {
+  background: #fff;
+  border-color: var(--color-border);
+  color: var(--color-navy-900);
 }
 
 .facilityTabs button.active,
@@ -117,7 +138,7 @@
 .facilityKpis {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
 }
 
 .facilityKpis article {
@@ -146,6 +167,13 @@
   display: grid;
   gap: 18px;
   grid-template-columns: minmax(0, 1.3fr) minmax(320px, .7fr);
+}
+
+.facilityOverviewGrid > .card,
+.facilitySectionCard,
+.roomBookingCard {
+  min-width: 0;
+  overflow: hidden;
 }
 
 .facilityRoomGrid,
@@ -302,10 +330,14 @@
 
 .bookingToolbar {
   align-items: end;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   display: grid;
-  gap: 10px;
-  grid-template-columns: auto auto minmax(160px, 1fr) minmax(150px, .7fr);
+  gap: 12px;
+  grid-template-columns: auto minmax(230px, auto) minmax(180px, 1fr) minmax(160px, .8fr);
   margin: 18px 0;
+  padding: 12px;
 }
 
 .bookingToolbar label {
@@ -338,6 +370,184 @@
 
 .bookingPeriodNav input {
   min-width: 142px;
+}
+
+.roomOperationsPage {
+  display: grid;
+  gap: 18px;
+}
+
+.facilitySectionHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.facilitySectionHeader.compact {
+  align-items: center;
+}
+
+.facilitySectionHeader h2,
+.facilitySectionHeader p {
+  margin-bottom: 0;
+}
+
+.facilitySectionHeader p {
+  color: var(--color-text-muted);
+  margin-top: 6px;
+}
+
+.facilityHeaderActions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.operationsKpis {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(115px, 1fr));
+}
+
+.operationsKpis > div {
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 4px;
+  padding: 13px;
+}
+
+.operationsKpis span,
+.operationQueue small,
+.incidentCard small,
+.operationContext span {
+  color: var(--color-text-muted);
+}
+
+.operationsKpis strong {
+  color: var(--color-navy-900);
+  font-size: 23px;
+}
+
+.operationsColumns {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.operationQueue {
+  display: grid;
+  gap: 9px;
+}
+
+.operationQueue > div:not(.facilityEmpty) {
+  align-items: center;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 12px;
+}
+
+.operationQueue > div > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.incidentGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.incidentCard {
+  border: 1px solid var(--color-border);
+  border-left: 4px solid #667085;
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 7px;
+  padding: 14px;
+}
+
+.incidentCard > div {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.incidentCard p {
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.incidentCard.severity-medium { border-left-color: #d97706; }
+.incidentCard.severity-high { border-left-color: #b45309; }
+.incidentCard.severity-critical { border-left-color: var(--color-danger-600); }
+
+.operationModal {
+  width: min(760px, calc(100vw - 24px));
+}
+
+.operationContext {
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 12px;
+}
+
+.operationContext > div {
+  display: grid;
+  gap: 3px;
+}
+
+.checklistPanel {
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 9px;
+  padding: 14px;
+}
+
+.checklistPanel label {
+  align-items: center;
+  display: flex;
+  gap: 9px;
+}
+
+.checklistPanel input {
+  min-height: 18px;
+  width: 18px;
+}
+
+.activitySearch {
+  display: grid;
+  flex: 0 1 340px;
+  gap: 5px;
+}
+
+.activitySearch span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.tableEmpty {
+  color: var(--color-text-muted);
+  padding: 24px;
+  text-align: center;
 }
 
 .bookingWeekdays,
@@ -511,9 +721,9 @@
 }
 
 @media (max-width: 1180px) {
-  .facilityKpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .facilityOverviewGrid { grid-template-columns: 1fr; }
   .bookingToolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .operationsKpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 760px) {
@@ -524,16 +734,26 @@
   }
 
   .facilityStationFilter { flex-basis: auto; width: 100%; }
-  .facilityKpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .facilityTabs { grid-template-columns: repeat(6, minmax(145px, 1fr)); }
   .facilityRoomGrid { grid-template-columns: 1fr; }
   .bookingToolbar { grid-template-columns: 1fr; }
   .bookingMonth { overflow-x: auto; }
   .bookingWeekdays,
   .bookingMonthGrid { min-width: 760px; }
+  .facilitySectionHeader { align-items: stretch; flex-direction: column; }
+  .facilityHeaderActions > button { flex: 1 1 160px; }
+  .operationsKpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .operationsColumns { grid-template-columns: 1fr; }
+  .operationContext { grid-template-columns: 1fr; }
+  .activitySearch { flex-basis: auto; width: 100%; }
 }
 
 @media (max-width: 480px) {
   .facilityKpis { grid-template-columns: 1fr; }
+  .facilityTitle { padding: 16px; }
+  .operationsKpis { grid-template-columns: 1fr; }
+  .operationQueue > div:not(.facilityEmpty) { grid-template-columns: auto minmax(0, 1fr); }
+  .operationQueue button { grid-column: 1 / -1; width: 100%; }
 }
 
 * {

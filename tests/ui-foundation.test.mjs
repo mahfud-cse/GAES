@@ -170,3 +170,43 @@ test("implements room booking views with backend-only conflict locks", async () 
   assert.match(rules, /match \/roomBookingSlots\/\{id\}[\s\S]*?allow read, write: if false;/);
   assert.match(rules, /match \/roomBookingRequests\/\{id\}[\s\S]*?allow read, write: if false;/);
 });
+
+test("implements guarded room operations and backend-owned audit records", async () => {
+  const [module, api, backend, rules] = await Promise.all([
+    read("../app/facility-operations.tsx"),
+    read("../lib/firebase/api.ts"),
+    read("../netlify/functions/manage-room-operation.mjs"),
+    read("../firestore.rules"),
+  ]);
+
+  for (const action of [
+    "checkin",
+    "checkout",
+    "completecleaning",
+    "noshow",
+    "moveroom",
+    "startmaintenance",
+    "endmaintenance",
+    "reportincident",
+  ]) assert.match(backend, new RegExp(action));
+
+  assert.match(module, /Operational Control/);
+  assert.match(module, /Readiness Checklist/);
+  assert.match(module, /Cleaning Queue/);
+  assert.match(module, /Room Activity Log/);
+  assert.match(api, /manageRoomOperation/);
+  assert.match(backend, /runTransaction/);
+  assert.match(backend, /cleaningComplete/);
+  assert.match(backend, /\["Occupied", "Maintenance"\]/);
+  for (const collection of ["roomOperations", "roomMaintenance", "roomIncidents", "roomActivityLogs"])
+    assert.match(rules, new RegExp(`match /${collection}/\\{id\\}[\\s\\S]*?allow write: if false;`));
+});
+
+test("keeps facility controls readable and responsive across desktop and mobile", async () => {
+  const css = await read("../app/globals.css");
+  assert.match(css, /\.facilityTabs\s*\{[\s\S]*?grid-template-columns:\s*repeat\(6/);
+  assert.match(css, /\.facilityKpis\s*\{[\s\S]*?repeat\(auto-fit, minmax\(155px, 1fr\)\)/);
+  assert.match(css, /\.operationsColumns\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.operationsColumns \{ grid-template-columns: 1fr; \}/);
+  assert.match(css, /\.operationModal\s*\{[\s\S]*?calc\(100vw - 24px\)/);
+});

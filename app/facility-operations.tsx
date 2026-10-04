@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
-import { manageRoomBooking } from "../lib/firebase/api";
+import { manageRoomBooking, manageRoomOperation } from "../lib/firebase/api";
 import {
   removeRecord,
   saveRecord,
@@ -115,6 +115,76 @@ type BookingDraft = {
   notes: string;
 };
 
+type RoomOperation = {
+  id: string;
+  bookingId: string;
+  station: string;
+  roomId: string;
+  roomName: string;
+  status: "Checked-in" | "Cleaning" | "Completed" | "No Show";
+  checkedInByName?: string;
+  handoverTo?: string;
+  issueSummary?: string;
+};
+type RoomMaintenance = {
+  id: string;
+  station: string;
+  roomId: string;
+  roomName: string;
+  category: string;
+  reason: string;
+  resolution?: string;
+  status: "Open" | "Completed";
+};
+type RoomIncident = {
+  id: string;
+  station: string;
+  roomId: string;
+  roomName: string;
+  bookingId?: string;
+  category: string;
+  severity: "Low" | "Medium" | "High" | "Critical";
+  description: string;
+  status: "Open" | "Resolved";
+  reportedByName?: string;
+};
+type RoomActivity = {
+  id: string;
+  station: string;
+  roomId: string;
+  bookingId?: string;
+  action: string;
+  actorName: string;
+  reason?: string;
+  createdAt?: unknown;
+};
+type OperationDialog = {
+  type: "checkin" | "checkout" | "cleaning" | "move" | "maintenance" | "incident";
+  booking?: RoomBooking;
+  room?: RoomRecord;
+};
+type OperationForm = {
+  clean: boolean;
+  avReady: boolean;
+  amenitiesReady: boolean;
+  safetyChecked: boolean;
+  tvReady: boolean;
+  readinessNote: string;
+  overrideReason: string;
+  handoverTo: string;
+  handoverNote: string;
+  issueSummary: string;
+  cleaningClean: boolean;
+  cleaningAmenities: boolean;
+  cleaningDamageChecked: boolean;
+  cleaningNote: string;
+  targetRoomId: string;
+  reason: string;
+  category: string;
+  severity: "Low" | "Medium" | "High" | "Critical";
+  description: string;
+};
+
 type Notice = { kind: "ok" | "warn" | "error"; text: string };
 type ModuleTab =
   | "Overview"
@@ -198,6 +268,28 @@ const EMPTY_BOOKING: BookingDraft = {
   notes: "",
 };
 
+const EMPTY_OPERATION: OperationForm = {
+  clean: false,
+  avReady: false,
+  amenitiesReady: false,
+  safetyChecked: false,
+  tvReady: false,
+  readinessNote: "",
+  overrideReason: "",
+  handoverTo: "",
+  handoverNote: "",
+  issueSummary: "",
+  cleaningClean: false,
+  cleaningAmenities: false,
+  cleaningDamageChecked: false,
+  cleaningNote: "",
+  targetRoomId: "",
+  reason: "",
+  category: "General",
+  severity: "Medium",
+  description: "",
+};
+
 function recordId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -255,6 +347,10 @@ export default function FacilityOperations({
   const [rooms, setRooms] = useState<RoomRecord[]>([]);
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const [bookings, setBookings] = useState<RoomBooking[]>([]);
+  const [operations, setOperations] = useState<RoomOperation[]>([]);
+  const [maintenanceRows, setMaintenanceRows] = useState<RoomMaintenance[]>([]);
+  const [incidents, setIncidents] = useState<RoomIncident[]>([]);
+  const [roomActivities, setRoomActivities] = useState<RoomActivity[]>([]);
   const [stationFilter, setStationFilter] = useState(
     GLOBAL_ROLES.includes(account.role) ? "ALL" : account.station,
   );
@@ -274,6 +370,11 @@ export default function FacilityOperations({
   const [editingBooking, setEditingBooking] = useState<string | null>(null);
   const [showBookingForm, setShowBookingForm] = useState(false);
   const [savingBooking, setSavingBooking] = useState(false);
+  const [operationDialog, setOperationDialog] = useState<OperationDialog | null>(null);
+  const [operationForm, setOperationForm] = useState<OperationForm>(EMPTY_OPERATION);
+  const [operationRequestId, setOperationRequestId] = useState("");
+  const [savingOperation, setSavingOperation] = useState(false);
+  const [activityQuery, setActivityQuery] = useState("");
 
   const globalScope = GLOBAL_ROLES.includes(account.role);
   const canConfigure = CONFIG_ROLES.includes(account.role);
@@ -303,6 +404,30 @@ export default function FacilityOperations({
         "roomBookings",
         globalScope ? "ALL" : account.station,
         setBookings,
+        onError,
+      ),
+      subscribeStationCollection<RoomOperation>(
+        "roomOperations",
+        globalScope ? "ALL" : account.station,
+        setOperations,
+        onError,
+      ),
+      subscribeStationCollection<RoomMaintenance>(
+        "roomMaintenance",
+        globalScope ? "ALL" : account.station,
+        setMaintenanceRows,
+        onError,
+      ),
+      subscribeStationCollection<RoomIncident>(
+        "roomIncidents",
+        globalScope ? "ALL" : account.station,
+        setIncidents,
+        onError,
+      ),
+      subscribeStationCollection<RoomActivity>(
+        "roomActivityLogs",
+        globalScope ? "ALL" : account.station,
+        setRoomActivities,
         onError,
       ),
     ];
@@ -338,10 +463,30 @@ export default function FacilityOperations({
         .sort((a, b) => a.startAt.localeCompare(b.startAt)),
     [bookings, bookingRoomFilter, bookingStatusFilter, permittedStation, stationFilter],
   );
+  const scopedOperations = useMemo(
+    () => operations.filter((row) => permittedStation(row.station) && (stationFilter === "ALL" || row.station === stationFilter)),
+    [operations, permittedStation, stationFilter],
+  );
+  const scopedMaintenance = useMemo(
+    () => maintenanceRows.filter((row) => permittedStation(row.station) && (stationFilter === "ALL" || row.station === stationFilter)),
+    [maintenanceRows, permittedStation, stationFilter],
+  );
+  const scopedIncidents = useMemo(
+    () => incidents.filter((row) => permittedStation(row.station) && (stationFilter === "ALL" || row.station === stationFilter)),
+    [incidents, permittedStation, stationFilter],
+  );
+  const scopedActivities = useMemo(() => {
+    const query = activityQuery.trim().toLowerCase();
+    return roomActivities
+      .filter((row) => permittedStation(row.station) && (stationFilter === "ALL" || row.station === stationFilter))
+      .filter((row) => !query || `${row.action} ${row.actorName} ${row.roomId} ${row.bookingId || ""}`.toLowerCase().includes(query))
+      .sort((a, b) => activityMillis(b.createdAt) - activityMillis(a.createdAt));
+  }, [activityQuery, permittedStation, roomActivities, stationFilter]);
 
   const activeStations = stations.filter((station) => permittedStation(station.code));
   const roomName = (id: string) => rooms.find((room) => room.id === id)?.name || "Belum dipetakan";
   const canApproveBooking = APPROVER_ROLES.includes(account.role);
+  const canSuperviseOperations = APPROVER_ROLES.includes(account.role);
 
   async function saveRoom(event: FormEvent) {
     event.preventDefault();
@@ -474,6 +619,129 @@ export default function FacilityOperations({
       setNotice({ kind: "ok", text: `Booking ${booking.title} berubah menjadi ${result.status}.` });
     } catch (error) {
       setNotice({ kind: "error", text: error instanceof Error ? error.message : "Status booking tidak dapat diubah." });
+    }
+  }
+
+  function openOperationDialog(
+    type: OperationDialog["type"],
+    booking?: RoomBooking,
+    room?: RoomRecord,
+  ) {
+    const sourceRoom = room || rooms.find((item) => item.id === booking?.roomId);
+    const firstTarget = rooms.find(
+      (item) =>
+        item.station === (booking?.station || sourceRoom?.station) &&
+        item.id !== sourceRoom?.id &&
+        item.status === "Active" &&
+        !["Occupied", "Maintenance"].includes(item.operationalState),
+    );
+    setOperationRequestId(
+      globalThis.crypto?.randomUUID?.() || recordId("room-operation"),
+    );
+    setOperationForm({
+      ...EMPTY_OPERATION,
+      targetRoomId: firstTarget?.id || "",
+      handoverTo: account.name,
+    });
+    setOperationDialog({ type, booking, room: sourceRoom });
+  }
+
+  async function quickOperation(
+    action: "noshow" | "endmaintenance",
+    target: RoomBooking | RoomMaintenance,
+  ) {
+    const message = action === "noshow" ? "Alasan No Show:" : "Resolution maintenance:";
+    const reason = window.prompt(message);
+    if (!reason?.trim()) return;
+    setSavingOperation(true);
+    try {
+      const result = await manageRoomOperation(
+        user,
+        action === "noshow"
+          ? { action, bookingId: target.id, reason }
+          : { action, maintenanceId: target.id, resolution: reason },
+      );
+      setNotice({ kind: "ok", text: `Room operation berhasil: ${result.status}.` });
+    } catch (error) {
+      setNotice({ kind: "error", text: error instanceof Error ? error.message : "Room operation gagal diproses." });
+    } finally {
+      setSavingOperation(false);
+    }
+  }
+
+  async function submitRoomOperation() {
+    if (!operationDialog) return;
+    const { type, booking, room } = operationDialog;
+    const common = booking ? { bookingId: booking.id } : {};
+    let payload: Record<string, unknown>;
+    if (type === "checkin") {
+      payload = {
+        action: "checkin",
+        ...common,
+        checklist: {
+          clean: operationForm.clean,
+          avReady: operationForm.avReady,
+          amenitiesReady: operationForm.amenitiesReady,
+          safetyChecked: operationForm.safetyChecked,
+          tvReady: operationForm.tvReady,
+        },
+        readinessNote: operationForm.readinessNote,
+        overrideReason: operationForm.overrideReason,
+      };
+    } else if (type === "checkout") {
+      payload = {
+        action: "checkout",
+        ...common,
+        handoverTo: operationForm.handoverTo,
+        handoverNote: operationForm.handoverNote,
+        issueSummary: operationForm.issueSummary,
+      };
+    } else if (type === "cleaning") {
+      payload = {
+        action: "completecleaning",
+        ...common,
+        cleaningChecklist: {
+          clean: operationForm.cleaningClean,
+          amenitiesReady: operationForm.cleaningAmenities,
+          damageChecked: operationForm.cleaningDamageChecked,
+        },
+        cleaningNote: operationForm.cleaningNote,
+      };
+    } else if (type === "move") {
+      payload = {
+        action: "moveroom",
+        ...common,
+        targetRoomId: operationForm.targetRoomId,
+        reason: operationForm.reason,
+      };
+    } else if (type === "maintenance") {
+      payload = {
+        action: "startmaintenance",
+        roomId: room?.id,
+        category: operationForm.category,
+        reason: operationForm.reason,
+        requestId: operationRequestId,
+      };
+    } else {
+      payload = {
+        action: "reportincident",
+        roomId: room?.id || booking?.roomId,
+        bookingId: booking?.id || "",
+        category: operationForm.category,
+        severity: operationForm.severity,
+        description: operationForm.description,
+        requestId: operationRequestId,
+      };
+    }
+    setSavingOperation(true);
+    try {
+      const result = await manageRoomOperation(user, payload);
+      setNotice({ kind: "ok", text: `Room operation berhasil: ${result.status}.` });
+      setOperationDialog(null);
+    } catch (error) {
+      setNotice({ kind: "error", text: error instanceof Error ? error.message : "Room operation gagal diproses." });
+    } finally {
+      setSavingOperation(false);
     }
   }
 
@@ -615,6 +883,78 @@ export default function FacilityOperations({
         </article>
       )}
 
+      {activeTab === "Room Operations" && (
+        <div className="roomOperationsPage">
+          <article className="card facilitySectionCard">
+            <div className="facilitySectionHeader">
+              <div><small>LIVE ROOM OPERATIONS</small><h2>Operational Control</h2><p>Check-in, check-out, cleaning turnaround, maintenance, and incidents in one workflow.</p></div>
+              <div className="facilityHeaderActions">
+                <button type="button" onClick={() => openOperationDialog("incident", undefined, scopedRooms[0])} disabled={!scopedRooms.length}>Report Incident</button>
+                {canSuperviseOperations && <button className="primary" type="button" onClick={() => openOperationDialog("maintenance", undefined, scopedRooms[0])} disabled={!scopedRooms.length}>Start Maintenance</button>}
+              </div>
+            </div>
+            <div className="operationsKpis">
+              <div><span>Approved</span><strong>{scopedBookings.filter((row) => row.status === "Approved").length}</strong></div>
+              <div><span>Occupied</span><strong>{scopedRooms.filter((row) => row.operationalState === "Occupied").length}</strong></div>
+              <div><span>Cleaning</span><strong>{scopedRooms.filter((row) => row.operationalState === "Cleaning").length}</strong></div>
+              <div><span>Maintenance</span><strong>{scopedMaintenance.filter((row) => row.status === "Open").length}</strong></div>
+              <div><span>Open Incident</span><strong>{scopedIncidents.filter((row) => row.status === "Open").length}</strong></div>
+            </div>
+          </article>
+
+          <article className="card facilitySectionCard">
+            <div className="facilitySectionHeader compact"><div><small>BOOKING EXECUTION</small><h2>Active Operations</h2></div><span className="scopeBadge">{stationFilter === "ALL" ? "All Stations" : stationFilter}</span></div>
+            <div className="tableWrap">
+              <table className="facilityTable operationTable">
+                <thead><tr><th>Schedule</th><th>Room</th><th>Booking</th><th>Status</th><th>Readiness / Handover</th><th>Action</th></tr></thead>
+                <tbody>
+                  {scopedBookings.filter((booking) => ["Approved", "Checked-in"].includes(booking.status) || (booking.status === "Completed" && booking.localDate === localToday())).length ? scopedBookings.filter((booking) => ["Approved", "Checked-in"].includes(booking.status) || (booking.status === "Completed" && booking.localDate === localToday())).map((booking) => {
+                    const operation = scopedOperations.find((row) => row.bookingId === booking.id);
+                    return <tr key={booking.id}>
+                      <td><b>{booking.localDate}</b><small>{booking.startTime}–{booking.endTime}</small></td>
+                      <td><b>{booking.roomName}</b><small>{booking.station}</small></td>
+                      <td><b>{booking.title}</b><small>{booking.organizer} · {booking.attendees} pax</small></td>
+                      <td><span className={`bookingStatus status-${booking.status.toLowerCase()}`}>{operation?.status || booking.status}</span></td>
+                      <td><small>{operation?.checkedInByName ? `Check-in: ${operation.checkedInByName}` : "Awaiting readiness"}</small><small>{operation?.handoverTo ? `Handover: ${operation.handoverTo}` : ""}</small></td>
+                      <td><div className="bookingActions">
+                        {booking.status === "Approved" && <button type="button" onClick={() => openOperationDialog("checkin", booking)}>Check-in</button>}
+                        {booking.status === "Approved" && canSuperviseOperations && <button type="button" onClick={() => openOperationDialog("move", booking)}>Move Room</button>}
+                        {booking.status === "Approved" && canSuperviseOperations && <button type="button" onClick={() => void quickOperation("noshow", booking)}>No Show</button>}
+                        {booking.status === "Checked-in" && <button type="button" onClick={() => openOperationDialog("checkout", booking)}>Check-out</button>}
+                        {booking.status === "Checked-in" && <button type="button" onClick={() => openOperationDialog("incident", booking)}>Incident</button>}
+                      </div></td>
+                    </tr>;
+                  }) : <tr><td colSpan={6}><div className="tableEmpty">Belum ada booking aktif pada scope ini.</div></td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <div className="operationsColumns">
+            <article className="card facilitySectionCard">
+              <div className="facilitySectionHeader compact"><div><small>TURNAROUND</small><h2>Cleaning Queue</h2></div></div>
+              <div className="operationQueue">
+                {scopedOperations.filter((row) => row.status === "Cleaning").length ? scopedOperations.filter((row) => row.status === "Cleaning").map((operation) => {
+                  const booking = bookings.find((row) => row.id === operation.bookingId);
+                  return <div key={operation.id}><span className="statusDot state-cleaning" /><div><b>{operation.roomName}</b><small>{operation.issueSummary || "Menunggu cleaning completion"}</small></div>{booking && <button type="button" onClick={() => openOperationDialog("cleaning", booking)}>Complete</button>}</div>;
+                }) : <EmptyState text="Tidak ada room dalam antrean cleaning." />}
+              </div>
+            </article>
+            <article className="card facilitySectionCard">
+              <div className="facilitySectionHeader compact"><div><small>ROOM AVAILABILITY</small><h2>Open Maintenance</h2></div></div>
+              <div className="operationQueue">
+                {scopedMaintenance.filter((row) => row.status === "Open").length ? scopedMaintenance.filter((row) => row.status === "Open").map((row) => <div key={row.id}><span className="statusDot state-maintenance" /><div><b>{row.roomName}</b><small>{row.category} · {row.reason}</small></div>{canSuperviseOperations && <button type="button" onClick={() => void quickOperation("endmaintenance", row)}>Complete</button>}</div>) : <EmptyState text="Tidak ada maintenance aktif." />}
+              </div>
+            </article>
+          </div>
+
+          <article className="card facilitySectionCard">
+            <div className="facilitySectionHeader compact"><div><small>ISSUE CONTROL</small><h2>Open Incidents</h2></div><span className="scopeBadge">{scopedIncidents.filter((row) => row.status === "Open").length} open</span></div>
+            <div className="incidentGrid">{scopedIncidents.filter((row) => row.status === "Open").length ? scopedIncidents.filter((row) => row.status === "Open").map((row) => <div key={row.id} className={`incidentCard severity-${row.severity.toLowerCase()}`}><div><span>{row.severity}</span><small>{row.category}</small></div><b>{row.roomName}</b><p>{row.description}</p><small>Reported by {row.reportedByName || "Operator"}</small></div>) : <EmptyState text="Tidak ada incident terbuka." />}</div>
+          </article>
+        </div>
+      )}
+
       {activeTab === "TV & Digital Signage" && (
         <article className="card">
           <div className="cardHeading facilityActionHeading">
@@ -659,12 +999,72 @@ export default function FacilityOperations({
         </article>
       )}
 
-      {["Room Operations", "Activity Log"].includes(activeTab) && (
-        <article className="card phasePlaceholder">
-          <span className="phaseBadge">NEXT PHASE</span>
-          <h2>{activeTab}</h2>
-          <p>{activeTab === "Room Booking" ? "Calendar, conflict prevention, approval, recurring booking, dan cleaning buffer akan dibangun pada Tahap 2." : activeTab === "Room Operations" ? "Check-in/out, readiness checklist, cleaning, handover, dan maintenance akan dibangun pada Tahap 3." : "Activity log akan mulai terisi setelah backend command service dan room workflow diaktifkan."}</p>
+      {activeTab === "Activity Log" && (
+        <article className="card facilitySectionCard">
+          <div className="facilitySectionHeader">
+            <div><small>AUDIT TRAIL</small><h2>Room Activity Log</h2><p>Riwayat operasional dibuat oleh backend dan tidak dapat diedit dari browser.</p></div>
+            <label className="activitySearch"><span>Search</span><input value={activityQuery} onChange={(event) => setActivityQuery(event.target.value)} placeholder="Action, operator, room, booking" /></label>
+          </div>
+          <div className="tableWrap"><table className="facilityTable"><thead><tr><th>Time</th><th>Action</th><th>Station / Room</th><th>Booking</th><th>Operator</th><th>Detail</th></tr></thead><tbody>{scopedActivities.length ? scopedActivities.map((row) => <tr key={row.id}><td>{formatActivityTime(row.createdAt)}</td><td><b>{activityLabel(row.action)}</b></td><td>{row.station}<small>{roomName(row.roomId)}</small></td><td>{row.bookingId || "—"}</td><td>{row.actorName || "System"}</td><td>{row.reason || "—"}</td></tr>) : <tr><td colSpan={6}><div className="tableEmpty">Belum ada activity log pada scope ini.</div></td></tr>}</tbody></table></div>
         </article>
+      )}
+
+      {operationDialog && (
+        <div className="back" onMouseDown={(event) => event.target === event.currentTarget && setOperationDialog(null)}>
+          <div className="modal operationModal">
+            <div className="modalHead"><div><small>ROOM OPERATIONS</small><h2>{operationDialogTitle(operationDialog.type)}</h2></div><button type="button" onClick={() => setOperationDialog(null)}>×</button></div>
+            <form className="form operationForm" onSubmit={(event) => { event.preventDefault(); void submitRoomOperation(); }}>
+              {operationDialog.booking && <div className="operationContext full"><div><span>Booking</span><b>{operationDialog.booking.title}</b></div><div><span>Room</span><b>{operationDialog.booking.roomName}</b></div><div><span>Schedule</span><b>{operationDialog.booking.localDate} · {operationDialog.booking.startTime}–{operationDialog.booking.endTime}</b></div></div>}
+
+              {operationDialog.type === "checkin" && <>
+                <div className="checklistPanel full"><b>Readiness Checklist</b>{[
+                  ["clean", "Room clean and ready"],
+                  ["avReady", "AV / meeting equipment ready"],
+                  ["amenitiesReady", "Amenities complete"],
+                  ["safetyChecked", "Safety check completed"],
+                  ["tvReady", "TV / display ready"],
+                ].map(([key, label]) => <label key={key}><input type="checkbox" checked={Boolean(operationForm[key as keyof OperationForm])} onChange={(event) => setOperationForm({ ...operationForm, [key]: event.target.checked })} /><span>{label}</span></label>)}</div>
+                <label className="full"><span>Readiness Note</span><textarea value={operationForm.readinessNote} onChange={(event) => setOperationForm({ ...operationForm, readinessNote: event.target.value })} /></label>
+                <label className="full"><span>Supervisor Override Reason</span><textarea value={operationForm.overrideReason} onChange={(event) => setOperationForm({ ...operationForm, overrideReason: event.target.value })} placeholder="Wajib bila checklist belum seluruhnya ready atau check-in di luar operational window" /></label>
+              </>}
+
+              {operationDialog.type === "checkout" && <>
+                <label><span>Handover To</span><input value={operationForm.handoverTo} onChange={(event) => setOperationForm({ ...operationForm, handoverTo: event.target.value })} required /></label>
+                <label><span>Issue Summary</span><input value={operationForm.issueSummary} onChange={(event) => setOperationForm({ ...operationForm, issueSummary: event.target.value })} /></label>
+                <label className="full"><span>Handover Note</span><textarea value={operationForm.handoverNote} onChange={(event) => setOperationForm({ ...operationForm, handoverNote: event.target.value })} /></label>
+              </>}
+
+              {operationDialog.type === "cleaning" && <>
+                <div className="checklistPanel full"><b>Cleaning Completion</b>{[
+                  ["cleaningClean", "Room has been cleaned"],
+                  ["cleaningAmenities", "Amenities have been replenished"],
+                  ["cleaningDamageChecked", "Damage check has been completed"],
+                ].map(([key, label]) => <label key={key}><input type="checkbox" checked={Boolean(operationForm[key as keyof OperationForm])} onChange={(event) => setOperationForm({ ...operationForm, [key]: event.target.checked })} /><span>{label}</span></label>)}</div>
+                <label className="full"><span>Cleaning Note</span><textarea value={operationForm.cleaningNote} onChange={(event) => setOperationForm({ ...operationForm, cleaningNote: event.target.value })} /></label>
+              </>}
+
+              {operationDialog.type === "move" && <>
+                <label className="full"><span>Target Room</span><select value={operationForm.targetRoomId} onChange={(event) => setOperationForm({ ...operationForm, targetRoomId: event.target.value })} required><option value="">Select target room</option>{rooms.filter((room) => room.station === operationDialog.booking?.station && room.id !== operationDialog.booking?.roomId && room.status === "Active" && !["Occupied", "Maintenance"].includes(room.operationalState)).map((room) => <option key={room.id} value={room.id}>{room.name} · Capacity {room.capacity} · {room.operationalState}</option>)}</select></label>
+                <label className="full"><span>Movement Reason</span><textarea value={operationForm.reason} onChange={(event) => setOperationForm({ ...operationForm, reason: event.target.value })} required /></label>
+              </>}
+
+              {["maintenance", "incident"].includes(operationDialog.type) && <label className="full"><span>Room</span><select value={operationDialog.room?.id || ""} onChange={(event) => setOperationDialog({ ...operationDialog, room: rooms.find((room) => room.id === event.target.value) })} required><option value="">Select room</option>{scopedRooms.map((room) => <option key={room.id} value={room.id}>{room.name} · {room.station} · {room.operationalState}</option>)}</select></label>}
+
+              {operationDialog.type === "maintenance" && <>
+                <label><span>Category</span><select value={operationForm.category} onChange={(event) => setOperationForm({ ...operationForm, category: event.target.value })}><option>General</option><option>Electrical</option><option>Furniture</option><option>HVAC</option><option>AV / TV</option><option>Safety</option><option>Plumbing</option></select></label>
+                <label className="full"><span>Maintenance Reason</span><textarea value={operationForm.reason} onChange={(event) => setOperationForm({ ...operationForm, reason: event.target.value })} required /></label>
+              </>}
+
+              {operationDialog.type === "incident" && <>
+                <label><span>Category</span><select value={operationForm.category} onChange={(event) => setOperationForm({ ...operationForm, category: event.target.value })}><option>General</option><option>Damage</option><option>Safety</option><option>Equipment</option><option>Guest Complaint</option><option>Service Disruption</option></select></label>
+                <label><span>Severity</span><select value={operationForm.severity} onChange={(event) => setOperationForm({ ...operationForm, severity: event.target.value as OperationForm["severity"] })}><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></label>
+                <label className="full"><span>Description</span><textarea value={operationForm.description} onChange={(event) => setOperationForm({ ...operationForm, description: event.target.value })} required /></label>
+              </>}
+
+              <div className="modalActions full"><button type="button" onClick={() => setOperationDialog(null)}>Cancel</button><button className="primary" type="submit" disabled={savingOperation}>{savingOperation ? "Processing..." : operationSubmitLabel(operationDialog.type)}</button></div>
+            </form>
+          </div>
+        </div>
       )}
 
       {showBookingForm && (
@@ -733,6 +1133,59 @@ export default function FacilityOperations({
 
 function EmptyState({ text }: { text: string }) {
   return <div className="facilityEmpty"><strong>No operational data</strong><span>{text}</span></div>;
+}
+
+function operationDialogTitle(type: OperationDialog["type"]) {
+  return ({
+    checkin: "Room Check-in",
+    checkout: "Room Check-out & Handover",
+    cleaning: "Cleaning Completion",
+    move: "Move Room",
+    maintenance: "Start Maintenance",
+    incident: "Report Incident",
+  })[type];
+}
+
+function operationSubmitLabel(type: OperationDialog["type"]) {
+  return ({
+    checkin: "Confirm Check-in",
+    checkout: "Confirm Check-out",
+    cleaning: "Mark Room Available",
+    move: "Move Booking",
+    maintenance: "Start Maintenance",
+    incident: "Submit Incident",
+  })[type];
+}
+
+function activityMillis(value: unknown) {
+  if (!value) return 0;
+  const candidate = value as { toDate?: () => Date; seconds?: number };
+  const date = typeof candidate.toDate === "function"
+    ? candidate.toDate()
+    : typeof candidate.seconds === "number"
+      ? new Date(candidate.seconds * 1000)
+      : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+function formatActivityTime(value: unknown) {
+  if (!value) return "—";
+  const candidate = value as { toDate?: () => Date; seconds?: number };
+  const date = typeof candidate.toDate === "function"
+    ? candidate.toDate()
+    : typeof candidate.seconds === "number"
+      ? new Date(candidate.seconds * 1000)
+      : new Date(String(value));
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
+}
+
+function activityLabel(value: string) {
+  return value
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function dateValue(date: Date) {

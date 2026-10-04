@@ -126,3 +126,13 @@ export const manageRoomBooking = (
     user,
     payload,
   );
+
+export const manageRoomOperation = (
+  user: User,
+  payload: Record<string, unknown>,
+) =>
+  call<{ id: string; status: string; roomId?: string; replayed?: boolean }>(
+    "manage-room-operation",
+    user,
+    payload,
+  );
