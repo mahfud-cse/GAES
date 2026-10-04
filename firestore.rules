@@ -70,6 +70,17 @@ service cloud.firestore {
       allow update: if roleIs(['Super Admin','Admin','HO Admin']) && sameStation(resource.data) && sameStation(request.resource.data);
       allow delete: if roleIs(['Super Admin','Admin','HO Admin']) && sameStation(resource.data);
     }
+    match /roomBookings/{id} {
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow write: if false;
+    }
+    match /roomBookingSlots/{id} {
+      allow read, write: if false;
+    }
+    match /roomBookingRequests/{id} {
+      allow read, write: if false;
+    }
     match /displayDevices/{id} {
       allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
         && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));

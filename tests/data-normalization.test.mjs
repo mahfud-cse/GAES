@@ -14,6 +14,13 @@ import {
   timeValue,
 } from "../lib/data-normalization.ts";
 import { parseBoardingPass } from "../lib/boarding-pass.ts";
+import {
+  addRecurrence,
+  buildSlots,
+  localDateInZone,
+  localTimeInZone,
+  parseRange,
+} from "../netlify/functions/manage-room-booking.mjs";
 
 test("normalizes spreadsheet dates, times, and Indonesian currency", () => {
   assert.equal(isoDate("20/09/2026"), "2026-09-20");
@@ -160,4 +167,34 @@ test("keeps every synchronized station read-only, including legacy metadata", ()
   assert.equal(manual?.dataOrigin, "MANUAL");
   assert.equal(manual?.readOnly, false);
   assert.equal(isSynchronizedRecord(manual), false);
+});
+
+test("builds deterministic 15-minute room locks including cleaning buffers", () => {
+  const start = new Date("2026-10-05T02:00:00.000Z");
+  const end = new Date("2026-10-05T03:00:00.000Z");
+  const first = buildSlots("room-cgk-01", start, end, 15, 15);
+  const second = buildSlots("room-cgk-01", start, end, 15, 15);
+  assert.equal(first.length, 6);
+  assert.deepEqual(first, second);
+  assert.equal(first[0].startsAt, "2026-10-05T01:45:00.000Z");
+  assert.equal(first.at(-1).startsAt, "2026-10-05T03:00:00.000Z");
+});
+
+test("keeps recurrence and station-local booking time consistent", () => {
+  const start = new Date("2026-10-05T02:00:00.000Z");
+  assert.equal(addRecurrence(start, "Weekly", 2).toISOString(), "2026-10-19T02:00:00.000Z");
+  assert.equal(localDateInZone(start, "Asia/Jakarta"), "2026-10-05");
+  assert.equal(localTimeInZone(start, "Asia/Jakarta"), "09:00");
+  assert.doesNotThrow(() =>
+    parseRange({
+      startAt: "2026-10-05T02:00:00.000Z",
+      endAt: "2026-10-05T03:00:00.000Z",
+    }),
+  );
+  assert.throws(() =>
+    parseRange({
+      startAt: "2026-10-05T02:00:00.000Z",
+      endAt: "2026-10-05T12:00:00.000Z",
+    }),
+  );
 });

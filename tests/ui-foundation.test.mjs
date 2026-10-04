@@ -144,6 +144,29 @@ test("keeps the facility module bilingual and mobile safe", async () => {
     /"Fasilitas & Operasional Ruangan": "Facility & Room Operations"/,
   );
   assert.match(page, /"Pemesanan Ruangan": "Room Booking"/);
+  assert.match(page, /"Kalender Pemesanan": "Booking Calendar"/);
+  assert.match(page, /"Kirim untuk Persetujuan": "Submit for Approval"/);
   assert.match(css, /\.facilityOverviewGrid/);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.facilityTitle/);
+});
+
+test("implements room booking views with backend-only conflict locks", async () => {
+  const [module, api, backend, rules] = await Promise.all([
+    read("../app/facility-operations.tsx"),
+    read("../lib/firebase/api.ts"),
+    read("../netlify/functions/manage-room-booking.mjs"),
+    read("../firestore.rules"),
+  ]);
+  for (const view of ["Day", "Week", "Month", "List"])
+    assert.match(module, new RegExp(`"${view}"`));
+  assert.match(module, /Submit for Approval/);
+  assert.match(module, /Cleaning Buffer/);
+  assert.match(api, /manageRoomBooking/);
+  assert.match(backend, /runTransaction/);
+  assert.match(backend, /roomBookingSlots/);
+  assert.match(backend, /roomBookingRequests/);
+  assert.match(backend, /ROOM_BOOKING_CONFLICT/);
+  assert.match(rules, /match \/roomBookings\/\{id\}[\s\S]*?allow write: if false;/);
+  assert.match(rules, /match \/roomBookingSlots\/\{id\}[\s\S]*?allow read, write: if false;/);
+  assert.match(rules, /match \/roomBookingRequests\/\{id\}[\s\S]*?allow read, write: if false;/);
 });

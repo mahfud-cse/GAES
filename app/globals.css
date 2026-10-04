@@ -296,9 +296,224 @@
   width: min(760px, calc(100vw - 24px));
 }
 
+.bookingModal {
+  width: min(860px, calc(100vw - 24px));
+}
+
+.bookingToolbar {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto auto minmax(160px, 1fr) minmax(150px, .7fr);
+  margin: 18px 0;
+}
+
+.bookingToolbar label {
+  display: grid;
+  gap: 5px;
+}
+
+.bookingToolbar label > span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.bookingViewSwitch,
+.bookingPeriodNav,
+.bookingActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bookingViewSwitch button.active,
+.bookingViewSwitch button.active:hover {
+  background: var(--color-navy-900);
+  border-color: var(--color-navy-900);
+  color: #fff;
+}
+
+.bookingPeriodNav input {
+  min-width: 142px;
+}
+
+.bookingWeekdays,
+.bookingMonthGrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.bookingWeekdays b {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  padding: 9px;
+  text-align: center;
+}
+
+.bookingMonthGrid {
+  border-left: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-border);
+}
+
+.bookingMonthGrid > section {
+  background: #fff;
+  border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
+  min-height: 130px;
+  min-width: 0;
+  padding: 7px;
+}
+
+.bookingMonthGrid > section.outside {
+  background: #f6f8fb;
+  color: #98a2b3;
+}
+
+.bookingMonthGrid > section.today,
+.bookingWeek > section.today {
+  box-shadow: inset 0 0 0 2px var(--color-blue-600);
+}
+
+.bookingMonthGrid section > header {
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.bookingMonthGrid section > div {
+  display: grid;
+  gap: 5px;
+}
+
+.bookingEvent {
+  background: #f4f7fb;
+  border-left: 4px solid #667085;
+  border-radius: 8px;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.bookingEvent.compact {
+  cursor: default;
+  font-size: 10px;
+  gap: 2px;
+  padding: 6px;
+}
+
+.bookingEvent.compact > div:first-child {
+  display: flex;
+  gap: 4px;
+  justify-content: space-between;
+}
+
+.bookingEvent.compact .bookingStatus {
+  display: none;
+}
+
+.bookingEvent > strong,
+.bookingEvent > small,
+.bookingEvent > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bookingEvent > small,
+.bookingEvent > span {
+  color: var(--color-text-muted);
+}
+
+.bookingEvent.status-requested { border-left-color: #d97706; }
+.bookingEvent.status-approved,
+.bookingEvent.status-checked-in { border-left-color: #216e39; }
+.bookingEvent.status-rejected,
+.bookingEvent.status-cancelled,
+.bookingEvent.status-no-show { border-left-color: #a33126; }
+.bookingEvent.status-draft { border-left-color: #667085; }
+.bookingEvent.status-completed { border-left-color: #2457a7; }
+
+.bookingStatus {
+  background: #eef1f5;
+  border-radius: 999px;
+  color: #344054;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 5px 8px;
+  width: fit-content;
+}
+
+.bookingStatus.status-requested { background: #fff4dc; color: #8a5a00; }
+.bookingStatus.status-approved,
+.bookingStatus.status-checked-in { background: #e9f6ec; color: #216e39; }
+.bookingStatus.status-rejected,
+.bookingStatus.status-cancelled,
+.bookingStatus.status-no-show { background: #fff0ee; color: #a33126; }
+
+.bookingDay {
+  display: grid;
+  gap: 10px;
+}
+
+.bookingDateHeading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+}
+
+.bookingDateHeading span {
+  color: var(--color-text-muted);
+}
+
+.bookingWeek {
+  border-left: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-border);
+  display: grid;
+  grid-template-columns: repeat(7, minmax(130px, 1fr));
+  overflow-x: auto;
+}
+
+.bookingWeek > section {
+  border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
+  min-height: 340px;
+  padding: 8px;
+}
+
+.bookingWeek > section > header {
+  align-items: center;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+}
+
+.bookingWeek > section > div {
+  display: grid;
+  gap: 7px;
+}
+
+.bookingList td small {
+  color: var(--color-text-muted);
+  display: block;
+  margin-top: 3px;
+}
+
+.bookingActions button {
+  min-height: 32px;
+  padding: 5px 9px;
+}
+
 @media (max-width: 1180px) {
   .facilityKpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .facilityOverviewGrid { grid-template-columns: 1fr; }
+  .bookingToolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 760px) {
@@ -311,6 +526,10 @@
   .facilityStationFilter { flex-basis: auto; width: 100%; }
   .facilityKpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .facilityRoomGrid { grid-template-columns: 1fr; }
+  .bookingToolbar { grid-template-columns: 1fr; }
+  .bookingMonth { overflow-x: auto; }
+  .bookingWeekdays,
+  .bookingMonthGrid { min-width: 760px; }
 }
 
 @media (max-width: 480px) {

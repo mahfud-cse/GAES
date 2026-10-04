@@ -116,3 +116,13 @@ export const syncSourceLounges = (user: User) =>
 
 export const createVisitor = (user: User, visitor: unknown) =>
   call<{ id: string; lateScan: boolean }>("create-visitor", user, { visitor });
+
+export const manageRoomBooking = (
+  user: User,
+  payload: Record<string, unknown>,
+) =>
+  call<{ id?: string; ids?: string[]; status: string }>(
+    "manage-room-booking",
+    user,
+    payload,
+  );

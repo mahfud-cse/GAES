@@ -302,6 +302,39 @@ const interfaceTranslations: Record<string, string> = {
     "There are no devices yet. Add device inventory or complete enrollment during the player integration phase.",
   "Tersedia setelah command service aktif":
     "Available after the command service is active",
+  "Kalender Pemesanan": "Booking Calendar",
+  "Pemesanan Baru": "New Booking",
+  "Booking yang diajukan langsung mengunci waktu room termasuk preparation dan cleaning buffer.":
+    "Requested booking immediately locks the room time including preparation and cleaning buffers.",
+  Hari: "Day",
+  Minggu: "Week",
+  Bulan: "Month",
+  Daftar: "List",
+  "Hari Ini": "Today",
+  "Semua Ruangan": "All Rooms",
+  "Booking Baru": "New Room Booking",
+  "Ubah Draft Booking": "Edit Draft Booking",
+  "Pilih room": "Select room",
+  "Judul Booking": "Booking Title",
+  Tujuan: "Purpose",
+  Penyelenggara: "Organizer",
+  Kontak: "Contact",
+  Peserta: "Attendees",
+  "Waktu Mulai": "Start Time",
+  "Waktu Selesai": "End Time",
+  "Buffer Persiapan": "Preparation Buffer",
+  "Buffer Pembersihan": "Cleaning Buffer",
+  Pengulangan: "Recurrence",
+  "Jumlah Pengulangan": "Occurrences",
+  "Referensi Visitor / Flight (opsional)":
+    "Visitor / Flight Reference (optional)",
+  Catatan: "Notes",
+  "Simpan Draft": "Save Draft",
+  "Kirim untuk Persetujuan": "Submit for Approval",
+  "Booking yang diajukan akan menahan seluruh slot waktu termasuk buffer. Sistem menolak booking yang berbenturan.":
+    "Requested booking will reserve all time slots including buffers. The system rejects conflicting bookings.",
+  Sebelumnya: "Previous period",
+  Berikutnya: "Next period",
   "Kesiapan ruangan, fondasi pemesanan, serta monitoring TV dan digital signage sesuai scope akun.":
     "Room readiness, booking foundation, and TV and digital signage monitoring based on account scope.",
   "Pemesanan Ruangan": "Room Booking",
@@ -313,6 +346,8 @@ const interfaceTranslations: Record<string, string> = {
   Digunakan: "Occupied",
   "Pembersihan / Pemeliharaan": "Cleaning / Maintenance",
   "Layar Online": "Display Online",
+  "Booking Hari Ini": "Today's Booking",
+  "Pada seluruh room yang terlihat": "Across visible rooms",
   "Status Ruangan Saat Ini": "Current Room Status",
   "Daftar fasilitas belum diisi": "Facility list has not been provided",
   "Belum ada tayangan": "No content is playing",
@@ -8065,15 +8100,20 @@ export default function Home() {
               )}
             </>
           )}
-          {tab === "facility" && currentAccount && canSeeFacility && (
+          {tab === "facility" && currentAccount && firebaseUser && canSeeFacility && (
             <FacilityOperations
+              user={firebaseUser}
               account={{
                 id: currentAccount.id,
                 name: currentAccount.name,
                 role: currentAccount.role,
                 station: currentAccount.station === "ALL" ? station : currentAccount.station,
               }}
-              stations={stations.map((item) => ({ code: item.code, name: item.name }))}
+              stations={stations.map((item) => ({
+                code: item.code,
+                name: item.name,
+                timeZone: item.timeZone,
+              }))}
             />
           )}
           {tab === "master" && (

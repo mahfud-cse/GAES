@@ -35,7 +35,8 @@ export type GaesCollection =
   | "displayChannels"
   | "displaySchedules"
   | "displayCommands"
-  | "displayActivityLogs";
+  | "displayActivityLogs"
+  | "roomBookings";
 
 function clean<T extends Record<string, unknown>>(value: T): T {
   const sanitized = Object.fromEntries(
@@ -151,7 +152,7 @@ export function subscribeVisitors<T>(
 }
 
 export function subscribeStationCollection<T>(
-  name: "rooms" | "roomFacilities" | "displayDevices" | "displaySchedules" | "displayActivityLogs",
+  name: "rooms" | "roomFacilities" | "roomBookings" | "displayDevices" | "displaySchedules" | "displayActivityLogs",
   station: string,
   callback: (rows: T[]) => void,
   onError?: (error: Error) => void,
