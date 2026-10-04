@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { IScannerControls } from "@zxing/browser";
 import Link from "next/link";
+import FacilityOperations from "./facility-operations";
 import {
   browserLocalPersistence,
   EmailAuthProvider,
@@ -70,6 +71,7 @@ type MainTab =
   | "access"
   | "reconciliation"
   | "flights"
+  | "facility"
   | "master";
 type InlineNotice = { kind: "ok" | "warn" | "error"; text: string };
 type Visitor = {
@@ -290,6 +292,70 @@ const builderSeed: BuilderItem[] = [
 ];
 
 const interfaceTranslations: Record<string, string> = {
+  "Fasilitas & Operasional Ruangan": "Facility & Room Operations",
+  Ringkasan: "Overview",
+  "Siap digunakan": "Ready to use",
+  "Dalam operasional": "In operation",
+  "Perlu perhatian": "Need attention",
+  "menunggu persetujuan": "pending approval",
+  "Belum ada perangkat. Tambahkan inventaris perangkat atau lakukan enrollment pada tahap integrasi player.":
+    "There are no devices yet. Add device inventory or complete enrollment during the player integration phase.",
+  "Tersedia setelah command service aktif":
+    "Available after the command service is active",
+  "Kesiapan ruangan, fondasi pemesanan, serta monitoring TV dan digital signage sesuai scope akun.":
+    "Room readiness, booking foundation, and TV and digital signage monitoring based on account scope.",
+  "Pemesanan Ruangan": "Room Booking",
+  "Operasional Ruangan": "Room Operations",
+  "Master & Konfigurasi": "Master & Configuration",
+  "Log Aktivitas": "Activity Log",
+  "Total Ruangan": "Total Room",
+  Tersedia: "Available",
+  Digunakan: "Occupied",
+  "Pembersihan / Pemeliharaan": "Cleaning / Maintenance",
+  "Layar Online": "Display Online",
+  "Status Ruangan Saat Ini": "Current Room Status",
+  "Daftar fasilitas belum diisi": "Facility list has not been provided",
+  "Belum ada tayangan": "No content is playing",
+  "Belum ada display device yang terdaftar.": "No display device has been registered.",
+  "Belum ada ruangan pada station ini. Tambahkan melalui Master & Konfigurasi.":
+    "There are no rooms at this station. Add one through Master & Configuration.",
+  "Pusat Kontrol Perangkat": "Device Control Center",
+  "Monitoring Layar": "Display Monitoring",
+  "Monitoring tersedia sekarang. Remote command diaktifkan setelah command service dan player tervalidasi.":
+    "Monitoring is available now. Remote commands will be enabled after the command service and player are validated.",
+  "Tambah Inventaris Perangkat": "Add Device Inventory",
+  "Nama Perangkat": "Device Name",
+  Lokasi: "Location",
+  "Sedang Ditayangkan": "Now Playing",
+  "Teks Berjalan": "Running Text",
+  "Heartbeat Terakhir": "Last Heartbeat",
+  Setujui: "Approve",
+  "Minta Screenshot": "Request Screenshot",
+  "Inventaris Ruangan & Perangkat": "Room & Device Inventory",
+  "Konfigurasi Master": "Master Configuration",
+  "Perubahan konfigurasi dibatasi untuk administrator HO yang berwenang.":
+    "Configuration changes are limited to authorized HO administrators.",
+  "Tambah Ruangan": "Add Room",
+  "Tambah Perangkat": "Add Device",
+  Ruangan: "Room",
+  "Station / Area": "Station / Area",
+  "Kapasitas": "Capacity",
+  Fasilitas: "Facilities",
+  "Status Operasional": "Operational State",
+  "Nama Ruangan": "Room Name",
+  "Area / Lokasi": "Area / Location",
+  "Tipe Ruangan": "Room Type",
+  "Fasilitas (dipisahkan koma)": "Facilities (comma separated)",
+  "Simpan Ruangan": "Save Room",
+  "Perangkat Display": "Display Device",
+  "Ruangan Terpetakan": "Mapped Room",
+  Koneksi: "Connection",
+  Persetujuan: "Approval",
+  "Belum dipetakan": "Not mapped",
+  "Simpan Perangkat": "Save Device",
+  "Belum pernah terhubung": "Never connected",
+  "Tidak ada data operasional": "No operational data",
+  "TAHAP BERIKUTNYA": "NEXT PHASE",
   "Profil Saya": "My Profile",
   Notifikasi: "Notifications",
   "Ganti Password": "Change Password",
@@ -879,6 +945,17 @@ type Account = {
   status: "Aktif" | "Nonaktif";
   mustChangePassword?: boolean;
 };
+
+function roleCanUseFacility(role: Account["role"]) {
+  return [
+    "Super Admin",
+    "Admin",
+    "HO Admin",
+    "BO Admin",
+    "Lounge Officer",
+    "Lounge Manager",
+  ].includes(role);
+}
 type PortalNotification = {
   id: string;
   userId: string;
@@ -2358,6 +2435,7 @@ export default function Home() {
           "access",
           "reconciliation",
           ...(account.role !== "Lounge Officer" ? ["flights" as MainTab] : []),
+          ...(roleCanUseFacility(account.role) ? ["facility" as MainTab] : []),
           ...([
             "Super Admin",
             "Admin",
@@ -2440,6 +2518,7 @@ export default function Home() {
           "access",
           "reconciliation",
           "flights",
+          "facility",
           "master",
         ].includes(requested)
       )
@@ -2640,6 +2719,7 @@ export default function Home() {
     ].includes(role),
     canManageMaster = role === "Super Admin" || role === "Admin",
     canSeeDashboard = dashboardAllowedRoles.includes(role),
+    canSeeFacility = roleCanUseFacility(role),
     canDeleteFlight = (f: Flight) =>
       isGlobalAdmin || (role === "BO Admin" && f.origin === station),
     canBOVerify = [
@@ -5863,6 +5943,21 @@ export default function Home() {
                 <span>Flight Information</span>
               </Link>
             )}
+            {canSeeFacility && (
+              <Link
+                href="/?view=facility"
+                className={tab === "facility" ? "active" : ""}
+                onClick={(e) => {
+                  if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+                    e.preventDefault();
+                    setTab("facility");
+                  }
+                }}
+              >
+                <i>FO</i>
+                <span>Facility &amp; Room Operations</span>
+              </Link>
+            )}
             {isGlobalAdmin && (
               <Link
                 href="/?view=master"
@@ -7969,6 +8064,17 @@ export default function Home() {
                 </article>
               )}
             </>
+          )}
+          {tab === "facility" && currentAccount && canSeeFacility && (
+            <FacilityOperations
+              account={{
+                id: currentAccount.id,
+                name: currentAccount.name,
+                role: currentAccount.role,
+                station: currentAccount.station === "ALL" ? station : currentAccount.station,
+              }}
+              stations={stations.map((item) => ({ code: item.code, name: item.name }))}
+            />
           )}
           {tab === "master" && (
             <>

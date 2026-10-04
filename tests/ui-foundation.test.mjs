@@ -107,3 +107,43 @@ test("uses the root Next.js application for local and Netlify builds", async () 
   assert.match(netlify, /command\s*=\s*"npm test"/);
   assert.doesNotMatch(netlify, /source\/|static-build\/|vinext|vite/);
 });
+
+test("adds the facility and display foundation without exposing unfinished remote commands", async () => {
+  const [page, module, repository, rules] = await Promise.all([
+    read("../app/page.tsx"),
+    read("../app/facility-operations.tsx"),
+    read("../lib/firebase/repository.ts"),
+    read("../firestore.rules"),
+  ]);
+
+  assert.match(page, /"facility"/);
+  assert.match(page, /FacilityOperations/);
+  assert.match(module, /Device Control Center/i);
+  assert.match(module, /Now Playing/);
+  assert.match(
+    module,
+    /button type="button" disabled title="Tersedia setelah command service aktif">Play Now/,
+  );
+  assert.match(repository, /\| "rooms"/);
+  assert.match(repository, /\| "displayDevices"/);
+  assert.match(rules, /match \/rooms\/\{id\}/);
+  assert.match(rules, /match \/displayDevices\/\{id\}/);
+  assert.match(
+    rules,
+    /match \/displayCommands\/\{id\}[\s\S]*?allow write: if false;/,
+  );
+});
+
+test("keeps the facility module bilingual and mobile safe", async () => {
+  const [page, css] = await Promise.all([
+    read("../app/page.tsx"),
+    read("../app/globals.css"),
+  ]);
+  assert.match(
+    page,
+    /"Fasilitas & Operasional Ruangan": "Facility & Room Operations"/,
+  );
+  assert.match(page, /"Pemesanan Ruangan": "Room Booking"/);
+  assert.match(css, /\.facilityOverviewGrid/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.facilityTitle/);
+});

@@ -57,6 +57,266 @@
   --soft: var(--color-surface-soft);
 }
 
+/* Facility & Room Operations — canonical module foundation */
+.facilityModule {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.facilityTitle {
+  align-items: end;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.facilityTitle > div:first-child {
+  min-width: 0;
+}
+
+.facilityTitle h1 {
+  margin: 5px 0;
+}
+
+.facilityTitle p {
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.facilityStationFilter {
+  display: grid;
+  flex: 0 1 300px;
+  gap: 6px;
+}
+
+.facilityStationFilter span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.facilityTabs {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.facilityTabs button {
+  white-space: nowrap;
+}
+
+.facilityTabs button.active,
+.facilityTabs button.active:hover {
+  background: var(--color-navy-900);
+  border-color: var(--color-navy-900);
+  color: #fff;
+}
+
+.facilityKpis {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.facilityKpis article {
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 6px 18px #062b5c14;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.facilityKpis article > span,
+.facilityKpis article > small {
+  color: var(--color-text-muted);
+}
+
+.facilityKpis article > strong {
+  color: var(--color-navy-900);
+  font-size: 26px;
+  line-height: 1;
+}
+
+.facilityOverviewGrid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.3fr) minmax(320px, .7fr);
+}
+
+.facilityRoomGrid,
+.facilityDeviceList {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.facilityRoomGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.facilityRoomCard,
+.facilityDeviceList > div {
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.facilityRoomCard > div {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.facilityRoomCard > small,
+.facilityRoomCard > span,
+.facilityDeviceList small {
+  color: var(--color-text-muted);
+}
+
+.facilityDeviceList > div {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.facilityDeviceList > div > :not(.deviceStatus) {
+  grid-column: 2;
+}
+
+.facilityDeviceList em {
+  color: var(--color-blue-600);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.statusDot {
+  background: #6b7280;
+  border-radius: 50%;
+  height: 9px;
+  width: 9px;
+}
+
+.statusDot.state-available { background: #2e7d32; }
+.statusDot.state-reserved { background: #2457a7; }
+.statusDot.state-occupied { background: #d97706; }
+.statusDot.state-cleaning { background: #5b21b6; }
+.statusDot.state-maintenance { background: #b42318; }
+
+.deviceStatus,
+.phaseBadge {
+  align-items: center;
+  background: #eef1f5;
+  border-radius: 999px;
+  color: #475467;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  justify-content: center;
+  line-height: 1.2;
+  padding: 6px 9px;
+  width: fit-content;
+}
+
+.deviceStatus.online {
+  background: #e9f6ec;
+  color: #216e39;
+}
+
+.deviceStatus.offline {
+  background: #fff0ee;
+  color: #a33126;
+}
+
+.facilityActionHeading {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.facilityActionHeading > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.facilityTable td small {
+  color: var(--color-text-muted);
+  display: block;
+  margin-top: 4px;
+}
+
+.facilityTable .tableActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.facilityTable .tableActions button {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+.facilityTable button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+.facilityEmpty,
+.phasePlaceholder {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 180px;
+  padding: 28px;
+  text-align: center;
+}
+
+.facilityEmpty span,
+.phasePlaceholder p {
+  color: var(--color-text-muted);
+  max-width: 680px;
+}
+
+.phasePlaceholder .phaseBadge {
+  background: #eaf0fb;
+  color: var(--color-navy-900);
+}
+
+.facilityModal {
+  width: min(760px, calc(100vw - 24px));
+}
+
+@media (max-width: 1180px) {
+  .facilityKpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .facilityOverviewGrid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 760px) {
+  .facilityTitle,
+  .facilityActionHeading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .facilityStationFilter { flex-basis: auto; width: 100%; }
+  .facilityKpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .facilityRoomGrid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 480px) {
+  .facilityKpis { grid-template-columns: 1fr; }
+}
+
 * {
   box-sizing: border-box;
 }

@@ -28,7 +28,14 @@ export type GaesCollection =
   | "monitoringRows"
   | "passengerVolumes"
   | "loungeCapacityHistory"
-  | "loungePriceHistory";
+  | "loungePriceHistory"
+  | "rooms"
+  | "roomFacilities"
+  | "displayDevices"
+  | "displayChannels"
+  | "displaySchedules"
+  | "displayCommands"
+  | "displayActivityLogs";
 
 function clean<T extends Record<string, unknown>>(value: T): T {
   const sanitized = Object.fromEntries(
@@ -130,6 +137,30 @@ export function subscribeVisitors<T>(
     station && station !== "ALL"
       ? query(base, where("airport", "==", station))
       : base;
+  return onSnapshot(
+    source,
+    (snapshot) =>
+      callback(
+        snapshot.docs.map((item: QueryDocumentSnapshot<DocumentData>) => ({
+          id: item.id,
+          ...item.data(),
+        })) as T[],
+      ),
+    (error) => onError?.(error),
+  );
+}
+
+export function subscribeStationCollection<T>(
+  name: "rooms" | "roomFacilities" | "displayDevices" | "displaySchedules" | "displayActivityLogs",
+  station: string,
+  callback: (rows: T[]) => void,
+  onError?: (error: Error) => void,
+) {
+  if (!db) return () => undefined;
+  const base = collection(db, name);
+  const source = station && station !== "ALL"
+    ? query(base, where("station", "==", station))
+    : base;
   return onSnapshot(
     source,
     (snapshot) =>
