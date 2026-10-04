@@ -2,10 +2,12 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
-import { manageRoomBooking, manageRoomOperation } from "../lib/firebase/api";
+import { manageDisplayContent, manageRoomBooking, manageRoomOperation } from "../lib/firebase/api";
+import { uploadDisplayMedia } from "../lib/firebase/evidence";
 import {
   removeRecord,
   saveRecord,
+  subscribeCollection,
   subscribeStationCollection,
 } from "../lib/firebase/repository";
 
@@ -60,6 +62,42 @@ type DeviceRecord = {
   screenshotUrl?: string;
   approvedBy?: string;
   approvedAt?: string;
+};
+
+type DisplayContent = {
+  id: string;
+  title: string;
+  contentType: "Live TV" | "Video" | "Image" | "Web URL";
+  sourceUrl: string;
+  storagePath?: string;
+  station: string;
+  durationSeconds: number;
+  description: string;
+  status: "Active" | "Inactive";
+};
+type DisplayChannel = {
+  id: string;
+  name: string;
+  description: string;
+  contentIds: string[];
+  status: "Active" | "Inactive";
+};
+type DisplaySchedule = {
+  id: string;
+  station: string;
+  title: string;
+  channelId: string;
+  channelName: string;
+  deviceIds: string[];
+  startDate: string;
+  endDate: string;
+  startTime: string;
+  endTime: string;
+  daysOfWeek: number[];
+  overlayEnabled: boolean;
+  overlayText: string;
+  priority: "Normal" | "High" | "Emergency";
+  status: "Active" | "Inactive";
 };
 
 type BookingStatus =
@@ -249,6 +287,40 @@ function localToday() {
   return local.toISOString().slice(0, 10);
 }
 
+const EMPTY_CONTENT: Omit<DisplayContent, "id"> = {
+  title: "",
+  contentType: "Live TV",
+  sourceUrl: "",
+  storagePath: "",
+  station: "ALL",
+  durationSeconds: 0,
+  description: "",
+  status: "Active",
+};
+
+const EMPTY_CHANNEL: Omit<DisplayChannel, "id"> = {
+  name: "",
+  description: "",
+  contentIds: [],
+  status: "Active",
+};
+
+const EMPTY_SCHEDULE: Omit<DisplaySchedule, "id" | "channelName"> = {
+  station: "CGK",
+  title: "",
+  channelId: "",
+  deviceIds: [],
+  startDate: localToday(),
+  endDate: localToday(),
+  startTime: "06:00",
+  endTime: "23:00",
+  daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+  overlayEnabled: false,
+  overlayText: "",
+  priority: "Normal",
+  status: "Active",
+};
+
 const EMPTY_BOOKING: BookingDraft = {
   station: "CGK",
   roomId: "",
@@ -346,6 +418,9 @@ export default function FacilityOperations({
   const [activeTab, setActiveTab] = useState<ModuleTab>("Overview");
   const [rooms, setRooms] = useState<RoomRecord[]>([]);
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
+  const [displayContents, setDisplayContents] = useState<DisplayContent[]>([]);
+  const [displayChannels, setDisplayChannels] = useState<DisplayChannel[]>([]);
+  const [displaySchedules, setDisplaySchedules] = useState<DisplaySchedule[]>([]);
   const [bookings, setBookings] = useState<RoomBooking[]>([]);
   const [operations, setOperations] = useState<RoomOperation[]>([]);
   const [maintenanceRows, setMaintenanceRows] = useState<RoomMaintenance[]>([]);
@@ -375,6 +450,16 @@ export default function FacilityOperations({
   const [operationRequestId, setOperationRequestId] = useState("");
   const [savingOperation, setSavingOperation] = useState(false);
   const [activityQuery, setActivityQuery] = useState("");
+  const [displaySection, setDisplaySection] = useState<"Monitor" | "Schedules" | "Channels" | "Content Library">("Monitor");
+  const [contentDraft, setContentDraft] = useState(EMPTY_CONTENT);
+  const [channelDraft, setChannelDraft] = useState(EMPTY_CHANNEL);
+  const [scheduleDraft, setScheduleDraft] = useState(EMPTY_SCHEDULE);
+  const [editingContent, setEditingContent] = useState<string | null>(null);
+  const [editingChannel, setEditingChannel] = useState<string | null>(null);
+  const [editingSchedule, setEditingSchedule] = useState<string | null>(null);
+  const [displayDialog, setDisplayDialog] = useState<"content" | "channel" | "schedule" | null>(null);
+  const [displayMediaFile, setDisplayMediaFile] = useState<File | null>(null);
+  const [savingDisplay, setSavingDisplay] = useState(false);
 
   const globalScope = GLOBAL_ROLES.includes(account.role);
   const canConfigure = CONFIG_ROLES.includes(account.role);
@@ -398,6 +483,14 @@ export default function FacilityOperations({
         "displayDevices",
         globalScope ? "ALL" : account.station,
         setDevices,
+        onError,
+      ),
+      subscribeCollection<DisplayContent>("displayContents", setDisplayContents, undefined, onError),
+      subscribeCollection<DisplayChannel>("displayChannels", setDisplayChannels, undefined, onError),
+      subscribeStationCollection<DisplaySchedule>(
+        "displaySchedules",
+        globalScope ? "ALL" : account.station,
+        setDisplaySchedules,
         onError,
       ),
       subscribeStationCollection<RoomBooking>(
@@ -449,6 +542,15 @@ export default function FacilityOperations({
           (stationFilter === "ALL" || device.station === stationFilter),
       ),
     [devices, stationFilter, permittedStation],
+  );
+  const scopedDisplayContents = useMemo(
+    () => displayContents.filter((row) => row.station === "ALL" || permittedStation(row.station))
+      .filter((row) => stationFilter === "ALL" || row.station === "ALL" || row.station === stationFilter),
+    [displayContents, permittedStation, stationFilter],
+  );
+  const scopedDisplaySchedules = useMemo(
+    () => displaySchedules.filter((row) => permittedStation(row.station) && (stationFilter === "ALL" || row.station === stationFilter)),
+    [displaySchedules, permittedStation, stationFilter],
   );
   const scopedBookings = useMemo(
     () =>
@@ -528,6 +630,78 @@ export default function FacilityOperations({
       approvedAt: new Date().toISOString(),
     });
     setNotice({ kind: "ok", text: `${device.name} disetujui. Aktivasi player dilakukan pada tahap integrasi device.` });
+  }
+
+  function openDisplayDialog(kind: "content" | "channel" | "schedule") {
+    setDisplayMediaFile(null);
+    if (kind === "content") {
+      setEditingContent(null);
+      setContentDraft({ ...EMPTY_CONTENT, station: globalScope ? "ALL" : account.station });
+    } else if (kind === "channel") {
+      setEditingChannel(null);
+      setChannelDraft(EMPTY_CHANNEL);
+    } else {
+      const station = stationFilter !== "ALL" ? stationFilter : activeStations[0]?.code || account.station;
+      setEditingSchedule(null);
+      setScheduleDraft({ ...EMPTY_SCHEDULE, station, channelId: displayChannels.find((row) => row.status === "Active")?.id || "" });
+    }
+    setDisplayDialog(kind);
+  }
+
+  async function saveDisplayItem(event: FormEvent) {
+    event.preventDefault();
+    if (!displayDialog) return;
+    setSavingDisplay(true);
+    try {
+      if (displayDialog === "content") {
+        const id = editingContent || recordId("display-content");
+        let sourceUrl = contentDraft.sourceUrl.trim();
+        let storagePath = contentDraft.storagePath || "";
+        if (displayMediaFile) {
+          const uploaded = await uploadDisplayMedia(contentDraft.station, id, displayMediaFile);
+          sourceUrl = uploaded.url;
+          storagePath = uploaded.storagePath;
+        }
+        await manageDisplayContent(user, {
+          action: "savecontent",
+          ...contentDraft,
+          id,
+          sourceUrl,
+          storagePath,
+          requestId: globalThis.crypto?.randomUUID?.() || recordId("content-request"),
+        });
+      } else if (displayDialog === "channel") {
+        await manageDisplayContent(user, {
+          action: "savechannel",
+          ...channelDraft,
+          id: editingChannel || undefined,
+          requestId: globalThis.crypto?.randomUUID?.() || recordId("channel-request"),
+        });
+      } else {
+        await manageDisplayContent(user, {
+          action: "saveschedule",
+          ...scheduleDraft,
+          id: editingSchedule || undefined,
+          requestId: globalThis.crypto?.randomUUID?.() || recordId("schedule-request"),
+        });
+      }
+      setNotice({ kind: "ok", text: "Data TV & Digital Signage berhasil disimpan." });
+      setDisplayDialog(null);
+    } catch (error) {
+      setNotice({ kind: "error", text: error instanceof Error ? error.message : "Data display tidak dapat disimpan." });
+    } finally {
+      setSavingDisplay(false);
+    }
+  }
+
+  async function deleteDisplayItem(kind: "content" | "channel" | "schedule", id: string, label: string) {
+    if (!window.confirm(`Hapus ${label}?`)) return;
+    try {
+      await manageDisplayContent(user, { action: "delete", kind, id });
+      setNotice({ kind: "ok", text: `${label} berhasil dihapus.` });
+    } catch (error) {
+      setNotice({ kind: "error", text: error instanceof Error ? error.message : "Data display tidak dapat dihapus." });
+    }
   }
 
   function openNewBooking() {
@@ -702,7 +876,7 @@ export default function FacilityOperations({
         ...common,
         cleaningChecklist: {
           clean: operationForm.cleaningClean,
-          amenitiesReady: operationForm.cleaningAmenities,
+          amenities: operationForm.cleaningAmenities,
           damageChecked: operationForm.cleaningDamageChecked,
         },
         cleaningNote: operationForm.cleaningNote,
@@ -956,33 +1130,42 @@ export default function FacilityOperations({
       )}
 
       {activeTab === "TV & Digital Signage" && (
-        <article className="card">
-          <div className="cardHeading facilityActionHeading">
-            <div><small>DEVICE CONTROL CENTER</small><h2>Display Monitoring</h2><p>Monitoring tersedia sekarang. Remote command diaktifkan setelah command service dan player tervalidasi.</p></div>
-            {canConfigure && <button type="button" onClick={() => { setEditingDevice(null); setDeviceDraft({ ...EMPTY_DEVICE, station: globalScope ? "CGK" : account.station }); setShowDeviceForm(true); }}>+ Add Device Inventory</button>}
-          </div>
-          {!scopedDevices.length ? <EmptyState text="Belum ada device. Tambahkan inventory device atau lakukan enrollment pada tahap integrasi player." /> : (
-            <div className="tableWrap">
-              <table className="facilityTable">
-                <thead><tr><th>Device</th><th>Location</th><th>Status</th><th>Now Playing</th><th>Running Text</th><th>Last Heartbeat</th><th>Action</th></tr></thead>
-                <tbody>{scopedDevices.map((device) => (
-                  <tr key={device.id}>
-                    <td><b>{device.name}</b><small>{device.platform} · {device.connectionType}</small></td>
-                    <td>{device.station}<small>{roomName(device.roomId)}</small></td>
-                    <td><span className={`deviceStatus ${isOnline(device) ? "online" : "offline"}`}>{device.approvalStatus === "Pending" ? "Pending Approval" : isOnline(device) ? "Online" : device.status}</span></td>
-                    <td>{device.nowPlaying || "—"}</td><td>{device.overlayText || "—"}</td><td>{readableHeartbeat(device.lastHeartbeat)}</td>
-                    <td><div className="tableActions">
-                      {canConfigure && device.approvalStatus === "Pending" && <button type="button" onClick={() => void approveDevice(device)}>Approve</button>}
-                      {canConfigure && <button type="button" onClick={() => { setEditingDevice(device.id); setDeviceDraft(device); setShowDeviceForm(true); }}>Edit</button>}
-                      <button type="button" disabled title="Tersedia setelah command service aktif">Play Now</button>
-                      {canControl && <button type="button" disabled title="Tersedia setelah command service aktif">Request Screenshot</button>}
-                    </div></td>
-                  </tr>
-                ))}</tbody>
-              </table>
+        <div className="displayManagementPage">
+          <article className="card facilitySectionCard">
+            <div className="facilitySectionHeader">
+              <div><small>TV &amp; DIGITAL SIGNAGE</small><h2>Content &amp; Schedule Management</h2><p>Prepare content, arrange channels, and schedule playback per device. Remote commands are activated during player integration.</p></div>
+              <div className="facilityHeaderActions">
+                {displaySection === "Monitor" && canConfigure && <button className="primary" type="button" onClick={() => { setEditingDevice(null); setDeviceDraft({ ...EMPTY_DEVICE, station: globalScope ? "CGK" : account.station }); setShowDeviceForm(true); }}>+ Add Device</button>}
+                {displaySection === "Schedules" && canControl && <button className="primary" type="button" onClick={() => openDisplayDialog("schedule")}>+ New Schedule</button>}
+                {displaySection === "Channels" && canConfigure && <button className="primary" type="button" onClick={() => openDisplayDialog("channel")}>+ New Channel</button>}
+                {displaySection === "Content Library" && canConfigure && <button className="primary" type="button" onClick={() => openDisplayDialog("content")}>+ Add Content</button>}
+              </div>
             </div>
-          )}
-        </article>
+            <div className="displaySubTabs" role="tablist" aria-label="TV content management">
+              {(["Monitor", "Schedules", "Channels", "Content Library"] as const).map((item) => <button key={item} type="button" className={displaySection === item ? "active" : ""} onClick={() => setDisplaySection(item)}>{item}</button>)}
+            </div>
+          </article>
+
+          {displaySection === "Monitor" && <article className="card facilitySectionCard">
+            <div className="facilitySectionHeader compact"><div><small>DEVICE CONTROL CENTER</small><h2>Display Monitoring</h2></div><span className="scopeBadge">{scopedDevices.filter(isOnline).length}/{scopedDevices.length} online</span></div>
+            {!scopedDevices.length ? <EmptyState text="Belum ada device. Tambahkan inventory device atau lakukan enrollment pada tahap integrasi player." /> : <div className="tableWrap"><table className="facilityTable"><thead><tr><th>Device</th><th>Location</th><th>Status</th><th>Now Playing</th><th>Running Text</th><th>Last Heartbeat</th><th>Action</th></tr></thead><tbody>{scopedDevices.map((device) => <tr key={device.id}><td><b>{device.name}</b><small>{device.platform} · {device.connectionType}</small></td><td>{device.station}<small>{roomName(device.roomId)}</small></td><td><span className={`deviceStatus ${isOnline(device) ? "online" : "offline"}`}>{device.approvalStatus === "Pending" ? "Pending Approval" : isOnline(device) ? "Online" : device.status}</span></td><td>{device.nowPlaying || "—"}</td><td>{device.overlayText || "—"}</td><td>{readableHeartbeat(device.lastHeartbeat)}</td><td><div className="tableActions">{canConfigure && device.approvalStatus === "Pending" && <button type="button" onClick={() => void approveDevice(device)}>Approve</button>}{canConfigure && <button type="button" onClick={() => { setEditingDevice(device.id); setDeviceDraft(device); setShowDeviceForm(true); }}>Edit</button>}<button type="button" disabled title="Tersedia setelah command service aktif">Play Now</button>{canControl && <button type="button" disabled title="Tersedia setelah command service aktif">Request Screenshot</button>}</div></td></tr>)}</tbody></table></div>}
+          </article>}
+
+          {displaySection === "Schedules" && <article className="card facilitySectionCard">
+            <div className="facilitySectionHeader compact"><div><small>PROGRAM GRID</small><h2>Display Schedules</h2></div><span className="scopeBadge">{scopedDisplaySchedules.filter((row) => row.status === "Active").length} active</span></div>
+            <div className="tableWrap"><table className="facilityTable"><thead><tr><th>Schedule</th><th>Station</th><th>Channel</th><th>Date &amp; Time</th><th>Devices</th><th>Overlay</th><th>Action</th></tr></thead><tbody>{scopedDisplaySchedules.length ? scopedDisplaySchedules.map((row) => <tr key={row.id}><td><b>{row.title}</b><small>{row.priority} · {row.status}</small></td><td>{row.station}</td><td>{row.channelName}</td><td>{row.startDate} — {row.endDate}<small>{row.startTime}–{row.endTime} · {row.daysOfWeek.map(dayLabel).join(", ")}</small></td><td>{row.deviceIds.length} device</td><td>{row.overlayEnabled ? row.overlayText || "Enabled" : "Off"}</td><td><div className="tableActions"><button type="button" onClick={() => { setEditingSchedule(row.id); setScheduleDraft(row); setDisplayDialog("schedule"); }}>Edit</button><button type="button" onClick={() => void deleteDisplayItem("schedule", row.id, row.title)}>Delete</button></div></td></tr>) : <tr><td colSpan={7}><div className="tableEmpty">Belum ada schedule pada scope ini.</div></td></tr>}</tbody></table></div>
+          </article>}
+
+          {displaySection === "Channels" && <article className="card facilitySectionCard">
+            <div className="facilitySectionHeader compact"><div><small>PLAYLIST BUILDER</small><h2>Channels</h2></div><span className="scopeBadge">{displayChannels.length} channel</span></div>
+            <div className="contentCardGrid">{displayChannels.length ? displayChannels.map((row) => <div className="contentCard" key={row.id}><div><span className="bookingStatus">{row.status}</span><small>{row.contentIds.length} content</small></div><h3>{row.name}</h3><p>{row.description || "No description"}</p><ol>{row.contentIds.map((id) => <li key={id}>{displayContents.find((content) => content.id === id)?.title || "Content unavailable"}</li>)}</ol>{canConfigure && <div className="contentCardActions"><button type="button" onClick={() => { setEditingChannel(row.id); setChannelDraft(row); setDisplayDialog("channel"); }}>Edit</button><button type="button" onClick={() => void deleteDisplayItem("channel", row.id, row.name)}>Delete</button></div>}</div>) : <EmptyState text="Belum ada channel. Tambahkan content terlebih dahulu lalu susun urutannya dalam channel." />}</div>
+          </article>}
+
+          {displaySection === "Content Library" && <article className="card facilitySectionCard">
+            <div className="facilitySectionHeader compact"><div><small>MEDIA SOURCE</small><h2>Content Library</h2></div><span className="scopeBadge">{scopedDisplayContents.length} content</span></div>
+            <div className="contentCardGrid">{scopedDisplayContents.length ? scopedDisplayContents.map((row) => <div className="contentCard" key={row.id}><div><span className="bookingStatus">{row.contentType}</span><small>{row.station === "ALL" ? "All Stations" : row.station}</small></div><h3>{row.title}</h3><p>{row.description || row.sourceUrl}</p><small>{row.durationSeconds ? `${row.durationSeconds} seconds` : "Continuous source"} · {row.status}</small>{canConfigure && <div className="contentCardActions"><button type="button" onClick={() => { setEditingContent(row.id); setContentDraft(row); setDisplayMediaFile(null); setDisplayDialog("content"); }}>Edit</button><button type="button" onClick={() => void deleteDisplayItem("content", row.id, row.title)}>Delete</button></div>}</div>) : <EmptyState text="Belum ada content. Tambahkan Live TV, video, image, atau web URL." />}</div>
+          </article>}
+        </div>
       )}
 
       {activeTab === "Master & Configuration" && (
@@ -1007,6 +1190,52 @@ export default function FacilityOperations({
           </div>
           <div className="tableWrap"><table className="facilityTable"><thead><tr><th>Time</th><th>Action</th><th>Station / Room</th><th>Booking</th><th>Operator</th><th>Detail</th></tr></thead><tbody>{scopedActivities.length ? scopedActivities.map((row) => <tr key={row.id}><td>{formatActivityTime(row.createdAt)}</td><td><b>{activityLabel(row.action)}</b></td><td>{row.station}<small>{roomName(row.roomId)}</small></td><td>{row.bookingId || "—"}</td><td>{row.actorName || "System"}</td><td>{row.reason || "—"}</td></tr>) : <tr><td colSpan={6}><div className="tableEmpty">Belum ada activity log pada scope ini.</div></td></tr>}</tbody></table></div>
         </article>
+      )}
+
+      {displayDialog && (
+        <div className="back" onMouseDown={(event) => event.target === event.currentTarget && setDisplayDialog(null)}>
+          <div className="modal displayManagementModal">
+            <div className="modalHead"><div><small>TV &amp; DIGITAL SIGNAGE</small><h2>{displayDialog === "content" ? editingContent ? "Edit Content" : "Add Content" : displayDialog === "channel" ? editingChannel ? "Edit Channel" : "New Channel" : editingSchedule ? "Edit Schedule" : "New Schedule"}</h2></div><button type="button" onClick={() => setDisplayDialog(null)}>×</button></div>
+            <form className="form" onSubmit={(event) => void saveDisplayItem(event)}>
+              {displayDialog === "content" && <>
+                <label><span>Content Title</span><input value={contentDraft.title} onChange={(event) => setContentDraft({ ...contentDraft, title: event.target.value })} required /></label>
+                <label><span>Content Type</span><select value={contentDraft.contentType} onChange={(event) => setContentDraft({ ...contentDraft, contentType: event.target.value as DisplayContent["contentType"] })}><option>Live TV</option><option>Video</option><option>Image</option><option>Web URL</option></select></label>
+                <label><span>Scope</span><select value={contentDraft.station} onChange={(event) => setContentDraft({ ...contentDraft, station: event.target.value })} disabled={!globalScope}><option value="ALL">All Stations</option>{activeStations.map((station) => <option key={station.code} value={station.code}>{station.code} — {station.name}</option>)}</select></label>
+                <label><span>Duration (seconds)</span><input type="number" min="0" max="86400" value={contentDraft.durationSeconds} onChange={(event) => setContentDraft({ ...contentDraft, durationSeconds: Number(event.target.value) })} /></label>
+                <label className="full"><span>Source URL</span><input type="url" value={contentDraft.sourceUrl} onChange={(event) => setContentDraft({ ...contentDraft, sourceUrl: event.target.value })} placeholder="https://... atau upload file di bawah" /></label>
+                {!["Live TV", "Web URL"].includes(contentDraft.contentType) && <label className="full"><span>Upload Media (optional)</span><input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" onChange={(event) => setDisplayMediaFile(event.target.files?.[0] || null)} /><small>JPG, PNG, WEBP, MP4, atau WEBM · maksimal 200 MB</small></label>}
+                <label><span>Status</span><select value={contentDraft.status} onChange={(event) => setContentDraft({ ...contentDraft, status: event.target.value as DisplayContent["status"] })}><option>Active</option><option>Inactive</option></select></label>
+                <label className="full"><span>Description</span><textarea value={contentDraft.description} onChange={(event) => setContentDraft({ ...contentDraft, description: event.target.value })} /></label>
+              </>}
+
+              {displayDialog === "channel" && <>
+                <label><span>Channel Name</span><input value={channelDraft.name} onChange={(event) => setChannelDraft({ ...channelDraft, name: event.target.value })} required /></label>
+                <label><span>Status</span><select value={channelDraft.status} onChange={(event) => setChannelDraft({ ...channelDraft, status: event.target.value as DisplayChannel["status"] })}><option>Active</option><option>Inactive</option></select></label>
+                <label className="full"><span>Description</span><textarea value={channelDraft.description} onChange={(event) => setChannelDraft({ ...channelDraft, description: event.target.value })} /></label>
+                {channelDraft.contentIds.length > 0 && <div className="channelSequence full"><b>Playback Order</b>{channelDraft.contentIds.map((id, index) => <div key={id}><span>{index + 1}</span><b>{displayContents.find((row) => row.id === id)?.title || "Content unavailable"}</b><button type="button" disabled={index === 0} onClick={() => { const next = [...channelDraft.contentIds]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; setChannelDraft({ ...channelDraft, contentIds: next }); }}>↑</button><button type="button" disabled={index === channelDraft.contentIds.length - 1} onClick={() => { const next = [...channelDraft.contentIds]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; setChannelDraft({ ...channelDraft, contentIds: next }); }}>↓</button></div>)}</div>}
+                <div className="checklistPanel full"><b>Channel Content</b>{displayContents.filter((row) => row.status === "Active").map((row) => <label key={row.id}><input type="checkbox" checked={channelDraft.contentIds.includes(row.id)} onChange={(event) => setChannelDraft({ ...channelDraft, contentIds: event.target.checked ? [...channelDraft.contentIds, row.id] : channelDraft.contentIds.filter((id) => id !== row.id) })} /><span>{row.title} · {row.contentType}</span></label>)}{!displayContents.some((row) => row.status === "Active") && <small>Belum ada content aktif.</small>}</div>
+              </>}
+
+              {displayDialog === "schedule" && <>
+                <label><span>Schedule Title</span><input value={scheduleDraft.title} onChange={(event) => setScheduleDraft({ ...scheduleDraft, title: event.target.value })} required /></label>
+                <label><span>Station</span><select value={scheduleDraft.station} onChange={(event) => setScheduleDraft({ ...scheduleDraft, station: event.target.value, deviceIds: [] })} disabled={!globalScope}>{activeStations.map((station) => <option key={station.code} value={station.code}>{station.code} — {station.name}</option>)}</select></label>
+                <label><span>Channel</span><select value={scheduleDraft.channelId} onChange={(event) => setScheduleDraft({ ...scheduleDraft, channelId: event.target.value })} required><option value="">Select channel</option>{displayChannels.filter((row) => row.status === "Active").map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
+                <label><span>Priority</span><select value={scheduleDraft.priority} onChange={(event) => setScheduleDraft({ ...scheduleDraft, priority: event.target.value as DisplaySchedule["priority"] })}><option>Normal</option><option>High</option><option>Emergency</option></select></label>
+                <label><span>Start Date</span><input type="date" value={scheduleDraft.startDate} onChange={(event) => setScheduleDraft({ ...scheduleDraft, startDate: event.target.value })} required /></label>
+                <label><span>End Date</span><input type="date" value={scheduleDraft.endDate} onChange={(event) => setScheduleDraft({ ...scheduleDraft, endDate: event.target.value })} required /></label>
+                <label><span>Start Time</span><input type="time" value={scheduleDraft.startTime} onChange={(event) => setScheduleDraft({ ...scheduleDraft, startTime: event.target.value })} required /></label>
+                <label><span>End Time</span><input type="time" value={scheduleDraft.endTime} onChange={(event) => setScheduleDraft({ ...scheduleDraft, endTime: event.target.value })} required /></label>
+                <div className="checklistPanel full compactChecklist"><b>Operating Days</b><div>{[1, 2, 3, 4, 5, 6, 7].map((day) => <label key={day}><input type="checkbox" checked={scheduleDraft.daysOfWeek.includes(day)} onChange={(event) => setScheduleDraft({ ...scheduleDraft, daysOfWeek: event.target.checked ? [...scheduleDraft.daysOfWeek, day].sort() : scheduleDraft.daysOfWeek.filter((value) => value !== day) })} /><span>{dayLabel(day)}</span></label>)}</div></div>
+                <div className="checklistPanel full"><b>Target Devices</b>{devices.filter((row) => row.station === scheduleDraft.station && row.approvalStatus === "Approved").map((row) => <label key={row.id}><input type="checkbox" checked={scheduleDraft.deviceIds.includes(row.id)} onChange={(event) => setScheduleDraft({ ...scheduleDraft, deviceIds: event.target.checked ? [...scheduleDraft.deviceIds, row.id] : scheduleDraft.deviceIds.filter((id) => id !== row.id) })} /><span>{row.name} · {roomName(row.roomId)}</span></label>)}{!devices.some((row) => row.station === scheduleDraft.station && row.approvalStatus === "Approved") && <small>Belum ada device Approved di station ini.</small>}</div>
+                <label className="full inlineCheck"><input type="checkbox" checked={scheduleDraft.overlayEnabled} onChange={(event) => setScheduleDraft({ ...scheduleDraft, overlayEnabled: event.target.checked })} /><span>Enable scheduled running text</span></label>
+                {scheduleDraft.overlayEnabled && <label className="full"><span>Running Text</span><textarea value={scheduleDraft.overlayText} onChange={(event) => setScheduleDraft({ ...scheduleDraft, overlayText: event.target.value })} placeholder="Informasi boarding, final call, atau pesan lounge" /></label>}
+                <label><span>Status</span><select value={scheduleDraft.status} onChange={(event) => setScheduleDraft({ ...scheduleDraft, status: event.target.value as DisplaySchedule["status"] })}><option>Active</option><option>Inactive</option></select></label>
+              </>}
+
+              <div className="modalActions full"><button type="button" onClick={() => setDisplayDialog(null)}>Cancel</button><button className="primary" type="submit" disabled={savingDisplay}>{savingDisplay ? "Saving..." : "Save"}</button></div>
+            </form>
+          </div>
+        </div>
       )}
 
       {operationDialog && (
@@ -1186,6 +1415,10 @@ function activityLabel(value: string) {
     .replaceAll("_", " ")
     .toLowerCase()
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function dayLabel(day: number) {
+  return ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][day] || "—";
 }
 
 function dateValue(date: Date) {

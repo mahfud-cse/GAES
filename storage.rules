@@ -9,5 +9,12 @@ service firebase.storage {
       allow write: if active() && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('(application/pdf|image/jpeg|image/png)');
     }
+    match /display-content/{station}/{contentId}/{fileName} {
+      allow read: if active();
+      allow write: if active()
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['Super Admin','Admin','HO Admin']
+        && request.resource.size < 200 * 1024 * 1024
+        && request.resource.contentType.matches('(image/jpeg|image/png|image/webp|video/mp4|video/webm)');
+    }
   }
 }

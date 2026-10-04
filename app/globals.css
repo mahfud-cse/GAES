@@ -335,7 +335,7 @@
   border-radius: var(--radius-md);
   display: grid;
   gap: 12px;
-  grid-template-columns: auto minmax(230px, auto) minmax(180px, 1fr) minmax(160px, .8fr);
+  grid-template-columns: max-content minmax(390px, 1.15fr) minmax(170px, .8fr) minmax(160px, .75fr);
   margin: 18px 0;
   padding: 12px;
 }
@@ -361,6 +361,22 @@
   gap: 6px;
 }
 
+.bookingViewSwitch,
+.bookingPeriodNav {
+  flex-wrap: nowrap;
+}
+
+.bookingViewSwitch button {
+  min-width: 68px;
+}
+
+.bookingPeriodNav button:first-child,
+.bookingPeriodNav button:nth-last-child(2) {
+  flex: 0 0 42px;
+  padding-left: 0;
+  padding-right: 0;
+}
+
 .bookingViewSwitch button.active,
 .bookingViewSwitch button.active:hover {
   background: var(--color-navy-900);
@@ -369,7 +385,144 @@
 }
 
 .bookingPeriodNav input {
-  min-width: 142px;
+  flex: 1 1 180px;
+  min-width: 150px;
+}
+
+.displayManagementPage {
+  display: grid;
+  gap: 18px;
+}
+
+.displaySubTabs {
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  padding: 4px;
+}
+
+.displaySubTabs button {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.displaySubTabs button:hover {
+  background: #fff;
+  border-color: var(--color-border);
+  color: var(--color-navy-900);
+}
+
+.displaySubTabs button.active,
+.displaySubTabs button.active:hover {
+  background: var(--color-navy-900);
+  border-color: var(--color-navy-900);
+  color: #fff;
+}
+
+.contentCardGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
+}
+
+.contentCard {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 15px;
+}
+
+.contentCard > div:first-child {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.contentCard h3,
+.contentCard p,
+.contentCard ol {
+  margin: 0;
+}
+
+.contentCard p,
+.contentCard small,
+.contentCard li {
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.contentCard ol {
+  display: grid;
+  gap: 4px;
+  padding-left: 20px;
+}
+
+.contentCardActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 4px;
+}
+
+.displayManagementModal {
+  width: min(800px, calc(100vw - 24px));
+}
+
+.channelSequence {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 7px;
+  padding: 14px;
+}
+
+.channelSequence > div {
+  align-items: center;
+  background: var(--color-surface-soft);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 24px minmax(0, 1fr) 36px 36px;
+  padding: 8px;
+}
+
+.channelSequence > div > span {
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.channelSequence button {
+  min-height: 34px;
+  padding: 4px;
+}
+
+.compactChecklist > div {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.compactChecklist > div label {
+  justify-content: center;
+}
+
+.inlineCheck {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  gap: 9px;
+}
+
+.inlineCheck input {
+  min-height: 18px;
+  width: 18px;
 }
 
 .roomOperationsPage {
@@ -720,9 +873,10 @@
   padding: 5px 9px;
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1280px) {
   .facilityOverviewGrid { grid-template-columns: 1fr; }
-  .bookingToolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bookingToolbar { grid-template-columns: minmax(300px, .9fr) minmax(390px, 1.1fr); }
+  .bookingToolbar > label { grid-row: 2; }
   .operationsKpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
@@ -737,6 +891,11 @@
   .facilityTabs { grid-template-columns: repeat(6, minmax(145px, 1fr)); }
   .facilityRoomGrid { grid-template-columns: 1fr; }
   .bookingToolbar { grid-template-columns: 1fr; }
+  .bookingToolbar > label { grid-row: auto; }
+  .bookingViewSwitch { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .bookingViewSwitch button { min-width: 0; }
+  .bookingPeriodNav { display: grid; grid-template-columns: 42px minmax(0, 1fr) 42px auto; }
+  .bookingPeriodNav input { min-width: 0; }
   .bookingMonth { overflow-x: auto; }
   .bookingWeekdays,
   .bookingMonthGrid { min-width: 760px; }
@@ -746,6 +905,8 @@
   .operationsColumns { grid-template-columns: 1fr; }
   .operationContext { grid-template-columns: 1fr; }
   .activitySearch { flex-basis: auto; width: 100%; }
+  .displaySubTabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .compactChecklist > div { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 @media (max-width: 480px) {
@@ -754,6 +915,10 @@
   .operationsKpis { grid-template-columns: 1fr; }
   .operationQueue > div:not(.facilityEmpty) { grid-template-columns: auto minmax(0, 1fr); }
   .operationQueue button { grid-column: 1 / -1; width: 100%; }
+  .bookingPeriodNav { grid-template-columns: 40px minmax(0, 1fr) 40px; }
+  .bookingPeriodNav button:last-child { grid-column: 1 / -1; }
+  .displaySubTabs { grid-template-columns: 1fr; }
+  .compactChecklist > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 * {

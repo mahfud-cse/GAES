@@ -109,14 +109,17 @@ service cloud.firestore {
       allow delete: if roleIs(['Super Admin','Admin','HO Admin']) && sameStation(resource.data);
     }
     match /displayChannels/{id} {
-      allow read: if active();
-      allow write: if roleIs(['Super Admin','Admin','HO Admin']);
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager']);
+      allow write: if false;
+    }
+    match /displayContents/{id} {
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager']);
+      allow write: if false;
     }
     match /displaySchedules/{id} {
       allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
         && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
-      allow create: if roleIs(['Super Admin','Admin','HO Admin']) && sameStation(request.resource.data);
-      allow update, delete: if roleIs(['Super Admin','Admin','HO Admin']) && sameStation(resource.data);
+      allow write: if false;
     }
     match /displayCommands/{id} {
       allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])

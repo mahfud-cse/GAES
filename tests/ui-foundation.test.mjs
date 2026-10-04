@@ -209,4 +209,29 @@ test("keeps facility controls readable and responsive across desktop and mobile"
   assert.match(css, /\.operationsColumns\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2/);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.operationsColumns \{ grid-template-columns: 1fr; \}/);
   assert.match(css, /\.operationModal\s*\{[\s\S]*?calc\(100vw - 24px\)/);
+  assert.match(css, /\.bookingViewSwitch,\s*\n\.bookingPeriodNav\s*\{[\s\S]*?flex-wrap:\s*nowrap;/);
+  assert.match(css, /\.bookingToolbar\s*\{[\s\S]*?minmax\(390px, 1\.15fr\)/);
+});
+
+test("implements phase 4 display content, channels, and conflict-safe schedules", async () => {
+  const [module, api, backend, repository, rules, storageRules] = await Promise.all([
+    read("../app/facility-operations.tsx"),
+    read("../lib/firebase/api.ts"),
+    read("../netlify/functions/manage-display-content.mjs"),
+    read("../lib/firebase/repository.ts"),
+    read("../firestore.rules"),
+    read("../storage.rules"),
+  ]);
+  for (const surface of ["Content Library", "Channels", "Display Schedules", "Display Monitoring"])
+    assert.match(module, new RegExp(surface));
+  assert.match(module, /Enable scheduled running text/);
+  assert.match(api, /manageDisplayContent/);
+  assert.match(repository, /\| "displayContents"/);
+  assert.match(backend, /DISPLAY_SCHEDULE_CONFLICT/);
+  assert.match(backend, /row\.daysOfWeek/);
+  assert.match(backend, /approvalStatus !== "Approved"/);
+  for (const collection of ["displayContents", "displayChannels", "displaySchedules"])
+    assert.match(rules, new RegExp(`match /${collection}/\\{id\\}[\\s\\S]*?allow write: if false;`));
+  assert.match(storageRules, /match \/display-content\/\{station\}\/\{contentId\}\/\{fileName\}/);
+  assert.match(storageRules, /200 \* 1024 \* 1024/);
 });

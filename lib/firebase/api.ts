@@ -136,3 +136,13 @@ export const manageRoomOperation = (
     user,
     payload,
   );
+
+export const manageDisplayContent = (
+  user: User,
+  payload: Record<string, unknown>,
+) =>
+  call<{ id: string; status: string }>(
+    "manage-display-content",
+    user,
+    payload,
+  );
