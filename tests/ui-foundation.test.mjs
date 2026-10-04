@@ -120,10 +120,7 @@ test("adds the facility and display foundation without exposing unfinished remot
   assert.match(page, /FacilityOperations/);
   assert.match(module, /Device Control Center/i);
   assert.match(module, /Now Playing/);
-  assert.match(
-    module,
-    /button type="button" disabled title="Tersedia setelah command service aktif">Play Now/,
-  );
+  assert.match(module, /Remote Control/);
   assert.match(repository, /\| "rooms"/);
   assert.match(repository, /\| "displayDevices"/);
   assert.match(rules, /match \/rooms\/\{id\}/);
@@ -234,4 +231,34 @@ test("implements phase 4 display content, channels, and conflict-safe schedules"
     assert.match(rules, new RegExp(`match /${collection}/\\{id\\}[\\s\\S]*?allow write: if false;`));
   assert.match(storageRules, /match \/display-content\/\{station\}\/\{contentId\}\/\{fileName\}/);
   assert.match(storageRules, /200 \* 1024 \* 1024/);
+});
+
+test("implements phase 5 secure browser player and acknowledged remote commands", async () => {
+  const [module, player, adminBackend, playerBackend, api, rules, css] = await Promise.all([
+    read("../app/facility-operations.tsx"),
+    read("../app/player/page.tsx"),
+    read("../netlify/functions/manage-display-device.mjs"),
+    read("../netlify/functions/display-player.mjs"),
+    read("../lib/firebase/api.ts"),
+    read("../firestore.rules"),
+    read("../app/globals.css"),
+  ]);
+  assert.match(module, /Enroll Player/);
+  assert.match(module, /PLAY_CHANNEL/);
+  assert.match(module, /SET_OVERLAY/);
+  assert.match(module, /Browser player tidak mendukung unattended screenshot/);
+  assert.match(player, /gaes-display-player-credential-v1/);
+  assert.match(player, /offlinePlanCache/);
+  assert.match(player, /Idempotent replay acknowledged/);
+  assert.match(player, /playerTicker/);
+  assert.match(adminBackend, /randomBytes/);
+  assert.match(adminBackend, /DISPLAY_COMMAND_/);
+  assert.match(playerBackend, /timingSafeEqual/);
+  assert.match(playerBackend, /displayDeviceCredentials/);
+  assert.doesNotMatch(playerBackend, /deviceSecretHash/);
+  assert.match(playerBackend, /acknowledgedAt/);
+  assert.match(api, /manageDisplayDevice/);
+  assert.match(rules, /match \/displayEnrollments\/\{id\}[\s\S]*?allow read, write: if false;/);
+  assert.match(rules, /match \/displayDeviceCredentials\/\{id\}[\s\S]*?allow read, write: if false;/);
+  assert.match(css, /\.displayPlayer\s*\{/);
 });

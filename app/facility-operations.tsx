@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
-import { manageDisplayContent, manageRoomBooking, manageRoomOperation } from "../lib/firebase/api";
+import { manageDisplayContent, manageDisplayDevice, manageRoomBooking, manageRoomOperation } from "../lib/firebase/api";
 import { uploadDisplayMedia } from "../lib/firebase/evidence";
 import {
   removeRecord,
@@ -62,6 +62,9 @@ type DeviceRecord = {
   screenshotUrl?: string;
   approvedBy?: string;
   approvedAt?: string;
+  enrollmentStatus?: "Pending" | "Enrolled" | "Revoked";
+  capabilities?: { screenshot?: boolean; browserPlayer?: boolean; runningText?: boolean; offlinePlanCache?: boolean };
+  lastError?: string;
 };
 
 type DisplayContent = {
@@ -98,6 +101,15 @@ type DisplaySchedule = {
   overlayText: string;
   priority: "Normal" | "High" | "Emergency";
   status: "Active" | "Inactive";
+};
+type DisplayCommand = {
+  id: string;
+  deviceId: string;
+  station: string;
+  type: string;
+  status: "Pending" | "Executed" | "Failed" | "Expired";
+  message?: string;
+  createdAt?: unknown;
 };
 
 type BookingStatus =
@@ -421,6 +433,7 @@ export default function FacilityOperations({
   const [displayContents, setDisplayContents] = useState<DisplayContent[]>([]);
   const [displayChannels, setDisplayChannels] = useState<DisplayChannel[]>([]);
   const [displaySchedules, setDisplaySchedules] = useState<DisplaySchedule[]>([]);
+  const [displayCommands, setDisplayCommands] = useState<DisplayCommand[]>([]);
   const [bookings, setBookings] = useState<RoomBooking[]>([]);
   const [operations, setOperations] = useState<RoomOperation[]>([]);
   const [maintenanceRows, setMaintenanceRows] = useState<RoomMaintenance[]>([]);
@@ -460,6 +473,14 @@ export default function FacilityOperations({
   const [displayDialog, setDisplayDialog] = useState<"content" | "channel" | "schedule" | null>(null);
   const [displayMediaFile, setDisplayMediaFile] = useState<File | null>(null);
   const [savingDisplay, setSavingDisplay] = useState(false);
+  const [remoteDevice, setRemoteDevice] = useState<DeviceRecord | null>(null);
+  const [remoteMode, setRemoteMode] = useState<"enroll" | "command">("command");
+  const [remoteType, setRemoteType] = useState("PLAY_CHANNEL");
+  const [remoteChannelId, setRemoteChannelId] = useState("");
+  const [remoteOverlayText, setRemoteOverlayText] = useState("");
+  const [remoteDuration, setRemoteDuration] = useState(60);
+  const [enrollmentCode, setEnrollmentCode] = useState<{ code: string; expiresAt: string } | null>(null);
+  const [savingRemote, setSavingRemote] = useState(false);
 
   const globalScope = GLOBAL_ROLES.includes(account.role);
   const canConfigure = CONFIG_ROLES.includes(account.role);
@@ -491,6 +512,12 @@ export default function FacilityOperations({
         "displaySchedules",
         globalScope ? "ALL" : account.station,
         setDisplaySchedules,
+        onError,
+      ),
+      subscribeStationCollection<DisplayCommand>(
+        "displayCommands",
+        globalScope ? "ALL" : account.station,
+        setDisplayCommands,
         onError,
       ),
       subscribeStationCollection<RoomBooking>(
@@ -587,6 +614,9 @@ export default function FacilityOperations({
 
   const activeStations = stations.filter((station) => permittedStation(station.code));
   const roomName = (id: string) => rooms.find((room) => room.id === id)?.name || "Belum dipetakan";
+  const latestDisplayCommand = (deviceId: string) => displayCommands
+    .filter((row) => row.deviceId === deviceId)
+    .sort((a, b) => activityMillis(b.createdAt) - activityMillis(a.createdAt))[0];
   const canApproveBooking = APPROVER_ROLES.includes(account.role);
   const canSuperviseOperations = APPROVER_ROLES.includes(account.role);
 
@@ -701,6 +731,54 @@ export default function FacilityOperations({
       setNotice({ kind: "ok", text: `${label} berhasil dihapus.` });
     } catch (error) {
       setNotice({ kind: "error", text: error instanceof Error ? error.message : "Data display tidak dapat dihapus." });
+    }
+  }
+
+  function openRemoteControl(device: DeviceRecord, mode: "enroll" | "command") {
+    setRemoteDevice(device);
+    setRemoteMode(mode);
+    setEnrollmentCode(null);
+    setRemoteType("PLAY_CHANNEL");
+    setRemoteChannelId(displayChannels.find((row) => row.status === "Active")?.id || "");
+    setRemoteOverlayText("");
+    setRemoteDuration(60);
+  }
+
+  async function submitRemoteControl(event: FormEvent) {
+    event.preventDefault();
+    if (!remoteDevice) return;
+    setSavingRemote(true);
+    try {
+      if (remoteMode === "enroll") {
+        const result = await manageDisplayDevice(user, { action: "createenrollment", deviceId: remoteDevice.id });
+        if (result.code && result.expiresAt) setEnrollmentCode({ code: result.code, expiresAt: result.expiresAt });
+        setNotice({ kind: "ok", text: "Kode enrollment dibuat dan berlaku selama 10 menit." });
+      } else {
+        const result = await manageDisplayDevice(user, {
+          action: "command",
+          deviceId: remoteDevice.id,
+          type: remoteType,
+          channelId: remoteChannelId,
+          overlayText: remoteOverlayText,
+          durationMinutes: remoteDuration,
+        });
+        setNotice({ kind: "ok", text: `Command dikirim dengan status ${result.status}.` });
+        setRemoteDevice(null);
+      }
+    } catch (error) {
+      setNotice({ kind: "error", text: error instanceof Error ? error.message : "Remote command tidak dapat diproses." });
+    } finally {
+      setSavingRemote(false);
+    }
+  }
+
+  async function revokeDevice(device: DeviceRecord) {
+    if (!window.confirm(`Cabut enrollment ${device.name}? Player akan terputus dan memerlukan kode baru.`)) return;
+    try {
+      await manageDisplayDevice(user, { action: "revoke", deviceId: device.id });
+      setNotice({ kind: "ok", text: `Enrollment ${device.name} berhasil dicabut.` });
+    } catch (error) {
+      setNotice({ kind: "error", text: error instanceof Error ? error.message : "Enrollment tidak dapat dicabut." });
     }
   }
 
@@ -1133,7 +1211,7 @@ export default function FacilityOperations({
         <div className="displayManagementPage">
           <article className="card facilitySectionCard">
             <div className="facilitySectionHeader">
-              <div><small>TV &amp; DIGITAL SIGNAGE</small><h2>Content &amp; Schedule Management</h2><p>Prepare content, arrange channels, and schedule playback per device. Remote commands are activated during player integration.</p></div>
+              <div><small>TV &amp; DIGITAL SIGNAGE</small><h2>Content &amp; Schedule Management</h2><p>Manage scheduled playback, connected players, running text, and remote commands per device.</p></div>
               <div className="facilityHeaderActions">
                 {displaySection === "Monitor" && canConfigure && <button className="primary" type="button" onClick={() => { setEditingDevice(null); setDeviceDraft({ ...EMPTY_DEVICE, station: globalScope ? "CGK" : account.station }); setShowDeviceForm(true); }}>+ Add Device</button>}
                 {displaySection === "Schedules" && canControl && <button className="primary" type="button" onClick={() => openDisplayDialog("schedule")}>+ New Schedule</button>}
@@ -1148,7 +1226,7 @@ export default function FacilityOperations({
 
           {displaySection === "Monitor" && <article className="card facilitySectionCard">
             <div className="facilitySectionHeader compact"><div><small>DEVICE CONTROL CENTER</small><h2>Display Monitoring</h2></div><span className="scopeBadge">{scopedDevices.filter(isOnline).length}/{scopedDevices.length} online</span></div>
-            {!scopedDevices.length ? <EmptyState text="Belum ada device. Tambahkan inventory device atau lakukan enrollment pada tahap integrasi player." /> : <div className="tableWrap"><table className="facilityTable"><thead><tr><th>Device</th><th>Location</th><th>Status</th><th>Now Playing</th><th>Running Text</th><th>Last Heartbeat</th><th>Action</th></tr></thead><tbody>{scopedDevices.map((device) => <tr key={device.id}><td><b>{device.name}</b><small>{device.platform} · {device.connectionType}</small></td><td>{device.station}<small>{roomName(device.roomId)}</small></td><td><span className={`deviceStatus ${isOnline(device) ? "online" : "offline"}`}>{device.approvalStatus === "Pending" ? "Pending Approval" : isOnline(device) ? "Online" : device.status}</span></td><td>{device.nowPlaying || "—"}</td><td>{device.overlayText || "—"}</td><td>{readableHeartbeat(device.lastHeartbeat)}</td><td><div className="tableActions">{canConfigure && device.approvalStatus === "Pending" && <button type="button" onClick={() => void approveDevice(device)}>Approve</button>}{canConfigure && <button type="button" onClick={() => { setEditingDevice(device.id); setDeviceDraft(device); setShowDeviceForm(true); }}>Edit</button>}<button type="button" disabled title="Tersedia setelah command service aktif">Play Now</button>{canControl && <button type="button" disabled title="Tersedia setelah command service aktif">Request Screenshot</button>}</div></td></tr>)}</tbody></table></div>}
+            {!scopedDevices.length ? <EmptyState text="Belum ada device. Tambahkan inventory device lalu buat kode enrollment untuk menghubungkan player." /> : <div className="tableWrap"><table className="facilityTable"><thead><tr><th>Device</th><th>Location</th><th>Status</th><th>Now Playing</th><th>Running Text</th><th>Last Heartbeat</th><th>Last Command</th><th>Action</th></tr></thead><tbody>{scopedDevices.map((device) => { const lastCommand = latestDisplayCommand(device.id); return <tr key={device.id}><td><b>{device.name}</b><small>{device.platform} · {device.connectionType}</small></td><td>{device.station}<small>{roomName(device.roomId)}</small></td><td><span className={`deviceStatus ${isOnline(device) ? "online" : "offline"}`}>{device.approvalStatus === "Pending" ? "Pending Approval" : isOnline(device) ? "Online" : device.status}</span><small>{device.enrollmentStatus || "Not Enrolled"}{device.lastError ? ` · ${device.lastError}` : ""}</small></td><td>{device.nowPlaying || "—"}</td><td>{device.overlayText || "—"}</td><td>{readableHeartbeat(device.lastHeartbeat)}</td><td>{lastCommand ? <><b>{lastCommand.type}</b><small>{lastCommand.status}{lastCommand.message ? ` · ${lastCommand.message}` : ""}</small></> : "—"}</td><td><div className="tableActions">{canConfigure && device.approvalStatus === "Pending" && <button type="button" onClick={() => void approveDevice(device)}>Approve</button>}{canConfigure && <button type="button" onClick={() => { setEditingDevice(device.id); setDeviceDraft(device); setShowDeviceForm(true); }}>Edit</button>}{canControl && device.approvalStatus === "Approved" && device.enrollmentStatus !== "Enrolled" && <button type="button" onClick={() => openRemoteControl(device, "enroll")}>Enroll Player</button>}{canControl && device.enrollmentStatus === "Enrolled" && <button className="primary" type="button" onClick={() => openRemoteControl(device, "command")}>Remote Control</button>}{canControl && device.enrollmentStatus === "Enrolled" && <button type="button" disabled={!device.capabilities?.screenshot} title={device.capabilities?.screenshot ? "Request player screenshot" : "Browser player tidak mendukung unattended screenshot"} onClick={() => { setRemoteDevice(device); setRemoteMode("command"); setRemoteType("REQUEST_SCREENSHOT"); }}>Screenshot</button>}{canControl && device.enrollmentStatus === "Enrolled" && <button type="button" onClick={() => void revokeDevice(device)}>Revoke</button>}</div></td></tr>; })}</tbody></table></div>}
           </article>}
 
           {displaySection === "Schedules" && <article className="card facilitySectionCard">
@@ -1190,6 +1268,27 @@ export default function FacilityOperations({
           </div>
           <div className="tableWrap"><table className="facilityTable"><thead><tr><th>Time</th><th>Action</th><th>Station / Room</th><th>Booking</th><th>Operator</th><th>Detail</th></tr></thead><tbody>{scopedActivities.length ? scopedActivities.map((row) => <tr key={row.id}><td>{formatActivityTime(row.createdAt)}</td><td><b>{activityLabel(row.action)}</b></td><td>{row.station}<small>{roomName(row.roomId)}</small></td><td>{row.bookingId || "—"}</td><td>{row.actorName || "System"}</td><td>{row.reason || "—"}</td></tr>) : <tr><td colSpan={6}><div className="tableEmpty">Belum ada activity log pada scope ini.</div></td></tr>}</tbody></table></div>
         </article>
+      )}
+
+      {remoteDevice && (
+        <div className="back" onMouseDown={(event) => event.target === event.currentTarget && setRemoteDevice(null)}>
+          <div className="modal remoteControlModal">
+            <div className="modalHead"><div><small>DISPLAY PLAYER</small><h2>{remoteMode === "enroll" ? "Enroll Player" : "Remote Control"}</h2></div><button type="button" onClick={() => setRemoteDevice(null)}>×</button></div>
+            <form className="form" onSubmit={(event) => void submitRemoteControl(event)}>
+              <div className="operationContext full"><div><span>Device</span><b>{remoteDevice.name}</b></div><div><span>Location</span><b>{remoteDevice.station} · {roomName(remoteDevice.roomId)}</b></div><div><span>Status</span><b>{remoteDevice.enrollmentStatus || "Not Enrolled"}</b></div></div>
+              {remoteMode === "enroll" ? <>
+                <div className="notice warn full"><span>Buka <b>/player</b> pada laptop, mini PC, Android player, atau browser Smart TV. Masukkan kode di bawah dalam 10 menit.</span></div>
+                {enrollmentCode ? <div className="enrollmentCode full"><small>ONE-TIME ENROLLMENT CODE</small><strong>{enrollmentCode.code}</strong><span>Expires {new Date(enrollmentCode.expiresAt).toLocaleString("id-ID")}</span></div> : <div className="playerCapabilityNote full"><b>Secure enrollment</b><span>Kode hanya dapat digunakan satu kali. Device secret dibuat setelah player berhasil melakukan claim.</span></div>}
+              </> : <>
+                <label className="full"><span>Command</span><select value={remoteType} onChange={(event) => setRemoteType(event.target.value)}><option value="PLAY_CHANNEL">Play Channel Now</option><option value="SET_OVERLAY">Set Running Text</option><option value="CLEAR_OVERLAY">Clear Running Text</option><option value="PAUSE">Pause Screen</option><option value="RESUME">Resume Screen</option><option value="REFRESH">Refresh Player</option><option value="REQUEST_SCREENSHOT" disabled={!remoteDevice.capabilities?.screenshot}>Request Screenshot</option></select></label>
+                {remoteType === "PLAY_CHANNEL" && <><label><span>Channel</span><select value={remoteChannelId} onChange={(event) => setRemoteChannelId(event.target.value)} required><option value="">Select channel</option>{displayChannels.filter((row) => row.status === "Active").map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label><label><span>Override Duration</span><select value={remoteDuration} onChange={(event) => setRemoteDuration(Number(event.target.value))}>{[15, 30, 60, 120, 240, 480].map((value) => <option key={value} value={value}>{value} minutes</option>)}</select></label></>}
+                {remoteType === "SET_OVERLAY" && <label className="full"><span>Running Text</span><textarea value={remoteOverlayText} onChange={(event) => setRemoteOverlayText(event.target.value)} placeholder="Boarding information, final call, or lounge message" required /></label>}
+                {remoteDevice.capabilities?.browserPlayer && !remoteDevice.capabilities?.screenshot && <div className="playerCapabilityNote full"><b>Browser player capability</b><span>Playback, schedule, running text, pause, resume, dan refresh tersedia. Unattended screenshot memerlukan Android/native player.</span></div>}
+              </>}
+              <div className="modalActions full"><button type="button" onClick={() => setRemoteDevice(null)}>Close</button><button className="primary" type="submit" disabled={savingRemote || (remoteMode === "enroll" && Boolean(enrollmentCode))}>{savingRemote ? "Processing..." : remoteMode === "enroll" ? enrollmentCode ? "Code Generated" : "Generate Code" : "Send Command"}</button></div>
+            </form>
+          </div>
+        </div>
       )}
 
       {displayDialog && (

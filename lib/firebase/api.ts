@@ -146,3 +146,17 @@ export const manageDisplayContent = (
     user,
     payload,
   );
+
+export const manageDisplayDevice = (
+  user: User,
+  payload: Record<string, unknown>,
+) => call<{
+  id?: string;
+  deviceId?: string;
+  code?: string;
+  status: string;
+  expiresAt?: string;
+}>("manage-display-device", user, payload);
+
+export const displayPlayerRequest = (payload: Record<string, unknown>) =>
+  call<Record<string, unknown>>("display-player", null, payload);
