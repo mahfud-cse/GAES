@@ -41,7 +41,7 @@
   --touch-target: 44px;
   --shadow-focus: 0 0 0 3px #2e659733;
   --shadow-control: 0 7px 18px #062b5c24;
-  --shadow-modal: 0 20px 70px #00151f66;
+  --shadow-modal: 0 20px 70px #062b5c66;
   --z-dropdown: 50;
   --z-header: 100;
   --z-popover: 120;
@@ -155,10 +155,10 @@ button:disabled,
   margin-right: auto;
   display: grid;
   gap: 3px;
-  color: #245462;
+  color: #0b3e75;
 }
 .dashboardDataTools small {
-  color: #718991;
+  color: #64748b;
   font-weight: 400;
 }
 .dashboardKpis {
@@ -185,12 +185,28 @@ button:disabled,
 .dashboardKpis > button:hover,
 .dashboardKpis > button:focus-visible {
   border-color: #2e6597;
+  background: var(--color-navy-900);
+  color: #fff;
   box-shadow: 0 10px 28px #062b5c1f;
   transform: translateY(-2px);
 }
+.dashboardKpis
+  > button:is(:hover, :focus-visible, .selected, [aria-pressed="true"])
+  :is(span, b, small, i),
+.dashboardWorkflow
+  button:is(:hover, :focus-visible, .selected, [aria-pressed="true"])
+  :is(span, b, small, i),
+.utilizationDonuts
+  > button:is(:hover, :focus-visible, .selected, [aria-pressed="true"])
+  :is(span, b, small, i),
+.accountList
+  button:is(:hover, :focus-visible, .selected, [aria-pressed="true"])
+  :is(span, b, small, i, code) {
+  color: inherit;
+}
 .dashboardKpis span,
 .dashboardKpis small {
-  color: #718991;
+  color: #64748b;
 }
 .dashboardKpis b {
   color: #062b5c;
@@ -245,14 +261,14 @@ button:disabled,
   inset: 26%;
   border-radius: 50%;
   background: #fff;
-  box-shadow: inset 0 0 0 1px #e1ecee;
+  box-shadow: inset 0 0 0 1px #cbd8e6;
 }
 .donutGraphic > span {
   z-index: 1;
   display: grid;
   justify-items: center;
   gap: 2px;
-  color: #6e858f;
+  color: #64748b;
 }
 .donutGraphic b {
   color: #062b5c;
@@ -295,7 +311,7 @@ button:disabled,
   text-align: right;
 }
 .donutLegend small {
-  color: #7a9199;
+  color: #64748b;
   text-align: right;
 }
 .utilizationDonuts {
@@ -318,8 +334,9 @@ button:disabled,
 }
 .utilizationDonuts > button:hover,
 .utilizationDonuts > button:focus-visible {
-  border-color: #2e6597;
-  background: #eaf0f8;
+  border-color: var(--color-navy-900);
+  background: var(--color-navy-900);
+  color: #fff;
 }
 .donutChart.compact {
   display: block;
@@ -334,14 +351,14 @@ button:disabled,
   text-align: center;
 }
 .utilizationDonuts > button > small {
-  color: #6e858f;
+  color: #64748b;
   font-size: 9px;
   line-height: 1.35;
   text-align: center;
 }
 .formulaNote,
 .dashboardFootnote {
-  color: #6e8790;
+  color: #64748b;
   line-height: 1.5;
   font-size: 11px;
 }
@@ -350,7 +367,7 @@ button:disabled,
 }
 .dashboardTableWrap {
   overflow: auto;
-  border: 1px solid #e0eaec;
+  border: 1px solid #cbd8e6;
   border-radius: 10px;
 }
 .dashboardTable {
@@ -386,7 +403,7 @@ button:disabled,
   font-size: 19px;
 }
 .dashboardTrend span {
-  color: #718991;
+  color: #64748b;
   font-size: 11px;
 }
 .trendPlot {
@@ -411,7 +428,7 @@ button:disabled,
   grid-template-rows: 1fr auto auto;
   gap: 5px;
   align-items: end;
-  color: #547580;
+  color: #64748b;
   font-weight: 400;
 }
 .trendPlot > button i {
@@ -433,7 +450,7 @@ button:disabled,
 }
 .trendPlot > p {
   margin: auto;
-  color: #718991;
+  color: #64748b;
 }
 .tableLink:hover,
 .tableLink:focus-visible {
@@ -453,6 +470,12 @@ button:disabled,
   place-items: center;
   gap: 4px;
   color: #31506f;
+}
+.dashboardWorkflow
+  button:is(:hover, :focus-visible, .selected, [aria-pressed="true"]) {
+  border-color: var(--color-navy-900);
+  background: var(--color-navy-900);
+  color: #fff;
 }
 .dashboardWorkflow button b {
   font-size: 24px;
@@ -489,13 +512,13 @@ button:disabled,
   display: flex;
   gap: 9px;
   flex-wrap: wrap;
-  border-bottom: 1px solid #d9e5e9;
+  border-bottom: 1px solid #cbd8e6;
 }
 .detailSummary span {
   padding: 8px 11px;
   border-radius: 20px;
-  background: #eef6f7;
-  color: #6e858f;
+  background: #f2f6fb;
+  color: #64748b;
   font-size: 11px;
 }
 .detailSummary b {
@@ -517,7 +540,7 @@ button:disabled,
 }
 .portalSectionHead p {
   margin: 0;
-  color: #718991;
+  color: #64748b;
 }
 .dashboardRoleMatrix {
   padding: 15px;
@@ -538,7 +561,7 @@ button:disabled,
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #375f6b;
+  color: #2e6597;
   font-size: 11px;
 }
 .dashboardWidgetManager {
@@ -589,7 +612,7 @@ button:disabled,
 }
 .switchLine {
   padding: 15px;
-  border: 1px solid #bad9de;
+  border: 1px solid #cbd8e6;
   border-radius: 12px;
   background: #edf3fa;
   display: flex;
@@ -605,7 +628,7 @@ button:disabled,
   gap: 3px;
 }
 .switchLine small {
-  color: #6d858e;
+  color: #64748b;
 }
 .translationSummary {
   display: flex;
@@ -624,7 +647,7 @@ button:disabled,
   font-size: 20px;
 }
 .translationSummary span {
-  color: #718991;
+  color: #64748b;
   font-size: 10px;
 }
 @media (max-width: 1000px) {
@@ -681,15 +704,15 @@ button:disabled,
   align-items: end;
 }
 .roleTest label {
-  color: #c8e3e9;
+  color: #cbd8e6;
   font-size: 9px;
   gap: 3px;
 }
 .roleTest select {
   min-width: 130px;
   padding: 7px 9px;
-  border-color: #6da8b8;
-  background: #0b5870;
+  border-color: #64748b;
+  background: #0b3e75;
   color: #fff;
   font-size: 10px;
 }
@@ -753,7 +776,7 @@ button:disabled,
   display: grid;
   align-content: end;
   gap: 6px;
-  color: #466773;
+  color: #64748b;
   font-size: 10px;
   font-weight: var(--font-weight-medium);
 }
@@ -803,7 +826,7 @@ button:disabled,
 .modalActions .danger {
   min-height: 40px;
   padding: 9px 16px;
-  border: 1px solid #bfd7dc;
+  border: 1px solid #cbd8e6;
   border-radius: 9px;
   background: #fff;
   color: var(--color-navy-900);
@@ -854,7 +877,7 @@ button:disabled,
   gap: 9px;
   min-width: 0;
   font-weight: 700;
-  color: #245461;
+  color: #0b3e75;
   line-height: 1.35;
 }
 .schemaManager input[type="checkbox"] {
@@ -863,10 +886,10 @@ button:disabled,
   height: 17px;
 }
 .schemaManager small {
-  color: #77909a;
+  color: #64748b;
 }
 .dragHandle {
-  color: #8aa0a7;
+  color: #64748b;
   cursor: grab;
   font-size: 18px;
 }
@@ -888,7 +911,7 @@ button:disabled,
 }
 .integrationGrid article {
   padding: 13px;
-  border: 1px solid #d4e5e8;
+  border: 1px solid #cbd8e6;
   border-radius: 11px;
   display: grid;
   gap: 7px;
@@ -901,13 +924,13 @@ button:disabled,
 }
 .integrationGrid article span,
 .integrationGrid article small {
-  color: #6d8790;
+  color: #64748b;
   line-height: 1.5;
 }
 .reopenWorkflow {
   margin-top: 12px;
   padding: 12px 14px;
-  border: 1px solid #d3e4e7;
+  border: 1px solid #cbd8e6;
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -916,7 +939,7 @@ button:disabled,
 }
 .reopenWorkflow span {
   flex: 1 1 360px;
-  color: #6a838c;
+  color: #64748b;
 }
 .verificationHeaderActions {
   display: flex;
@@ -967,7 +990,7 @@ button:disabled,
 .loginCard .loginBrand {
   margin: 0 -30px 8px;
   border: 0;
-  border-bottom: 1px solid #dbe8eb;
+  border-bottom: 1px solid #cbd8e6;
   border-radius: 0;
   box-shadow: none;
   backdrop-filter: none;
@@ -1002,10 +1025,10 @@ button:disabled,
   display: grid;
   gap: 3px;
   text-align: left;
-  border-bottom: 1px solid #e3edef;
+  border-bottom: 1px solid #cbd8e6;
 }
 .profileMenuIdentity span {
-  color: #6e8790;
+  color: #64748b;
 }
 .signedUser .profileMenu button {
   width: 100%;
@@ -1036,7 +1059,7 @@ button:disabled,
   background: #edf3fa;
   display: grid;
   gap: 7px;
-  color: #124f60;
+  color: #0b3e75;
   font-size: 11px;
   font-weight: 800;
 }
@@ -1044,7 +1067,7 @@ button:disabled,
   background: #fff;
 }
 .dotFirst small {
-  color: #61808a;
+  color: #64748b;
   font-weight: 400;
 }
 .accessCategoryStep {
@@ -1069,7 +1092,7 @@ textarea.autoField {
 }
 .companionPanel {
   padding: 15px;
-  border: 1px solid #cee2e6;
+  border: 1px solid #cbd8e6;
   border-radius: 12px;
   background: #f4f7fb;
   display: grid;
@@ -1082,7 +1105,7 @@ textarea.autoField {
   gap: 3px;
 }
 .companionPanel > div span {
-  color: #718991;
+  color: #64748b;
   font-size: 10px;
 }
 .verificationActions > button {
@@ -1143,7 +1166,7 @@ textarea.autoField {
   border: 1px solid #cbd8e6;
   border-radius: 12px;
   background: #fff;
-  box-shadow: 0 16px 34px #082f4030;
+  box-shadow: 0 16px 34px #062b5c30;
 }
 .searchableOptions button {
   width: 100%;
@@ -1151,7 +1174,7 @@ textarea.autoField {
   border-radius: 8px;
   background: transparent;
   padding: 10px 11px;
-  color: #315d6a;
+  color: #0b3e75;
   text-align: left;
   font-weight: 400;
 }
@@ -1164,7 +1187,7 @@ textarea.autoField {
 .searchableOptions > span {
   display: block;
   padding: 12px;
-  color: #7b9199;
+  color: #64748b;
   font-size: 10px;
 }
 .lockedColumns,
@@ -1174,11 +1197,11 @@ textarea.autoField {
   background: #edf3fa;
   display: grid;
   gap: 4px;
-  color: #285766;
+  color: #0b3e75;
 }
 .lockedColumns span,
 .formulaPreview span {
-  color: #66808a;
+  color: #64748b;
   font-size: 10px;
   line-height: 1.5;
 }
@@ -1189,7 +1212,7 @@ textarea.autoField {
 }
 .customColumnList > div:not(.empty) {
   padding: 10px 12px;
-  border: 1px solid #d8e6e9;
+  border: 1px solid #cbd8e6;
   border-radius: 9px;
   display: grid;
   grid-template-columns: 1fr 1fr auto;
@@ -1204,7 +1227,7 @@ textarea.autoField {
   font-weight: 700;
 }
 .customColumnList span {
-  color: #718992;
+  color: #64748b;
   font-size: 10px;
 }
 .columnBuilder {
@@ -1229,7 +1252,7 @@ textarea.autoField {
 }
 .operatorPad span {
   margin-right: 4px;
-  color: #5c7580;
+  color: #64748b;
   font-size: 11px;
   font-weight: 700;
 }
@@ -1251,7 +1274,7 @@ textarea.autoField {
 .formulaHelp {
   display: block;
   margin: 0 0 10px;
-  color: #6c858e;
+  color: #64748b;
   line-height: 1.45;
 }
 .reportConfigGrid {
@@ -1262,7 +1285,7 @@ textarea.autoField {
 }
 .reportConfigGrid > div {
   padding: 14px;
-  border: 1px solid #d6e5e8;
+  border: 1px solid #cbd8e6;
   border-radius: 11px;
   display: grid;
   gap: 8px;
@@ -1272,14 +1295,14 @@ textarea.autoField {
   display: flex;
   align-items: center;
   gap: 7px;
-  color: #426570;
+  color: #64748b;
   font-size: 10px;
 }
 .costToggle {
   border: 1px solid #cbd8e6;
   border-radius: 9px;
   background: #f4f7fb;
-  color: #275967;
+  color: #0b3e75;
   padding: 0 13px;
   min-height: 42px;
   display: inline-flex;
@@ -1301,13 +1324,13 @@ textarea.autoField {
 .reportPreview {
   margin-top: 15px;
   padding: 18px;
-  border: 1px solid #d6e3e6;
+  border: 1px solid #cbd8e6;
   border-radius: 11px;
   background: #fff;
   display: grid;
   justify-items: center;
   gap: 6px;
-  color: #244f5c;
+  color: #0b3e75;
   text-align: center;
 }
 .reportPreview img {
@@ -1317,7 +1340,7 @@ textarea.autoField {
 }
 .reportPreview span,
 .reportPreview small {
-  color: #728990;
+  color: #64748b;
 }
 .singleReportTools {
   align-items: center;
@@ -1383,7 +1406,7 @@ textarea.autoField {
 .timeStrip {
   margin: -8px 0 18px;
   padding: 13px 16px;
-  border: 1px solid #cbe1e5;
+  border: 1px solid #cbd8e6;
   border-radius: 12px;
   background: linear-gradient(100deg, #edf3fa, #fff);
   display: flex;
@@ -1403,12 +1426,12 @@ textarea.autoField {
   letter-spacing: 1.2px;
 }
 .timeStrip b {
-  color: #164b5b;
+  color: #0b3e75;
   font-size: 14px;
 }
 .timeStrip small {
   max-width: 440px;
-  color: #708993;
+  color: #64748b;
   text-align: right;
 }
 .headerAction {
@@ -1447,7 +1470,7 @@ textarea.autoField {
 .advancedFilters label {
   display: grid;
   gap: 5px;
-  color: #607c86;
+  color: #64748b;
   font-size: 10px;
   font-weight: 700;
 }
@@ -1458,10 +1481,10 @@ textarea.autoField {
   flex-wrap: wrap;
 }
 .trafficSummary span {
-  border: 1px solid #d6e6e9;
+  border: 1px solid #cbd8e6;
   border-radius: 20px;
   padding: 6px 10px;
-  color: #6b858e;
+  color: #64748b;
   font-size: 9px;
 }
 .trafficSummary b {
@@ -1473,7 +1496,7 @@ textarea.autoField {
   grid-template-columns: repeat(24, minmax(12px, 1fr));
   gap: 4px;
   align-items: end;
-  border-bottom: 1px solid #bcd2d7;
+  border-bottom: 1px solid #cbd8e6;
   padding-top: 12px;
   overflow-x: auto;
 }
@@ -1494,7 +1517,7 @@ textarea.autoField {
   transition: height 0.2s ease;
 }
 .trafficBarCell small {
-  color: #759099;
+  color: #64748b;
   font-size: 7px;
 }
 .reconciliationGate {
@@ -1535,14 +1558,14 @@ textarea.autoField {
 }
 .confirmModal h2 {
   margin: 10px 0 7px;
-  color: #173f4c;
+  color: #0b3e75;
 }
 .confirmModal p {
-  color: #526f79;
+  color: #64748b;
   line-height: 1.55;
 }
 .confirmModal small {
-  color: #8b9da4;
+  color: #64748b;
 }
 .confirmIcon {
   margin: auto;
@@ -1563,7 +1586,7 @@ textarea.autoField {
   overflow: auto;
 }
 .notificationList button {
-  border: 1px solid #d8e6e9;
+  border: 1px solid #cbd8e6;
   border-radius: 9px;
   background: #f7f9fc;
   padding: 10px 11px;
@@ -1584,7 +1607,7 @@ textarea.autoField {
   font-weight: 600;
 }
 .notificationList span {
-  color: #708992;
+  color: #64748b;
   font-size: 10px;
 }
 .profileIdentity {
@@ -1594,10 +1617,10 @@ textarea.autoField {
   background: #edf3fa;
   display: grid;
   gap: 3px;
-  color: #1d5261;
+  color: #0b3e75;
 }
 .profileIdentity span {
-  color: #6e8790;
+  color: #64748b;
   font-size: 10px;
 }
 .compactNotice {
@@ -1612,12 +1635,12 @@ textarea.autoField {
   background: #f7f9fc;
   display: grid;
   gap: 8px;
-  color: #315e6c;
+  color: #0b3e75;
   font-size: 11px;
   font-weight: 700;
 }
 .evidenceUpload span {
-  color: #759099;
+  color: #64748b;
   font-size: 10px;
   font-weight: 400;
 }
@@ -1657,7 +1680,7 @@ textarea.autoField {
   display: grid;
   place-items: center;
   background:
-    linear-gradient(115deg, #031e2de8 0%, #063f53cc 48%, #06384b8a 100%),
+    linear-gradient(115deg, #062b5ce8 0%, #0b3e75cc 48%, #0b3e758a 100%),
     url("/first-class-lounge-cgk.jpg") center / cover no-repeat fixed;
 }
 .recoveryPage {
@@ -1665,17 +1688,17 @@ textarea.autoField {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: #eef5f7;
+  background: #f2f6fb;
 }
 .recoveryCard {
   width: min(520px, 100%);
   padding: 32px;
   border-radius: 20px;
   background: #fff;
-  box-shadow: 0 18px 55px #123e4b20;
+  box-shadow: 0 18px 55px #0b3e7520;
   display: grid;
   gap: 14px;
-  color: #173b47;
+  color: #0b3e75;
 }
 .recoveryCard img {
   width: min(260px, 80%);
@@ -1706,8 +1729,8 @@ textarea.autoField {
   display: grid;
   justify-items: center;
   gap: 14px;
-  color: #55727d;
-  box-shadow: 0 24px 55px #00192355;
+  color: #64748b;
+  box-shadow: 0 24px 55px #062b5c55;
 }
 .sessionLoader img {
   width: min(280px, 90%);
@@ -1724,7 +1747,7 @@ textarea.autoField {
   justify-items: center;
   align-items: center;
   text-align: center;
-  box-shadow: 0 24px 55px #00192355;
+  box-shadow: 0 24px 55px #062b5c55;
   backdrop-filter: blur(10px);
 }
 .loginBrand img {
@@ -1741,7 +1764,7 @@ textarea.autoField {
 }
 .loginBrand h1 {
   margin: 0;
-  color: #073f57;
+  color: #0b3e75;
   font-size: clamp(25px, 5vw, 34px);
   line-height: 1.15;
 }
@@ -1749,16 +1772,22 @@ textarea.autoField {
 .testAccountCard {
   border-radius: 22px;
   background: #fff;
-  box-shadow: 0 24px 55px #00192355;
+  box-shadow: 0 24px 55px #062b5c55;
 }
 .loginCard {
   padding: 30px;
   display: grid;
   gap: 15px;
 }
+.loginLanguageToggle {
+  justify-self: end;
+  min-width: 48px;
+  min-height: var(--control-height);
+  padding: 8px 12px;
+}
 .loginCard h2 {
   margin: -3px 0 4px;
-  color: #123e4b;
+  color: #0b3e75;
   font-size: 27px;
 }
 .loginCard label,
@@ -1777,7 +1806,7 @@ textarea.autoField {
   border-radius: 10px;
   background: #fff;
   padding: 12px;
-  color: #173b47;
+  color: #0b3e75;
 }
 .loginButton {
   width: 100%;
@@ -1800,17 +1829,17 @@ textarea.autoField {
 }
 .forgotPasswordPanel {
   padding: 15px;
-  border: 1px solid #d4e4e8;
+  border: 1px solid #cbd8e6;
   border-radius: 12px;
   background: #f4f7fb;
   display: grid;
   gap: 10px;
 }
 .forgotPasswordPanel > b {
-  color: #164d5e;
+  color: #0b3e75;
 }
 .forgotPasswordPanel > span {
-  color: #718991;
+  color: #64748b;
   font-size: 11px;
   line-height: 1.45;
 }
@@ -1827,7 +1856,7 @@ textarea.autoField {
   font-weight: 600;
 }
 .loginCard small {
-  color: #789099;
+  color: #64748b;
   line-height: 1.5;
 }
 .testAccountCard {
@@ -1836,7 +1865,7 @@ textarea.autoField {
 }
 .testAccountCard h3 {
   margin: 5px 0 18px;
-  color: #174555;
+  color: #0b3e75;
 }
 .accountList {
   display: grid;
@@ -1848,18 +1877,20 @@ textarea.autoField {
   padding: 14px;
   border: 1px solid #d7e2ee;
   border-radius: 12px;
-  background: #f4f7fb;
-  color: #164d5f;
+  background: var(--color-surface);
+  color: #0b3e75;
   text-align: left;
   display: grid;
   gap: 4px;
 }
-.accountList button:hover {
-  border-color: #2e6597;
-  background: #eaf0f8;
+.accountList button:hover,
+.accountList button:focus-visible {
+  border-color: var(--color-navy-900);
+  background: var(--color-navy-900);
+  color: #fff;
 }
 .accountList span {
-  color: #6c8790;
+  color: #64748b;
   font-size: 10px;
 }
 .accountList code {
@@ -1997,7 +2028,7 @@ textarea.autoField {
   padding: 9px 10px;
 }
 .statusText {
-  color: #718991;
+  color: #64748b;
   font-size: 9px;
 }
 .roleSignGrid {
@@ -2007,7 +2038,7 @@ textarea.autoField {
 .signParty {
   min-height: 190px;
   padding: 20px;
-  border: 1px solid #d5e4e8;
+  border: 1px solid #cbd8e6;
   border-radius: 14px;
   background: #f8fbfc;
   display: grid;
@@ -2021,7 +2052,7 @@ textarea.autoField {
   letter-spacing: 1.2px;
 }
 .signParty > b {
-  color: #204b58;
+  color: #0b3e75;
   font-size: 15px;
 }
 .signParty mark {
@@ -2067,16 +2098,16 @@ textarea.autoField {
   margin: 0 0 14px;
 }
 .flightTools > span {
-  color: #71868f;
+  color: #64748b;
   font-size: 10px;
 }
 .fallbackExplanation {
   margin: -4px 0 16px;
   padding: 11px 14px;
-  border: 1px solid #d4e6e9;
+  border: 1px solid #cbd8e6;
   border-radius: 10px;
   background: #f7f9fc;
-  color: #557780;
+  color: #64748b;
   display: grid;
   gap: 4px;
   font-size: 11px;
@@ -2199,7 +2230,7 @@ textarea.autoField {
   padding: 6px 9px;
   display: flex;
   align-items: center;
-  box-shadow: 0 3px 12px #001a2533;
+  box-shadow: 0 3px 12px #062b5c33;
 }
 .officialLogo img {
   display: block;
@@ -2234,7 +2265,7 @@ textarea.eligibleField {
 }
 .confirm:disabled {
   cursor: not-allowed;
-  background: #b9c9ce;
+  background: #94a3b8;
   color: #eef3f4;
 }
 .rejectModal {
@@ -2255,7 +2286,7 @@ textarea.eligibleField {
 }
 .rejectModal p {
   margin: 0;
-  color: #667d86;
+  color: #64748b;
   font-size: 12px;
   line-height: 1.65;
 }
@@ -2280,10 +2311,10 @@ textarea.eligibleField {
 .scanHelp {
   margin-top: 14px;
   padding: 12px 15px;
-  border: 1px solid #9bd3dd;
+  border: 1px solid #94a3b8;
   border-radius: 11px;
   background: #edf3fa;
-  color: #356b78;
+  color: #2e6597;
   display: flex;
   gap: 10px;
   align-items: center;
@@ -2297,7 +2328,7 @@ textarea.eligibleField {
 }
 .scanHelp small {
   margin-left: auto;
-  color: #66838d;
+  color: #64748b;
 }
 .manualFallback {
   margin-top: 18px;
@@ -2308,7 +2339,7 @@ textarea.eligibleField {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  color: #66808a;
+  color: #64748b;
   font-size: 11px;
 }
 .manualInfo {
@@ -2317,7 +2348,7 @@ textarea.eligibleField {
   border-left: 3px solid #2e6597;
   border-radius: 9px;
   background: #edf3fa;
-  color: #55757d;
+  color: #64748b;
   font-size: 11px;
   line-height: 1.55;
 }
@@ -2331,9 +2362,9 @@ textarea.eligibleField {
   font-weight: 700;
 }
 tfoot td {
-  background: #edf6f7;
+  background: #f2f6fb;
   color: #17324d;
-  border-top: 2px solid #c8dde2;
+  border-top: 2px solid #cbd8e6;
 }
 .actionTitle .uploadButton {
   display: inline-flex;
@@ -2374,7 +2405,7 @@ tfoot td {
   color: #fff;
 }
 .processPanel > p {
-  color: #6e858f;
+  color: #64748b;
   font-size: 12px;
 }
 .processList {
@@ -2410,7 +2441,7 @@ tfoot td {
 }
 .miniHead span {
   display: block;
-  color: #71868f;
+  color: #64748b;
   font-size: 11px;
   margin-top: 4px;
 }
@@ -2433,13 +2464,13 @@ tfoot td {
   display: grid;
   gap: 7px;
   padding: 16px;
-  border: 1px solid #d6e5e9;
+  border: 1px solid #cbd8e6;
   border-radius: 12px;
   background: #f6f9fa;
 }
 .partnerGrid span,
 .partnerGrid small {
-  color: #708791;
+  color: #64748b;
   font-size: 11px;
 }
 .boPicker {
@@ -2453,7 +2484,7 @@ tfoot td {
   grid-template-columns: none;
   align-items: center;
   gap: 6px;
-  border: 1px solid #cee0e5;
+  border: 1px solid #cbd8e6;
   border-radius: 20px;
   padding: 8px 12px;
 }
@@ -2469,7 +2500,7 @@ tfoot td {
   border-left: 3px solid #2e6597;
   border-radius: 9px;
   background: #edf3fa;
-  color: #55757d;
+  color: #64748b;
   font-size: 11px;
 }
 .routeInputs {
@@ -2483,7 +2514,7 @@ tfoot td {
   justify-content: space-between;
   gap: 14px;
   padding: 13px;
-  border: 1px solid #c5dfe4;
+  border: 1px solid #cbd8e6;
   border-radius: 10px;
   background: #f4f7fb;
 }
@@ -2493,7 +2524,7 @@ tfoot td {
 }
 .inlineVerify span,
 .inlineVerify small {
-  color: #6b858e;
+  color: #64748b;
   font-size: 10px;
 }
 .seasonCard > .primary {
@@ -2614,7 +2645,7 @@ aside {
 aside > p {
   font-size: 10px;
   letter-spacing: 2px;
-  color: #8ba0a9;
+  color: #64748b;
   padding: 0 13px;
 }
 nav {
@@ -2627,7 +2658,7 @@ nav a {
   border-radius: 10px;
   padding: 11px 10px;
   text-align: left;
-  color: #4d6873;
+  color: #64748b;
   display: flex;
   gap: 12px;
   align-items: center;
@@ -2641,7 +2672,7 @@ nav a {
 nav a i {
   font-style: normal;
   font-size: 9px;
-  color: #9aafb7;
+  color: #94a3b8;
 }
 nav a:hover {
   background: #edf3fa;
@@ -2660,7 +2691,7 @@ nav .active {
   padding: 14px;
   font-size: 11px;
   line-height: 1.6;
-  color: #5f7a85;
+  color: #64748b;
 }
 .content {
   padding: 24px 28px;
@@ -2701,7 +2732,7 @@ nav .active {
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 18px;
-  box-shadow: 0 7px 22px #173d4e0a;
+  box-shadow: 0 7px 22px #0b3e750a;
 }
 .cardTitle {
   display: flex;
@@ -2741,7 +2772,7 @@ nav .active {
 label {
   display: grid;
   gap: 7px;
-  color: #5c7580;
+  color: #64748b;
   font-size: 11px;
   font-weight: 700;
 }
@@ -2749,7 +2780,7 @@ input,
 select,
 textarea {
   width: 100%;
-  border: 1px solid #cadbe0;
+  border: 1px solid #cbd8e6;
   border-radius: 9px;
   background: #fff;
   padding: 11px 12px;
@@ -2787,7 +2818,7 @@ textarea {
   margin: 18px 0;
   border-radius: 12px;
   overflow: hidden;
-  background: #102e3d;
+  background: #062b5c;
   position: relative;
   display: grid;
   place-items: center;
@@ -2824,7 +2855,7 @@ textarea {
   position: absolute;
   bottom: 16px;
   z-index: 2;
-  background: #062534cc;
+  background: #062b5ccc;
   color: #fff;
   border-radius: 20px;
   padding: 7px 12px;
@@ -2872,7 +2903,7 @@ textarea {
   align-items: center;
   gap: 10px;
   margin: 15px 0;
-  color: #94a8b0;
+  color: #94a3b8;
   font-size: 9px;
   letter-spacing: 1.3px;
 }
@@ -2880,7 +2911,7 @@ textarea {
 .or:after {
   content: "";
   height: 1px;
-  background: #e0e8eb;
+  background: #cbd8e6;
   flex: 1;
 }
 .link {
@@ -2892,7 +2923,7 @@ textarea {
   font-weight: 700;
 }
 .link:disabled {
-  color: #a6b7be;
+  color: #94a3b8;
 }
 .form .full {
   grid-column: 1/-1;
@@ -2906,14 +2937,14 @@ textarea {
   gap: 8px;
   margin: 18px 0;
   background: #f4f7fb;
-  border: 1px dashed #c7dade;
+  border: 1px dashed #cbd8e6;
   border-radius: 10px;
   padding: 13px;
   font-size: 10px;
-  color: #71868f;
+  color: #64748b;
 }
 .dupe b {
-  color: #396575;
+  color: #2e6597;
 }
 .confirm {
   width: 100%;
@@ -2988,7 +3019,7 @@ textarea {
 .stats span,
 .stats small {
   display: block;
-  color: #7b9099;
+  color: #64748b;
   font-size: 10px;
 }
 .stats b {
@@ -3016,7 +3047,7 @@ textarea {
 }
 .filters > span {
   margin: 0 0 12px auto;
-  color: #78909a;
+  color: #64748b;
   font-size: 11px;
 }
 .tableWrap {
@@ -3031,7 +3062,7 @@ table {
 th {
   text-align: left;
   background: #f5f8f9;
-  color: #59727e;
+  color: #64748b;
   padding: 12px 13px;
   font-size: 10px;
   white-space: nowrap;
@@ -3039,13 +3070,13 @@ th {
 }
 td {
   padding: 13px;
-  color: #35525f;
-  border-bottom: 1px solid #e8eef0;
+  color: #64748b;
+  border-bottom: 1px solid #cbd8e6;
   vertical-align: top;
 }
 td small {
   display: block;
-  color: #889ba3;
+  color: #64748b;
   margin-top: 4px;
 }
 .wide {
@@ -3091,7 +3122,7 @@ td small {
 .builderLegend {
   display: flex;
   gap: 14px;
-  color: #68818a;
+  color: #64748b;
   font-size: 11px;
 }
 .builderLegend span {
@@ -3123,13 +3154,13 @@ td small {
 .builderLabels input {
   min-width: 0;
   padding: 8px 9px;
-  border: 1px solid #cfe0e4;
+  border: 1px solid #cbd8e6;
   border-radius: 8px;
 }
 .builderAddPanel {
   margin-top: 18px;
   padding: 16px;
-  border: 1px solid #cfe3e7;
+  border: 1px solid #cbd8e6;
   border-radius: 13px;
   background: #f4f7fb;
 }
@@ -3137,10 +3168,10 @@ td small {
   display: grid;
   gap: 3px;
   margin-bottom: 12px;
-  color: #52747e;
+  color: #64748b;
 }
 .builderAddPanel > div:first-child b {
-  color: #164f63;
+  color: #0b3e75;
 }
 .builderAddPanel .checkLine {
   display: flex;
@@ -3152,12 +3183,12 @@ td small {
   margin-top: 16px;
   padding: 13px 15px;
   border-radius: 11px;
-  background: #e6f4f4;
+  background: #f2f6fb;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  color: #365f6b;
+  color: #2e6597;
 }
 .builderPublishBar .primary {
   border: 1px solid #0b3e75;
@@ -3203,7 +3234,7 @@ td small {
   text-align: left;
 }
 .sortButton span {
-  color: #1390a5;
+  color: #2e6597;
   font-size: 8px;
 }
 .threeFilters {
@@ -3234,7 +3265,7 @@ td small {
   flex-wrap: wrap;
   gap: 9px;
   padding: 13px;
-  border: 1px solid #d5e4e8;
+  border: 1px solid #cbd8e6;
   border-radius: 10px;
   background: #f7fafb;
 }
@@ -3247,7 +3278,7 @@ td small {
   display: flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid #cfe0e4;
+  border: 1px solid #cbd8e6;
   border-radius: 18px;
   background: #fff;
   padding: 7px 10px;
@@ -3260,10 +3291,10 @@ td small {
   justify-items: center;
   gap: 8px;
   padding: 45px;
-  color: #7d929b;
+  color: #64748b;
 }
 .empty b {
-  color: #456673;
+  color: #64748b;
 }
 .empty button {
   border: 0;
@@ -3357,19 +3388,19 @@ td small {
   color: #17324d;
 }
 .lounge p {
-  color: #82969f;
+  color: #64748b;
   font-size: 10px;
   line-height: 1.6;
 }
 .lounge p b {
-  color: #4c6b78;
+  color: #64748b;
   font-size: 11px;
 }
 .loungePeriodSection {
   display: grid;
   gap: 12px;
   padding: 14px;
-  border: 1px solid #d7e7ea;
+  border: 1px solid #cbd8e6;
   border-radius: 12px;
   background: #f8fbfc;
 }
@@ -3388,7 +3419,7 @@ td small {
   font-size: 12px;
 }
 .loungePeriodHead small {
-  color: #718991;
+  color: #64748b;
   font-size: 10px;
   font-weight: 400;
   line-height: 1.5;
@@ -3398,7 +3429,7 @@ td small {
   border: 1px solid #b8c9dc;
   border-radius: 9px;
   background: #fff;
-  color: #286477;
+  color: #2e6597;
   padding: 9px 11px;
   font-size: 11px;
   font-weight: 700;
@@ -3409,7 +3440,7 @@ td small {
   gap: 10px;
   align-items: end;
   padding: 11px;
-  border: 1px solid #e0eaed;
+  border: 1px solid #cbd8e6;
   border-radius: 10px;
   background: #fff;
 }
@@ -3451,7 +3482,7 @@ td small {
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
-  background: #092c3b99;
+  background: #062b5c99;
   display: grid;
   place-items: center;
   padding: clamp(12px, 3vw, 20px);
@@ -3508,7 +3539,7 @@ td small {
   z-index: 4;
   padding: 18px 0 11px;
   background: #fff;
-  border-bottom: 1px solid #e4edef;
+  border-bottom: 1px solid #cbd8e6;
 }
 .modalHead h2 {
   margin: 0;

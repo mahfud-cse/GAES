@@ -16,6 +16,9 @@ The root application is the only active source used for development, testing, an
 - Global design tokens and shared element defaults live in `app/globals.css`.
 - New colors, spacing, radii, typography, control heights, shadows, and z-index values should use the tokens declared in the single `:root` block.
 - Buttons inherit one shared base. Component selectors should define only their semantic variant or layout.
+- Teal/tosca is prohibited for the application theme, including sign-in. Use navy, blue, white, and neutral grey; reserve green for semantic success states.
+- Interactive panels with a navy hover, focus, or selected background must make nested text, values, and icons inherit the contrasting foreground color.
+- EN/ID translations use one ID-to-EN catalogue. The ID map is generated from it so the two directions cannot drift apart.
 - Do not add `!important`. Resolve cascade conflicts through source order, component boundaries, or narrowly scoped selectors.
 - Dialogs must remain constrained by both viewport width and dynamic viewport height (`dvh`) and provide 44px mobile action targets.
 

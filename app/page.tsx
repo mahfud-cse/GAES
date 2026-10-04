@@ -445,41 +445,337 @@ const interfaceTranslations: Record<string, string> = {
   "LANGKAH 2–3": "STEPS 2–3",
   "dd/mm/tttt": "dd/mm/yyyy",
 };
-const interfaceIdTranslations: Record<string, string> = {
-  "Manage Table": "Kelola Tabel",
-  "Manage Report": "Kelola Laporan",
-  "Save & Confirm": "Simpan & Konfirmasi",
-  Cancel: "Batal",
-  Close: "Tutup",
-  "Add & Confirm": "Tambah & Konfirmasi",
-  "Update & Confirm": "Perbarui & Konfirmasi",
-  "Search Visitor": "Cari Visitor",
-  "Passenger Category": "Kategori Penumpang",
-  "Visitor Status": "Status Visitor",
-  "Start Date": "Tanggal Mulai",
-  "End Date": "Tanggal Akhir",
-  "All Date": "Semua Tanggal",
-  "Import Passenger List": "Impor Passenger List",
-  "Passenger List — Manual Import": "Passenger List — Impor Manual",
-  "Waiting for Lounge Response": "Menunggu Respons Lounge",
-  "No dispute data.": "Belum ada data dispute.",
-  "Total Cost": "Total Biaya",
-  "records found": "data ditemukan",
-  "Change Password": "Ganti Password",
-  "Management & Monitoring": "Manajemen & Monitoring",
-  "Executive Summary": "Ringkasan Eksekutif",
-  "Visitor Composition": "Komposisi Pengunjung",
-  "Top 10 Branch Offices": "10 Branch Office Teratas",
-  "Provider Cost Analysis": "Analisis Biaya Provider",
-  "Total Passenger": "Total Penumpang",
-  "Confirmed Lounge Visitor": "Pengunjung Lounge Terkonfirmasi",
-  "Average Cost / Visitor": "Rata-rata Biaya / Pengunjung",
-  "All Areas": "Semua Area",
-  "All BO": "Semua BO",
-  "All Providers": "Semua Provider",
-  "Passenger Volume Template": "Template Passenger Volume",
-  "Import Passenger Volume": "Impor Passenger Volume",
-};
+Object.assign(interfaceTranslations, {
+  "Memulihkan sesi...": "Restoring session...",
+  "Email atau Username": "Email or Username",
+  "Masukkan email atau username": "Enter email or username",
+  "Masukkan password": "Enter password",
+  "Lupa password?": "Forgot password?",
+  "Permintaan reset password": "Password reset request",
+  "Permintaan akan masuk ke inbox Admin dan Super Admin.":
+    "The request will be sent to the Admin and Super Admin inbox.",
+  "Pesan (opsional)": "Message (optional)",
+  "Tambahkan informasi untuk Admin": "Add information for the Admin",
+  "Email atau username wajib diisi.": "Email or username is required.",
+  "Permintaan berhasil dikirim. Admin atau Super Admin akan menindaklanjuti.":
+    "The request was sent successfully. An Admin or Super Admin will follow up.",
+  "Permintaan reset password tidak dapat dikirim.":
+    "The password reset request could not be sent.",
+  "Mengirim...": "Sending...",
+  "Kirim Permintaan": "Send Request",
+  Bantuan: "Help",
+  "Garuda Indonesia Access Entitlement Management":
+    "Garuda Indonesia Access Entitlement Management",
+  "Total Pengunjung Lounge": "Total Lounge Visitors",
+  "data visitor diterima": "accepted visitor records",
+  "Lihat data →": "View data →",
+  "Penumpang First Class": "First Class Pax",
+  "Pengunjung lounge diterima": "Accepted lounge visitors",
+  "Penumpang Business Class": "Business Class Pax",
+  "Penumpang Economy Class": "Economy Class Pax",
+  "Estimasi Biaya": "Estimated Cost",
+  "Scope terfilter": "Filtered scope",
+  "Lihat laporan →": "View report →",
+  Agregasi: "Aggregation",
+  "menyesuaikan periode terpilih.": "follows the selected period.",
+  "Belum ada data visitor pada filter ini.":
+    "No visitor data is available for this filter.",
+  "Persentase menggunakan denominator passenger volume, bukan hanya data lounge. Nilai produksi dapat berasal dari API/DCS atau impor BO.":
+    "The percentage uses passenger volume as the denominator, not lounge data alone. Production values may come from API/DCS or a BO import.",
+  "Total Visitor": "Total Visitors",
+  Kontribusi: "Contribution",
+  "Rata-rata / Hari": "Average / Day",
+  "Average Cost / Visitor": "Average Cost / Visitor",
+  "Kontribusi Biaya": "Cost Contribution",
+  "Menunggu Verifikasi": "Pending Verification",
+  "Rekonsiliasi Final": "Final Reconciliation",
+  "Dashboard membaca data operasional Firebase sesuai scope akun. Denominator First, Business, dan Economy berasal dari tab Passenger Volume dan hanya menghitung flight DEPARTED.":
+    "The dashboard reads Firebase operational data according to the account scope. First, Business, and Economy denominators come from the Passenger Volume tab and include DEPARTED flights only.",
+  "← Back to Dashboard": "← Back to Dashboard",
+  Penyedia: "Provider",
+  Tujuan: "Destination",
+  "Pilih kategori lebih dahulu agar aturan akses yang sesuai diterapkan sejak proses scan.":
+    "Select an access category first so the applicable rule is used from the start of scanning.",
+  "Kategori Akses": "Access Category",
+  "Nomor Kursi": "Seat Number",
+  "Nomor Tiket": "Ticket Number",
+  "Tidak Ada / Lainnya": "None / Other",
+  "Status Eligibility": "Eligibility Status",
+  "Isi manual bila entitlement memperbolehkan pendamping.":
+    "Enter manually when the entitlement allows a companion.",
+  "Nomor Membership": "Membership Number",
+  "Nomor membership pendamping": "Companion membership number",
+  "source eksternal disimulasikan": "external source is simulated",
+  "Verifikasi Member": "Verify Member",
+  "Agreement, validity, quota, dan rate akan diperiksa.":
+    "Agreement, validity, quota, and rate will be checked.",
+  "Validasi Partner": "Validate Partner",
+  "Name, flight, coupon status, dan riwayat redemption.":
+    "Name, flight, coupon status, and redemption history.",
+  "Validasi EMD": "Validate EMD",
+  "Pemeriksaan duplikat otomatis": "Automatic duplicate check",
+  "Scanner aktif": "Scanner active",
+  "Mendukung QR Code, PDF417, Aztec, Data Matrix, Code 128, EAN dan format barcode umum lainnya.":
+    "Supports QR Code, PDF417, Aztec, Data Matrix, Code 128, EAN, and other common barcode formats.",
+  "Visitor pada Peak Hour": "Peak-hour Visitors",
+  "Jam tersibuk": "Peak hour",
+  "Traffic tertinggi": "Peak traffic",
+  Penolakan: "Declined",
+  "Total Visitor — Filtered Rows": "Total Visitors — Filtered Rows",
+  "Confirmed / Payable Visitor": "Confirmed / Payable Visitors",
+  "Accepted sesuai filter aktif": "Accepted within the active filters",
+  "Belum ada data visitor": "No visitor data",
+  "Lakukan pengujian dari menu Lounge/Tenant Access.":
+    "Run a test from the Lounge/Tenant Access menu.",
+  "Mulai Pengujian": "Start Testing",
+  "Total Terfilter": "Filtered Total",
+  "Koreksi & Evidence": "Correction & Evidence",
+  "Terima Penolakan": "Accept Rejection",
+  "Nama penumpang / flight / lounge": "Passenger name / flight / lounge",
+  "Additional Info Cost/Price": "Additional Cost/Price Information",
+  "Status laporan saja": "Report status only",
+  "Role Anda dapat memantau status, tetapi tidak dapat menandatangani sebagai BO maupun Vendor.":
+    "Your role can monitor the status but cannot sign as either BO or Vendor.",
+  "Nama & Jabatan BO": "BO Name & Position",
+  "Approve & Sign as BO": "Approve & Sign as BO",
+  "Nama & Jabatan Vendor": "Vendor Name & Position",
+  "Approve & Sign as Vendor": "Approve & Sign as Vendor",
+  "Laporan telah disetujui BO dan Vendor. Pada produksi, periode akan dikunci dan perubahan menggunakan adjustment report.":
+    "The report has been approved by the BO and Vendor. In production, the period will be locked and changes will use an adjustment report.",
+  "Sinkronisasi Lounge & Station": "Synchronize Lounge & Station",
+  "Unggah Data": "Upload Data",
+  "+ Tambah Lounge": "+ Add Lounge",
+  "Nama Lounge / Provider": "Lounge / Provider Name",
+  "Source tidak ditemukan": "Source not found",
+  "Periode kerja sama": "Agreement period",
+  "Harga per pax": "Price per pax",
+  "Kapasitas lounge": "Lounge capacity",
+  "periode harga": "price periods",
+  "Perubahan dilakukan pada Ground Experience Portal, lalu jalankan sinkronisasi ulang.":
+    "Make changes in the Ground Experience Portal, then run synchronization again.",
+  "Sumber resmi pilihan station, authority akun, dan local time.":
+    "Official source for station selection, account authority, and local time.",
+  "Unduh Template": "Download Template",
+  "+ Tambah Station": "+ Add Station",
+  "Kode / nama station": "Station code / name",
+  "Nama Station": "Station Name",
+  Sumber: "Source",
+  "Kode IATA dua karakter untuk ekspor, tampilan, dan routing organisasi verifier.":
+    "Two-character IATA code for export, display, and verifier-organization routing.",
+  "+ Tambah Airline": "+ Add Airline",
+  "Kode / nama airline": "Airline code / name",
+  "Kode 2 Karakter": "2-Letter Code",
+  "Organisasi Verifier": "Verifier Organization",
+  "Ubah Status": "Toggle Status",
+  "+ Tambah User": "+ Add User",
+  "Nama / Username": "Name / Username",
+  "Atur Ulang Password": "Reset Password",
+  Nonaktifkan: "Deactivate",
+  "Hapus Akun": "Delete Account",
+  "Kelola Eligibility Rules": "Manage Eligibility Rules",
+  "Status Integrasi": "Integration Status",
+  "+ Tambah Produk / Agreement": "+ Add Product / Agreement",
+  "Nama produk / agreement": "Product / agreement name",
+  "Scope Rule": "Rule Scope",
+  "Sebagian BO": "Selected BOs",
+  "Satu BO / Lounge": "One BO / Lounge",
+  "Access Window sebelum STD": "Access Window before STD",
+  "SLA Verifikasi Manual (menit)": "Manual Verification SLA (minutes)",
+  "Visibilitas Evidence — BO (hari)": "Evidence Visibility — BO (days)",
+  "Visibilitas Evidence — Super Admin (hari)":
+    "Evidence Visibility — Super Admin (days)",
+  "Simpan Pengaturan": "Save Settings",
+  "Atur siapa yang dapat membuka Dashboard serta widget yang dapat dilihat setiap role.":
+    "Configure who can open the Dashboard and which widgets each role can see.",
+  "Ubah label, visibilitas, tipe field, dan urutan tanpa menghapus data inti.":
+    "Change labels, visibility, field type, and order without deleting core data.",
+  "Pilih area konfigurasi": "Choose configuration surface",
+  "Field inti": "Core field",
+  "Field khusus": "Custom field",
+  "Label Indonesia": "Indonesian label",
+  "Label Inggris": "English label",
+  "Tambah Field / Kolom Khusus": "Add Custom Field / Column",
+  "Setiap item baru wajib memiliki label ID dan EN sebelum dapat dipublikasikan.":
+    "Every new item requires both ID and EN labels before it can be published.",
+  "Area Tujuan": "Target Surface",
+  "Field wajib": "Required field",
+  "Tambahkan ke Draft": "Add to Draft",
+  "Tinjau label dan urutan → Preview → Publikasikan versi konfigurasi.":
+    "Review labels and order → Preview → Publish configuration version.",
+  "Publikasikan Versi": "Publish Version",
+  "Bahasa Indonesia": "Indonesian",
+  "Teks draft": "Draft text",
+  "Preview seluruh halaman sebelum publikasi.":
+    "Preview the entire page before publishing.",
+  "Publikasikan Perubahan Teks": "Publish Text Changes",
+  "Aktifkan bahasa Inggris hanya setelah seluruh translation key lulus review.":
+    "Enable English only after every translation key passes review.",
+  "Jika nonaktif, tombol bahasa disembunyikan untuk seluruh pengguna.":
+    "When disabled, the language button is hidden for all users.",
+  "Label lengkap": "Complete labels",
+  "Wajib diterjemahkan": "Require translation",
+  "Log Aktivitas": "Activity Log",
+  "Simulasi audit trail": "Audit trail simulation",
+  "DATA PENUMPANG PER FLIGHT": "FLIGHT-LEVEL PASSENGER DATA",
+  "Denominator Lounge Utilization per flight dan cabin class. Dashboard hanya memakai flight berstatus DEPARTED.":
+    "Lounge Utilization denominator per flight and cabin class. The dashboard uses DEPARTED flights only.",
+  "Unggah Excel/CSV": "Upload Excel/CSV",
+  "Simpan Data": "Save Data",
+  "Flight tersimpan": "Saved flights",
+  "Total pax": "Total pax",
+  "Awal Season": "Season Start",
+  "Akhir Season": "Season End",
+  "Hari Operasi 1–7": "Operating Days 1–7",
+  "Kode hari:": "Day code:",
+  "1 Senin · 2 Selasa · 3 Rabu · 4 Kamis · 5 Jumat · 6 Sabtu · 7 Minggu":
+    "1 Monday · 2 Tuesday · 3 Wednesday · 4 Thursday · 5 Friday · 6 Saturday · 7 Sunday",
+  "Tanggal Irregularity": "Irregularity Date",
+  "Jenis Irregularity": "Irregularity Type",
+  Alasan: "Reason",
+  "Alasan operasional": "Operational reason",
+  "Simpan Irregularity": "Save Irregularity",
+  "Unduh Template Flight": "Download Flight Template",
+  "Digunakan hanya ketika integrasi Passenger List/DCS belum tersedia atau sedang terganggu.":
+    "Use only when Passenger List/DCS integration is unavailable or disrupted.",
+  "Impor Passenger List": "Import Passenger List",
+  "+ Tambah Flight": "+ Add Flight",
+  "Tidak berwenang": "Not authorized",
+  "Aktivitas untuk Anda": "Activity for You",
+  "menunggu verifikasi": "awaiting verification",
+  "Tidak ada aktivitas baru.": "No new activity.",
+  "Password lama": "Current password",
+  "Password baru": "New password",
+  "Konfirmasi password baru": "Confirm new password",
+  "Koreksi dan Kirim Evidence": "Correct and Submit Evidence",
+  "MASTER STATION": "MASTER STATION",
+  "Kode IATA": "IATA Code",
+  "Nama Airline": "Airline Name",
+  "Kelola Tabel —": "Manage Table —",
+  "Field kritis untuk verifikasi": "Verification-critical fields",
+  "Geser ke atas": "Move up",
+  "Geser ke bawah": "Move down",
+  "Contoh: Flight & DOT": "Example: Flight & DOT",
+  "Pilih data…": "Select data…",
+  "Pilih fungsi…": "Select function…",
+  "Gunakan field yang tersedia dan operator aman. Fungsi: CONCAT, SQRT/akar kuadrat, ABS, ROUND, MIN, MAX, dan POWER.":
+    "Use available fields and safe operators. Functions: CONCAT, SQRT, ABS, ROUND, MIN, MAX, and POWER.",
+  "Gunakan:": "Use:",
+  "kolom dipilih · hanya confirmed visitor":
+    "columns selected · confirmed visitors only",
+  "Urutan tampilan": "Display order",
+  "Ubah Label": "Edit Label",
+  "Kelola Role & Permission": "Manage Role & Permission",
+  "Hanya Super Admin yang dapat mengubah authority.":
+    "Only Super Admin can change authority.",
+  "Simpan Versi Permission": "Save Permission Version",
+  "Sinkronisasi terakhir:": "Last sync:",
+  "Pemilik data:": "Data owner:",
+  "Pemilik teknis:": "Technical owner:",
+  "Konfigurasi produksi diselesaikan oleh Tim IT.":
+    "Production setup is completed by Tim IT.",
+  "Admin dapat memublikasikan aturan eligibility operasional tanpa persetujuan Super Admin.":
+    "Admin may publish operational eligibility rules without Super Admin approval.",
+  "Produk/Tier": "Product/Tier",
+  "Data Referensi": "Reference Data",
+  Versi: "Version",
+  "Uji Rule": "Test Rule",
+  "Publikasikan Versi Baru": "Publish New Version",
+  "Pastikan target dan dampak tindakan sudah benar.":
+    "Ensure the action target and impact are correct.",
+  Konfirmasi: "Confirm",
+  "Password Baru / Sementara": "New / Temporary Password",
+  "Minimal 8 karakter": "Minimum 8 characters",
+  "Password Sementara": "Temporary Password",
+  "Organisasi / Unit": "Organization / Unit",
+  "Program, airline, kategori": "Program, airline, category",
+  "Produk / Agreement": "Product / Agreement",
+  Tipe: "Type",
+  "Nama Produk / Agreement": "Product / Agreement Name",
+  "Referensi / Ketentuan": "Reference / Terms",
+  "Tier / Produk Eligible": "Eligible Tier / Product",
+  "Mulai Berlaku": "Effective Start",
+  "Berakhir Berlaku": "Effective End",
+  "Scope Station / Lounge": "Station / Lounge Scope",
+  "Aturan Harga": "Price Rule",
+  "Aturan Pendamping": "Companion Rule",
+  "Field Referensi API": "API Reference Fields",
+  "Role yang dapat menggunakan": "Authorized roles",
+  Mitra: "Partner",
+  "Nama Lounge/Tenant": "Lounge/Tenant Name",
+  "Mata Uang": "Currency",
+  "Harga per Pax": "Price per Pax",
+  "Tanggal Mulai": "Start Date",
+  "Tanggal Berakhir": "End Date",
+  "Kapasitas Lounge (Pax)": "Lounge Capacity (Pax)",
+  "Kapasitas Berlaku Mulai": "Capacity Effective From",
+  "Periode Harga": "Price Periods",
+  "Harga dapat memiliki beberapa periode. Dashboard menggunakan harga yang berlaku pada Date of Travel visitor.":
+    "Prices may have multiple periods. The dashboard uses the price effective on the visitor's Date of Travel.",
+  "Hapus Periode": "Delete Period",
+  "+ Tambah Periode Harga": "+ Add Price Period",
+  "AKSES DITOLAK": "ACCESS DENIED",
+  "Coba Scan Lagi": "Scan Again",
+  "PERBARUI DATA": "UPDATE DATA",
+  Tolak: "Reject",
+  "View only sesuai role": "View only according to role",
+  "Belum ada visitor untuk diverifikasi.": "No visitors to verify.",
+  "Cari Visitor": "Search Visitor",
+  "Tanggal Akhir": "End Date",
+  "Semua Tanggal": "All Date",
+  "Passenger List — Impor Manual": "Passenger List — Manual Import",
+  "Manajemen & Monitoring": "Management & Monitoring",
+  "Ringkasan Eksekutif": "Executive Summary",
+  "Komposisi Pengunjung": "Visitor Composition",
+  "10 Branch Office Teratas": "Top 10 Branch Offices",
+  "Analisis Biaya Provider": "Provider Cost Analysis",
+  "Total Penumpang": "Total Passenger",
+  "Pengunjung Lounge Terkonfirmasi": "Confirmed Lounge Visitor",
+  "Semua Area": "All Areas",
+  "Semua Provider": "All Providers",
+  "Template Passenger Volume": "Passenger Volume Template",
+  "Impor Passenger Volume": "Import Passenger Volume",
+  "Eligibility tidak diisi petugas. Sistem menghitung otomatis dari kelas kabin dan membership.":
+    "Eligibility is not entered by the officer. The system calculates it automatically from cabin class and membership.",
+  "RATA-RATA TRAFFIC PENUMPANG PER JAM": "AVERAGE PASSENGER TRAFFIC PER HOUR",
+  "Dispute & Koreksi": "Dispute & Correction",
+  "Data yang ditolak verifier dikembalikan kepada Lounge Officer. Tombol koreksi hanya muncul untuk data yang memerlukan respons Lounge sesuai scope akun.":
+    "Data rejected by a verifier is returned to the Lounge Officer. The correction button appears only for records that require a Lounge response within the account scope.",
+  "BO mengirim permintaan; Admin menyetujui atau menolak dengan alasan audit dan revisi laporan.":
+    "BO submits a request; Admin approves or rejects with an audit reason and report revision.",
+  "sesuai seluruh filter laporan": "within all report filters",
+  "VENDOR / PENGELOLA LOUNGE": "VENDOR / LOUNGE OPERATOR",
+  "Data Portal Sync bersifat read-only dan diperbarui melalui sinkronisasi. Data Manual Entry dapat ditambah, diperbarui, dan dihapus oleh Super Admin/Admin. Harga yang diterapkan pada transaksi visitor dikunci berdasarkan DOT sehingga perubahan agreement tidak mengubah transaksi historis.":
+    "Portal Sync data is read-only and updated through synchronization. Manual Entry data can be added, updated, and deleted by a Super Admin/Admin. The visitor transaction price is locked by DOT so agreement changes do not alter historical transactions.",
+  "Operating Airline Code diambil tepat dari dua karakter alfanumerik pertama sebelum nomor flight. Master digunakan untuk memvalidasi kode dan mengarahkan verifikasi partner; master tidak diperlukan hanya untuk memisahkan ORG/DEST.":
+    "Operating Airline Code is derived from exactly the first two alphanumeric characters immediately before the numeric flight number. The master is used to validate the code and route partner verification; it is not required merely to split ORG/DEST.",
+  "Field inti dan khusus disembunyikan atau diarsipkan, bukan dihapus. Perubahan disimpan sebagai konfigurasi tampilan agar relasi operasional, formula, API mapping, laporan, dan data audit tetap tersedia.":
+    "Core and custom fields are hidden or archived instead of deleted. Changes are saved as display configuration so operational relationships, formulas, API mapping, reports, and audit data remain available.",
+  "Menu & Pengelola Tabel": "Menu & Table Manager",
+  "Editor Halaman & Teks": "Page & Text Editor",
+  "Kelola label dan deskripsi pendek. Teks operasional tetap melalui draft, preview, dan publish.":
+    "Manage labels and short descriptions. Operational text continues through draft, preview, and publish.",
+  "Buat Jadwal Seasonal": "Generate Seasonal Schedule",
+  "Super Admin, Admin/HO, dan BO dapat upload atau menambah flight. Lounge Officer dapat menambah flight operasional station-nya, tetapi perubahan ETD/status tetap dibatasi kepada Admin/HO/BO.":
+    "Super Admin, Admin/HO, and BO users can upload or add flights. Lounge Officers can add operational flights for their station, but ETD/status changes remain restricted to Admin/HO/BO users.",
+  "INBOX & NOTIFIKASI": "INBOX & NOTIFICATIONS",
+  "DISPUTE & KOREKSI": "DISPUTE & CORRECTION",
+  "KONFIGURASI LAPORAN REKONSILIASI": "RECONCILIATION REPORT CONFIGURATION",
+  "Primary key, relationship key, authority scope, status verifikasi, dan field audit dilindungi. Kolom tampilan dapat ditampilkan, disembunyikan, atau diurutkan ulang tanpa menghapus source data.":
+    "Primary key, relationship keys, authority scope, verification status, and audit fields are protected. Display columns may be shown, hidden, or reordered without deleting source data.",
+  "KONFIGURASI AUTHORITY": "AUTHORITY CONFIGURATION",
+  "KESIAPAN INTEGRASI IT": "IT INTEGRATION READINESS",
+  "Secret dan endpoint URL ditempatkan pada server-side environment variable. Frontend memanggil common connector contract dan tidak boleh menyimpan credential perusahaan.":
+    "Secrets and endpoint URLs belong in server-side environment variables. The frontend calls a common connector contract; it must never store corporate credentials.",
+  "BUSINESS RULE BERVERSI": "VERSIONED BUSINESS RULE",
+  "ALL — Seluruh Station": "ALL — All Stations",
+  "Minta Akses Exceptional": "Request Exceptional Access",
+  "Berikan Akses Provisional": "Grant Provisional Access",
+  "Visitor Lounge/Tenant": "Lounge/Tenant Visitor",
+});
+
+const interfaceIdTranslations: Record<string, string> = Object.fromEntries(
+  Object.entries(interfaceTranslations).map(([id, en]) => [en, id]),
+);
 type ReportColumnKey =
   | "dot"
   | "accessTime"
@@ -1949,9 +2245,14 @@ export default function Home() {
     scanLock = useRef(false),
     buffer = useRef(""),
     keyTime = useRef(0),
-    translatedNodesRef = useRef(new WeakMap<Text, string>()),
+    translatedNodesRef = useRef(
+      new WeakMap<Text, { original: string; rendered: string }>(),
+    ),
     translatedAttributesRef = useRef(
-      new WeakMap<Element, Record<string, string>>(),
+      new WeakMap<
+        Element,
+        Record<string, { original: string; rendered: string }>
+      >(),
     ),
     profileMenuRef = useRef<HTMLDivElement>(null);
 
@@ -1976,14 +2277,21 @@ export default function Home() {
       while (node) {
         const parent = node.parentElement;
         if (parent && !["SCRIPT", "STYLE"].includes(parent.tagName)) {
-          const original = translatedNodes.get(node) ?? node.data;
-          translatedNodes.set(node, original);
+          const current = node.data;
+          const previous = translatedNodes.get(node);
+          const original =
+            !previous ||
+            (current !== previous.original && current !== previous.rendered)
+              ? current
+              : previous.original;
           const trimmed = original.trim();
           const translated = translateValue(trimmed);
-          node.data =
+          const rendered =
             translated !== trimmed
               ? original.replace(trimmed, translated)
               : original;
+          if (current !== rendered) node.data = rendered;
+          translatedNodes.set(node, { original, rendered });
         }
         node = walker.nextNode() as Text | null;
       }
@@ -1993,18 +2301,29 @@ export default function Home() {
           const stored = translatedAttributes.get(element) ?? {};
           ["placeholder", "aria-label", "title"].forEach((attribute) => {
             const current = element.getAttribute(attribute);
-            if (current != null && stored[attribute] == null)
-              stored[attribute] = current;
-            const original = stored[attribute];
-            if (original != null)
-              element.setAttribute(attribute, translateValue(original));
+            if (current == null) return;
+            const previous = stored[attribute];
+            const original =
+              !previous ||
+              (current !== previous.original && current !== previous.rendered)
+                ? current
+                : previous.original;
+            const rendered = translateValue(original);
+            if (current !== rendered) element.setAttribute(attribute, rendered);
+            stored[attribute] = { original, rendered };
           });
           translatedAttributes.set(element, stored);
         });
     };
     translate(document.body);
     const observer = new MutationObserver(() => translate(document.body));
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["placeholder", "aria-label", "title"],
+      characterData: true,
+      childList: true,
+      subtree: true,
+    });
     return () => observer.disconnect();
   }, [language]);
   useEffect(() => {
@@ -4915,8 +5234,7 @@ export default function Home() {
       editingStation &&
       isSynchronizedRecord(
         stations.find((item) => item.code === editingStation) as unknown as
-          | Record<string, unknown>
-          | undefined,
+          Record<string, unknown> | undefined,
       )
     ) {
       setStationNotice({
@@ -5204,19 +5522,32 @@ export default function Home() {
       <main className="loginPage">
         <section className="loginPanel">
           <form className="loginCard" onSubmit={login}>
+            {languageFeatureEnabled && (
+              <button
+                type="button"
+                className="loginLanguageToggle"
+                onClick={() => setLanguage(language === "ID" ? "EN" : "ID")}
+                aria-label={tr("Ganti bahasa", "Change language")}
+              >
+                {language === "ID" ? "EN" : "ID"}
+              </button>
+            )}
             <div className="loginBrand">
               <img src="/garuda-indonesia-logo.png" alt="Garuda Indonesia" />
               <h1>Garuda Access Entitlement System</h1>
             </div>
-            <h2>Sign In</h2>
+            <h2>{tr("Masuk", "Sign In")}</h2>
             <label>
-              Email atau Username
+              {tr("Email atau Username", "Email or Username")}
               <input
                 autoFocus
                 autoComplete="username"
                 value={loginUser}
                 onChange={(e) => setLoginUser(e.target.value)}
-                placeholder="Masukkan email atau username"
+                placeholder={tr(
+                  "Masukkan email atau username",
+                  "Enter email or username",
+                )}
               />
             </label>
             <label>
@@ -5226,7 +5557,7 @@ export default function Home() {
                 autoComplete="current-password"
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
-                placeholder="Masukkan password"
+                placeholder={tr("Masukkan password", "Enter password")}
               />
             </label>
             {loginError && <div className="loginError">{loginError}</div>}
@@ -5242,28 +5573,39 @@ export default function Home() {
                 setResetRequestNotice(null);
               }}
             >
-              Lupa password?
+              {tr("Lupa password?", "Forgot password?")}
             </button>
             {showForgotPassword && (
               <div className="forgotPasswordPanel">
-                <b>Permintaan reset password</b>
+                <b>
+                  {tr("Permintaan reset password", "Password reset request")}
+                </b>
                 <span>
-                  Permintaan akan masuk ke inbox Admin dan Super Admin.
+                  {tr(
+                    "Permintaan akan masuk ke inbox Admin dan Super Admin.",
+                    "The request will be sent to the Admin and Super Admin inbox.",
+                  )}
                 </span>
                 <label>
-                  Email atau Username
+                  {tr("Email atau Username", "Email or Username")}
                   <input
                     value={resetRequestIdentity}
                     onChange={(e) => setResetRequestIdentity(e.target.value)}
-                    placeholder="Masukkan email atau username"
+                    placeholder={tr(
+                      "Masukkan email atau username",
+                      "Enter email or username",
+                    )}
                   />
                 </label>
                 <label>
-                  Pesan (opsional)
+                  {tr("Pesan (opsional)", "Message (optional)")}
                   <textarea
                     value={resetRequestMessage}
                     onChange={(e) => setResetRequestMessage(e.target.value)}
-                    placeholder="Tambahkan informasi untuk Admin"
+                    placeholder={tr(
+                      "Tambahkan informasi untuk Admin",
+                      "Add information for the Admin",
+                    )}
                   />
                 </label>
                 {resetRequestNotice && (
@@ -5307,7 +5649,9 @@ export default function Home() {
                     }
                   }}
                 >
-                  {sendingResetRequest ? "Mengirim..." : "Kirim Permintaan"}
+                  {sendingResetRequest
+                    ? tr("Mengirim...", "Sending...")
+                    : tr("Kirim Permintaan", "Send Request")}
                 </button>
               </div>
             )}
