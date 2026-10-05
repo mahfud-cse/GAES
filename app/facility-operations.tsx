@@ -446,12 +446,19 @@ function isOnline(device: DeviceRecord) {
   return Number.isFinite(heartbeat) && Date.now() - heartbeat < 120_000;
 }
 
+function canonicalApprovalStatus(
+  value: unknown,
+): DeviceRecord["approvalStatus"] {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (["approved", "disetujui"].includes(normalized)) return "Approved";
+  if (["rejected", "ditolak"].includes(normalized)) return "Rejected";
+  return "Pending";
+}
+
 function isDeviceApproved(device: DeviceRecord) {
-  return (
-    String(device.approvalStatus || "")
-      .trim()
-      .toLowerCase() === "approved"
-  );
+  return canonicalApprovalStatus(device.approvalStatus) === "Approved";
 }
 
 function isDeviceEnrolled(device: DeviceRecord) {
@@ -587,6 +594,7 @@ export default function FacilityOperations({
     expiresAt: string;
   } | null>(null);
   const [savingRemote, setSavingRemote] = useState(false);
+  const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
   const [pilotDialog, setPilotDialog] = useState<{
     device: DeviceRecord;
     checkId: string;
@@ -821,6 +829,9 @@ export default function FacilityOperations({
     ).length;
   const canApproveBooking = APPROVER_ROLES.includes(account.role);
   const canSuperviseOperations = APPROVER_ROLES.includes(account.role);
+  const editingDeviceRecord = editingDevice
+    ? devices.find((device) => device.id === editingDevice)
+    : undefined;
 
   async function saveRoom(event: FormEvent) {
     event.preventDefault();
@@ -861,7 +872,11 @@ export default function FacilityOperations({
       return;
     }
     const id = editingDevice || recordId("display");
-    await saveRecord("displayDevices", { id, ...deviceDraft });
+    await saveRecord("displayDevices", {
+      id,
+      ...deviceDraft,
+      approvalStatus: canonicalApprovalStatus(deviceDraft.approvalStatus),
+    });
     setNotice({
       kind: "ok",
       text: `Device ${deviceDraft.name} berhasil disimpan sebagai inventory. Lanjutkan approval dan enrollment melalui TV & Digital Signage > Monitor.`,
@@ -887,6 +902,38 @@ export default function FacilityOperations({
       kind: "ok",
       text: `${device.name} disetujui. Klik Enroll Player pada tab Monitor, buat kode, lalu masukkan kode tersebut di halaman /player pada perangkat.`,
     });
+  }
+
+  async function deleteDevice(device: DeviceRecord) {
+    if (
+      !window.confirm(
+        `Hapus device ${device.name}? Enrollment dan credential player pada device ini juga akan dicabut.`,
+      )
+    )
+      return;
+    setDeletingDeviceId(device.id);
+    try {
+      await manageDisplayDevice(user, {
+        action: "delete",
+        deviceId: device.id,
+      });
+      setShowDeviceForm(false);
+      setEditingDevice(null);
+      setNotice({
+        kind: "ok",
+        text: `Device ${device.name} berhasil dihapus.`,
+      });
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Device tidak dapat dihapus.",
+      });
+    } finally {
+      setDeletingDeviceId(null);
+    }
   }
 
   function openDisplayDialog(kind: "content" | "channel" | "schedule") {
@@ -1574,7 +1621,9 @@ export default function FacilityOperations({
               <small>
                 {
                   scopedDevices.filter(
-                    (device) => device.approvalStatus === "Pending",
+                    (device) =>
+                      canonicalApprovalStatus(device.approvalStatus) ===
+                      "Pending",
                   ).length
                 }{" "}
                 pending approval
@@ -2363,7 +2412,9 @@ export default function FacilityOperations({
                               <span
                                 className={`deviceStatus ${isOnline(device) ? "online" : "offline"}`}
                               >
-                                {device.approvalStatus === "Pending"
+                                {canonicalApprovalStatus(
+                                  device.approvalStatus,
+                                ) === "Pending"
                                   ? "Pending Approval"
                                   : isOnline(device)
                                     ? "Online"
@@ -2397,7 +2448,9 @@ export default function FacilityOperations({
                             <td>
                               <div className="tableActions">
                                 {canConfigure &&
-                                  device.approvalStatus === "Pending" && (
+                                  canonicalApprovalStatus(
+                                    device.approvalStatus,
+                                  ) === "Pending" && (
                                     <button
                                       type="button"
                                       onClick={() => void approveDevice(device)}
@@ -2410,7 +2463,12 @@ export default function FacilityOperations({
                                     type="button"
                                     onClick={() => {
                                       setEditingDevice(device.id);
-                                      setDeviceDraft(device);
+                                      setDeviceDraft({
+                                        ...device,
+                                        approvalStatus: canonicalApprovalStatus(
+                                          device.approvalStatus,
+                                        ),
+                                      });
                                       setShowDeviceForm(true);
                                     }}
                                   >
@@ -2967,7 +3025,7 @@ export default function FacilityOperations({
                         {device.station}
                         <small>{roomName(device.roomId)}</small>
                       </td>
-                      <td>{device.approvalStatus || "Pending"}</td>
+                      <td>{canonicalApprovalStatus(device.approvalStatus)}</td>
                       <td>{device.enrollmentStatus || "Not Enrolled"}</td>
                       <td>
                         {device.connectionType}
@@ -2976,7 +3034,8 @@ export default function FacilityOperations({
                       <td>
                         <div className="tableActions">
                           {canConfigure &&
-                            device.approvalStatus === "Pending" && (
+                            canonicalApprovalStatus(device.approvalStatus) ===
+                              "Pending" && (
                               <button
                                 type="button"
                                 onClick={() => void approveDevice(device)}
@@ -2989,11 +3048,28 @@ export default function FacilityOperations({
                               type="button"
                               onClick={() => {
                                 setEditingDevice(device.id);
-                                setDeviceDraft(device);
+                                setDeviceDraft({
+                                  ...device,
+                                  approvalStatus: canonicalApprovalStatus(
+                                    device.approvalStatus,
+                                  ),
+                                });
                                 setShowDeviceForm(true);
                               }}
                             >
                               Edit
+                            </button>
+                          )}
+                          {canConfigure && (
+                            <button
+                              className="danger"
+                              type="button"
+                              disabled={deletingDeviceId === device.id}
+                              onClick={() => void deleteDevice(device)}
+                            >
+                              {deletingDeviceId === device.id
+                                ? "Deleting..."
+                                : "Delete"}
                             </button>
                           )}
                           {canControl &&
@@ -3822,7 +3898,7 @@ export default function FacilityOperations({
                       .filter(
                         (row) =>
                           row.station === scheduleDraft.station &&
-                          row.approvalStatus === "Approved",
+                          isDeviceApproved(row),
                       )
                       .map((row) => (
                         <label key={row.id}>
@@ -3848,7 +3924,7 @@ export default function FacilityOperations({
                     {!devices.some(
                       (row) =>
                         row.station === scheduleDraft.station &&
-                        row.approvalStatus === "Approved",
+                        isDeviceApproved(row),
                     ) && (
                       <small>Belum ada device Approved di station ini.</small>
                     )}
@@ -4829,7 +4905,7 @@ export default function FacilityOperations({
               <label>
                 <span>Approval</span>
                 <select
-                  value={deviceDraft.approvalStatus}
+                  value={canonicalApprovalStatus(deviceDraft.approvalStatus)}
                   onChange={(event) =>
                     setDeviceDraft({
                       ...deviceDraft,
@@ -4838,9 +4914,9 @@ export default function FacilityOperations({
                     })
                   }
                 >
-                  <option>Pending</option>
-                  <option>Approved</option>
-                  <option>Rejected</option>
+                  <option value="Pending">Pending</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Rejected">Rejected</option>
                 </select>
               </label>
               <div className="deviceFormGuidance full">
@@ -4863,6 +4939,32 @@ export default function FacilityOperations({
                 <button type="button" onClick={() => setShowDeviceForm(false)}>
                   Cancel
                 </button>
+                {editingDeviceRecord &&
+                  canControl &&
+                  isDeviceApproved(editingDeviceRecord) &&
+                  !isDeviceEnrolled(editingDeviceRecord) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDeviceForm(false);
+                        openRemoteControl(editingDeviceRecord, "enroll");
+                      }}
+                    >
+                      Enroll Player
+                    </button>
+                  )}
+                {editingDeviceRecord && canConfigure && (
+                  <button
+                    className="danger"
+                    type="button"
+                    disabled={deletingDeviceId === editingDeviceRecord.id}
+                    onClick={() => void deleteDevice(editingDeviceRecord)}
+                  >
+                    {deletingDeviceId === editingDeviceRecord.id
+                      ? "Deleting..."
+                      : "Delete Device"}
+                  </button>
+                )}
                 <button className="primary" type="submit">
                   Save Device
                 </button>

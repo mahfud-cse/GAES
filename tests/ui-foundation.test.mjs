@@ -323,7 +323,7 @@ test("implements phase 4 display content, channels, and conflict-safe schedules"
   assert.match(repository, /\| "displayContents"/);
   assert.match(backend, /DISPLAY_SCHEDULE_CONFLICT/);
   assert.match(backend, /row\.daysOfWeek/);
-  assert.match(backend, /approvalStatus !== "Approved"/);
+  assert.match(backend, /isApprovedStatus/);
   for (const collection of [
     "displayContents",
     "displayChannels",
@@ -363,6 +363,9 @@ test("implements phase 5 secure browser player and acknowledged remote commands"
   assert.match(player, /playerTicker/);
   assert.match(adminBackend, /randomBytes/);
   assert.match(adminBackend, /DISPLAY_COMMAND_/);
+  assert.match(adminBackend, /DISPLAY_DEVICE_DELETED/);
+  assert.match(adminBackend, /action === "delete"/);
+  assert.match(adminBackend, /"approved", "disetujui"/);
   assert.match(playerBackend, /timingSafeEqual/);
   assert.match(playerBackend, /displayDeviceCredentials/);
   assert.doesNotMatch(playerBackend, /deviceSecretHash/);
@@ -377,6 +380,26 @@ test("implements phase 5 secure browser player and acknowledged remote commands"
     /match \/displayDeviceCredentials\/\{id\}[\s\S]*?allow read, write: if false;/,
   );
   assert.match(css, /\.displayPlayer\s*\{/);
+});
+
+test("normalizes translated approval values and exposes enroll and delete in edit device", async () => {
+  const [module, css, backend] = await Promise.all([
+    read("../app/facility-operations.tsx"),
+    read("../app/globals.css"),
+    read("../netlify/functions/manage-display-device.mjs"),
+  ]);
+  assert.match(module, /function canonicalApprovalStatus/);
+  assert.match(module, /\["approved", "disetujui"\]/);
+  assert.match(module, /<option value="Approved">Approved<\/option>/);
+  assert.match(module, /editingDeviceRecord[\s\S]*?Enroll Player/);
+  assert.match(module, /editingDeviceRecord[\s\S]*?Delete Device/);
+  assert.match(module, /void deleteDevice\(device\)/);
+  assert.match(backend, /displayDeviceCredentials/);
+  assert.match(backend, /displayEnrollments/);
+  assert.match(
+    css,
+    /\.subTabs\.facilityTabs button\.active:not\(:disabled\)[\s\S]*?background:\s*var\(--color-navy-900\)/,
+  );
 });
 
 test("implements phase 6 endpoint hardening, health sweep, and rollout gates", async () => {
