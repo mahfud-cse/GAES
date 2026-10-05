@@ -292,6 +292,7 @@ const builderSeed: BuilderItem[] = [
 ];
 
 const interfaceTranslations: Record<string, string> = {
+  "Semua Periode": "All Periods",
   "Fasilitas & Operasional Ruangan": "Facility & Room Operations",
   Ringkasan: "Overview",
   "Siap digunakan": "Ready to use",
@@ -351,7 +352,8 @@ const interfaceTranslations: Record<string, string> = {
   "Status Ruangan Saat Ini": "Current Room Status",
   "Daftar fasilitas belum diisi": "Facility list has not been provided",
   "Belum ada tayangan": "No content is playing",
-  "Belum ada display device yang terdaftar.": "No display device has been registered.",
+  "Belum ada display device yang terdaftar.":
+    "No display device has been registered.",
   "Belum ada ruangan pada station ini. Tambahkan melalui Master & Konfigurasi.":
     "There are no rooms at this station. Add one through Master & Configuration.",
   "Pusat Kontrol Perangkat": "Device Control Center",
@@ -374,7 +376,7 @@ const interfaceTranslations: Record<string, string> = {
   "Tambah Perangkat": "Add Device",
   Ruangan: "Room",
   "Station / Area": "Station / Area",
-  "Kapasitas": "Capacity",
+  Kapasitas: "Capacity",
   Fasilitas: "Facilities",
   "Status Operasional": "Operational State",
   "Nama Ruangan": "Room Name",
@@ -424,13 +426,15 @@ const interfaceTranslations: Record<string, string> = {
   "Menunggu kesiapan": "Awaiting readiness",
   "Pindah Ruangan": "Move Room",
   "Tidak Hadir": "No Show",
-  "Belum ada booking aktif pada scope ini.": "There are no active bookings in this scope.",
+  "Belum ada booking aktif pada scope ini.":
+    "There are no active bookings in this scope.",
   Perputaran: "Turnaround",
   "Antrean Pembersihan": "Cleaning Queue",
   "Penyelesaian Pembersihan": "Cleaning Completion",
   "Menunggu penyelesaian pembersihan": "Waiting for cleaning completion",
   Selesai: "Complete",
-  "Tidak ada ruangan dalam antrean pembersihan.": "There are no rooms in the cleaning queue.",
+  "Tidak ada ruangan dalam antrean pembersihan.":
+    "There are no rooms in the cleaning queue.",
   "Ketersediaan Ruangan": "Room Availability",
   "Pemeliharaan Aktif": "Open Maintenance",
   "Tidak ada pemeliharaan aktif.": "There is no active maintenance.",
@@ -446,7 +450,8 @@ const interfaceTranslations: Record<string, string> = {
   "Aksi, operator, ruangan, booking": "Action, operator, room, booking",
   Operator: "Operator",
   Detail: "Detail",
-  "Belum ada log aktivitas pada scope ini.": "There are no activity logs in this scope.",
+  "Belum ada log aktivitas pada scope ini.":
+    "There are no activity logs in this scope.",
   "Check-in Ruangan": "Room Check-in",
   "Check-out & Serah Terima Ruangan": "Room Check-out & Handover",
   "Konfirmasi Check-in": "Confirm Check-in",
@@ -558,7 +563,8 @@ const interfaceTranslations: Record<string, string> = {
   Gagal: "Fail",
   Terblokir: "Blocked",
   "Sertifikasi Peluncuran": "Certify Rollout",
-  "Sertifikasi peluncuran belum diberikan.": "Rollout certification has not been granted.",
+  "Sertifikasi peluncuran belum diberikan.":
+    "Rollout certification has not been granted.",
   "Catat Hasil Pengujian": "Record Test Result",
   Hasil: "Result",
   "Bukti / Catatan Pengujian": "Evidence / Test Note",
@@ -2279,6 +2285,9 @@ export default function Home() {
     >([]),
     [passengerVolumeFileName, setPassengerVolumeFileName] = useState(""),
     [dashboardPeriod, setDashboardPeriod] = useState("All Periods"),
+    [operationalYear, setOperationalYear] = useState(
+      String(new Date().getFullYear()),
+    ),
     [dashboardArea, setDashboardArea] = useState("All Areas"),
     [dashboardBo, setDashboardBo] = useState("All BO"),
     [dashboardProvider, setDashboardProvider] = useState("All Providers"),
@@ -2553,6 +2562,7 @@ export default function Home() {
       const dictionary =
         language === "EN" ? interfaceTranslations : interfaceIdTranslations;
       if (dictionary[value]) return dictionary[value];
+      if (Object.values(dictionary).includes(value)) return value;
       return Object.entries(dictionary)
         .sort(([a], [b]) => b.length - a.length)
         .reduce(
@@ -5968,19 +5978,25 @@ export default function Home() {
           <label className="headerPeriod">
             <span>{tr("Periode", "Period")}</span>
             <select
-              value={dashboardPeriod}
-              onChange={(event) => setDashboardPeriod(event.target.value)}
+              value={operationalYear}
+              onChange={(event) => setOperationalYear(event.target.value)}
             >
               {[
                 ...new Set([
-                  "All Periods",
-                  dashboardPeriod,
-                  ...monitoringRows.map((row) => row.period),
-                  ...passengerVolumes.map((row) => row.period),
+                  String(new Date().getFullYear()),
+                  operationalYear,
+                  ...monitoringRows.map((row) => row.period.slice(0, 4)),
+                  ...passengerVolumes.map((row) => row.period.slice(0, 4)),
+                  ...visitors.map((visitor) =>
+                    (visitor.travelDate || visitor.date).slice(0, 4),
+                  ),
                 ]),
-              ].map((period) => (
-                <option key={period}>{period}</option>
-              ))}
+              ]
+                .filter((year) => /^\d{4}$/.test(year))
+                .sort((a, b) => b.localeCompare(a))
+                .map((year) => (
+                  <option key={year}>{year}</option>
+                ))}
             </select>
           </label>
           <button
@@ -8277,22 +8293,28 @@ export default function Home() {
               )}
             </>
           )}
-          {tab === "facility" && currentAccount && firebaseUser && canSeeFacility && (
-            <FacilityOperations
-              user={firebaseUser}
-              account={{
-                id: currentAccount.id,
-                name: currentAccount.name,
-                role: currentAccount.role,
-                station: currentAccount.station === "ALL" ? station : currentAccount.station,
-              }}
-              stations={stations.map((item) => ({
-                code: item.code,
-                name: item.name,
-                timeZone: item.timeZone,
-              }))}
-            />
-          )}
+          {tab === "facility" &&
+            currentAccount &&
+            firebaseUser &&
+            canSeeFacility && (
+              <FacilityOperations
+                user={firebaseUser}
+                account={{
+                  id: currentAccount.id,
+                  name: currentAccount.name,
+                  role: currentAccount.role,
+                  station:
+                    currentAccount.station === "ALL"
+                      ? station
+                      : currentAccount.station,
+                }}
+                stations={stations.map((item) => ({
+                  code: item.code,
+                  name: item.name,
+                  timeZone: item.timeZone,
+                }))}
+              />
+            )}
           {tab === "master" && (
             <>
               <Title

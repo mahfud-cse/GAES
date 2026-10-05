@@ -163,9 +163,18 @@ test("implements room booking views with backend-only conflict locks", async () 
   assert.match(backend, /roomBookingSlots/);
   assert.match(backend, /roomBookingRequests/);
   assert.match(backend, /ROOM_BOOKING_CONFLICT/);
-  assert.match(rules, /match \/roomBookings\/\{id\}[\s\S]*?allow write: if false;/);
-  assert.match(rules, /match \/roomBookingSlots\/\{id\}[\s\S]*?allow read, write: if false;/);
-  assert.match(rules, /match \/roomBookingRequests\/\{id\}[\s\S]*?allow read, write: if false;/);
+  assert.match(
+    rules,
+    /match \/roomBookings\/\{id\}[\s\S]*?allow write: if false;/,
+  );
+  assert.match(
+    rules,
+    /match \/roomBookingSlots\/\{id\}[\s\S]*?allow read, write: if false;/,
+  );
+  assert.match(
+    rules,
+    /match \/roomBookingRequests\/\{id\}[\s\S]*?allow read, write: if false;/,
+  );
 });
 
 test("implements guarded room operations and backend-owned audit records", async () => {
@@ -185,7 +194,8 @@ test("implements guarded room operations and backend-owned audit records", async
     "startmaintenance",
     "endmaintenance",
     "reportincident",
-  ]) assert.match(backend, new RegExp(action));
+  ])
+    assert.match(backend, new RegExp(action));
 
   assert.match(module, /Operational Control/);
   assert.match(module, /Readiness Checklist/);
@@ -195,8 +205,18 @@ test("implements guarded room operations and backend-owned audit records", async
   assert.match(backend, /runTransaction/);
   assert.match(backend, /cleaningComplete/);
   assert.match(backend, /\["Occupied", "Maintenance"\]/);
-  for (const collection of ["roomOperations", "roomMaintenance", "roomIncidents", "roomActivityLogs"])
-    assert.match(rules, new RegExp(`match /${collection}/\\{id\\}[\\s\\S]*?allow write: if false;`));
+  for (const collection of [
+    "roomOperations",
+    "roomMaintenance",
+    "roomIncidents",
+    "roomActivityLogs",
+  ])
+    assert.match(
+      rules,
+      new RegExp(
+        `match /${collection}/\\{id\\}[\\s\\S]*?allow write: if false;`,
+      ),
+    );
 });
 
 test("keeps facility controls readable and responsive across desktop and mobile", async () => {
@@ -204,17 +224,47 @@ test("keeps facility controls readable and responsive across desktop and mobile"
     read("../app/facility-operations.tsx"),
     read("../app/globals.css"),
   ]);
-  assert.match(module, /<div className="title facilityTitle">[\s\S]*?<p>FACILITY &amp; ROOM OPERATIONS<\/p>/);
-  assert.match(css, /\.facilityTabs\s*\{[\s\S]*?display:\s*flex;[\s\S]*?margin:\s*-4px 0 17px;/);
-  assert.doesNotMatch(css, /\.facilityTabs\s*\{[\s\S]*?grid-template-columns:\s*repeat\(6/);
-  assert.match(css, /\.facilityStationFilter select\s*\{[\s\S]*?border-radius:\s*20px;/);
-  assert.match(css, /Active tabs retain navy contrast across every tab pattern/);
-  assert.match(css, /button:is\(\.selected, \.active, \[aria-selected="true"\]\):not\(:disabled\):is\(:hover, :focus-visible\)[\s\S]*?background:\s*var\(--color-navy-800\);[\s\S]*?color:\s*#fff;/);
-  assert.match(css, /\.facilityKpis\s*\{[\s\S]*?repeat\(auto-fit, minmax\(155px, 1fr\)\)/);
-  assert.match(css, /\.operationsColumns\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2/);
-  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.operationsColumns \{ grid-template-columns: 1fr; \}/);
+  assert.match(
+    module,
+    /<div className="title facilityTitle">[\s\S]*?<p>FACILITY &amp; ROOM OPERATIONS<\/p>/,
+  );
+  assert.match(
+    css,
+    /\.facilityTabs\s*\{[\s\S]*?display:\s*flex;[\s\S]*?margin:\s*-4px 0 17px;/,
+  );
+  assert.doesNotMatch(
+    css,
+    /\.facilityTabs\s*\{[\s\S]*?grid-template-columns:\s*repeat\(6/,
+  );
+  assert.match(
+    css,
+    /\.facilityStationFilter select\s*\{[\s\S]*?border-radius:\s*20px;/,
+  );
+  assert.match(
+    css,
+    /Tab hover and active states retain navy contrast across every tab pattern/,
+  );
+  assert.match(
+    css,
+    /button:not\(:disabled\):is\([\s\S]*?:hover,[\s\S]*?:focus-visible[\s\S]*?\)[\s\S]*?background:\s*var\(--color-navy-800\);[\s\S]*?color:\s*#fff;/,
+  );
+  assert.match(
+    css,
+    /\.facilityKpis\s*\{[\s\S]*?repeat\(auto-fit, minmax\(155px, 1fr\)\)/,
+  );
+  assert.match(
+    css,
+    /\.operationsColumns\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2/,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 760px\)[\s\S]*?\.operationsColumns\s*\{\s*grid-template-columns:\s*1fr;\s*\}/,
+  );
   assert.match(css, /\.operationModal\s*\{[\s\S]*?calc\(100vw - 24px\)/);
-  assert.match(css, /\.bookingViewSwitch,\s*\n\.bookingPeriodNav\s*\{[\s\S]*?flex-wrap:\s*nowrap;/);
+  assert.match(
+    css,
+    /\.bookingViewSwitch,\s*\n\.bookingPeriodNav\s*\{[\s\S]*?flex-wrap:\s*nowrap;/,
+  );
   assert.match(css, /\.bookingToolbar\s*\{[\s\S]*?minmax\(390px, 1\.15fr\)/);
 });
 
@@ -224,19 +274,49 @@ test("explains device inventory approval and secure player enrollment", async ()
   assert.match(facilityModule, /Generate enrollment code/);
   assert.match(facilityModule, /href="\/player"/);
   assert.match(facilityModule, /Klik Enroll Player pada tab Monitor/);
-  assert.match(facilityModule, /masukkan kode dalam 10 menit/);
+  assert.match(facilityModule, /masukkan kode[\s\S]*?dalam 10 menit/);
+  assert.match(facilityModule, /Registered Devices/);
+  assert.match(
+    facilityModule,
+    /isDeviceApproved\(device\)[\s\S]*?!isDeviceEnrolled\(device\)[\s\S]*?Enroll Player/,
+  );
+  assert.match(facilityModule, /const CONTROL_ROLES:[\s\S]*?"Super Admin"/);
+});
+
+test("keeps room facilities editable until submit and restores a year-only header period", async () => {
+  const [facilityModule, page] = await Promise.all([
+    read("../app/facility-operations.tsx"),
+    read("../app/page.tsx"),
+  ]);
+  assert.match(facilityModule, /roomFacilitiesInput/);
+  assert.match(facilityModule, /value=\{roomFacilitiesInput\}/);
+  assert.match(
+    facilityModule,
+    /roomFacilitiesInput[\s\S]*?\.split\(","\)[\s\S]*?\.map\(\(value\) => value\.trim\(\)\)/,
+  );
+  assert.match(page, /\[operationalYear, setOperationalYear\]/);
+  assert.match(page, /value=\{operationalYear\}/);
+  assert.match(page, /filter\(\(year\) => \/\^\\d\{4\}\$\/\.test\(year\)\)/);
+  assert.match(page, /"Semua Periode": "All Periods"/);
+  assert.match(page, /Object\.values\(dictionary\)\.includes\(value\)/);
 });
 
 test("implements phase 4 display content, channels, and conflict-safe schedules", async () => {
-  const [module, api, backend, repository, rules, storageRules] = await Promise.all([
-    read("../app/facility-operations.tsx"),
-    read("../lib/firebase/api.ts"),
-    read("../netlify/functions/manage-display-content.mjs"),
-    read("../lib/firebase/repository.ts"),
-    read("../firestore.rules"),
-    read("../storage.rules"),
-  ]);
-  for (const surface of ["Content Library", "Channels", "Display Schedules", "Display Monitoring"])
+  const [module, api, backend, repository, rules, storageRules] =
+    await Promise.all([
+      read("../app/facility-operations.tsx"),
+      read("../lib/firebase/api.ts"),
+      read("../netlify/functions/manage-display-content.mjs"),
+      read("../lib/firebase/repository.ts"),
+      read("../firestore.rules"),
+      read("../storage.rules"),
+    ]);
+  for (const surface of [
+    "Content Library",
+    "Channels",
+    "Display Schedules",
+    "Display Monitoring",
+  ])
     assert.match(module, new RegExp(surface));
   assert.match(module, /Enable scheduled running text/);
   assert.match(api, /manageDisplayContent/);
@@ -244,22 +324,35 @@ test("implements phase 4 display content, channels, and conflict-safe schedules"
   assert.match(backend, /DISPLAY_SCHEDULE_CONFLICT/);
   assert.match(backend, /row\.daysOfWeek/);
   assert.match(backend, /approvalStatus !== "Approved"/);
-  for (const collection of ["displayContents", "displayChannels", "displaySchedules"])
-    assert.match(rules, new RegExp(`match /${collection}/\\{id\\}[\\s\\S]*?allow write: if false;`));
-  assert.match(storageRules, /match \/display-content\/\{station\}\/\{contentId\}\/\{fileName\}/);
+  for (const collection of [
+    "displayContents",
+    "displayChannels",
+    "displaySchedules",
+  ])
+    assert.match(
+      rules,
+      new RegExp(
+        `match /${collection}/\\{id\\}[\\s\\S]*?allow write: if false;`,
+      ),
+    );
+  assert.match(
+    storageRules,
+    /match \/display-content\/\{station\}\/\{contentId\}\/\{fileName\}/,
+  );
   assert.match(storageRules, /200 \* 1024 \* 1024/);
 });
 
 test("implements phase 5 secure browser player and acknowledged remote commands", async () => {
-  const [module, player, adminBackend, playerBackend, api, rules, css] = await Promise.all([
-    read("../app/facility-operations.tsx"),
-    read("../app/player/page.tsx"),
-    read("../netlify/functions/manage-display-device.mjs"),
-    read("../netlify/functions/display-player.mjs"),
-    read("../lib/firebase/api.ts"),
-    read("../firestore.rules"),
-    read("../app/globals.css"),
-  ]);
+  const [module, player, adminBackend, playerBackend, api, rules, css] =
+    await Promise.all([
+      read("../app/facility-operations.tsx"),
+      read("../app/player/page.tsx"),
+      read("../netlify/functions/manage-display-device.mjs"),
+      read("../netlify/functions/display-player.mjs"),
+      read("../lib/firebase/api.ts"),
+      read("../firestore.rules"),
+      read("../app/globals.css"),
+    ]);
   assert.match(module, /Enroll Player/);
   assert.match(module, /PLAY_CHANNEL/);
   assert.match(module, /SET_OVERLAY/);
@@ -275,13 +368,28 @@ test("implements phase 5 secure browser player and acknowledged remote commands"
   assert.doesNotMatch(playerBackend, /deviceSecretHash/);
   assert.match(playerBackend, /acknowledgedAt/);
   assert.match(api, /manageDisplayDevice/);
-  assert.match(rules, /match \/displayEnrollments\/\{id\}[\s\S]*?allow read, write: if false;/);
-  assert.match(rules, /match \/displayDeviceCredentials\/\{id\}[\s\S]*?allow read, write: if false;/);
+  assert.match(
+    rules,
+    /match \/displayEnrollments\/\{id\}[\s\S]*?allow read, write: if false;/,
+  );
+  assert.match(
+    rules,
+    /match \/displayDeviceCredentials\/\{id\}[\s\S]*?allow read, write: if false;/,
+  );
   assert.match(css, /\.displayPlayer\s*\{/);
 });
 
 test("implements phase 6 endpoint hardening, health sweep, and rollout gates", async () => {
-  const [module, playerBackend, sweep, pilotBackend, rules, netlify, repository, css] = await Promise.all([
+  const [
+    module,
+    playerBackend,
+    sweep,
+    pilotBackend,
+    rules,
+    netlify,
+    repository,
+    css,
+  ] = await Promise.all([
     read("../app/facility-operations.tsx"),
     read("../netlify/functions/display-player.mjs"),
     read("../netlify/functions/sweep-display-health.mjs"),
@@ -302,7 +410,11 @@ test("implements phase 6 endpoint hardening, health sweep, and rollout gates", a
   assert.match(module, /Pilot UAT &amp; Rollout Readiness/);
   assert.match(module, /Certify Rollout/);
   assert.match(repository, /\| "displayPilotTests"/);
-  for (const collection of ["displayRateLimits", "displayPilotTests", "displayRolloutApprovals"])
+  for (const collection of [
+    "displayRateLimits",
+    "displayPilotTests",
+    "displayRolloutApprovals",
+  ])
     assert.match(rules, new RegExp(`match /${collection}/\\{id\\}`));
   assert.match(netlify, /for = "\/player"[\s\S]*?Content-Security-Policy/);
   assert.match(netlify, /Permissions-Policy/);
