@@ -707,7 +707,7 @@ export default function FacilityOperations({
     }
     const id = editingDevice || recordId("display");
     await saveRecord("displayDevices", { id, ...deviceDraft });
-    setNotice({ kind: "ok", text: `Device ${deviceDraft.name} berhasil disimpan sebagai inventory.` });
+    setNotice({ kind: "ok", text: `Device ${deviceDraft.name} berhasil disimpan sebagai inventory. Lanjutkan approval dan enrollment melalui TV & Digital Signage > Monitor.` });
     setDeviceDraft({ ...EMPTY_DEVICE, station: globalScope ? "CGK" : account.station });
     setEditingDevice(null);
     setShowDeviceForm(false);
@@ -722,7 +722,7 @@ export default function FacilityOperations({
       approvedBy: account.name,
       approvedAt: new Date().toISOString(),
     });
-    setNotice({ kind: "ok", text: `${device.name} disetujui. Aktivasi player dilakukan pada tahap integrasi device.` });
+    setNotice({ kind: "ok", text: `${device.name} disetujui. Klik Enroll Player pada tab Monitor, buat kode, lalu masukkan kode tersebut di halaman /player pada perangkat.` });
   }
 
   function openDisplayDialog(kind: "content" | "channel" | "schedule") {
@@ -1326,6 +1326,18 @@ export default function FacilityOperations({
             <div className="displaySubTabs" role="tablist" aria-label="TV content management">
               {(["Monitor", "Schedules", "Channels", "Content Library", "Pilot & Rollout"] as const).map((item) => <button key={item} type="button" className={displaySection === item ? "active" : ""} onClick={() => setDisplaySection(item)}>{item}</button>)}
             </div>
+            {displaySection === "Monitor" && <section className="deviceEnrollmentGuide" aria-label="Device registration guide">
+              <div><small>DEVICE ONBOARDING</small><h3>Device Registration Guide</h3><p>Lengkapi inventory, setujui, lalu hubungkan player menggunakan kode sekali pakai.</p></div>
+              <ol>
+                <li><span>1</span><b>Add and save device</b></li>
+                <li><span>2</span><b>Approve device inventory</b></li>
+                <li><span>3</span><b>Generate enrollment code</b></li>
+                <li><span>4</span><b>Open Player on device</b></li>
+                <li><span>5</span><b>Enter code within 10 minutes</b></li>
+                <li><span>6</span><b>Confirm Online status</b></li>
+              </ol>
+              <a href="/player" target="_blank" rel="noreferrer">Open Player</a>
+            </section>}
           </article>
 
           {displaySection === "Monitor" && <article className="card facilitySectionCard">
@@ -1574,7 +1586,16 @@ export default function FacilityOperations({
               <label><span>Platform</span><select value={deviceDraft.platform} onChange={(event) => setDeviceDraft({ ...deviceDraft, platform: event.target.value as DeviceRecord["platform"] })}><option>Smart TV Browser</option><option>Android Signage Player</option><option>Mini PC</option></select></label>
               <label><span>Connection</span><select value={deviceDraft.connectionType} onChange={(event) => setDeviceDraft({ ...deviceDraft, connectionType: event.target.value as DeviceRecord["connectionType"] })}><option>LAN</option><option>Wi-Fi</option></select></label>
               <label><span>Approval</span><select value={deviceDraft.approvalStatus} onChange={(event) => setDeviceDraft({ ...deviceDraft, approvalStatus: event.target.value as DeviceRecord["approvalStatus"] })}><option>Pending</option><option>Approved</option><option>Rejected</option></select></label>
-              <div className="notice warn full"><span>Inventory belum berarti device sudah terhubung. Credential dan heartbeat akan dibuat melalui enrollment service pada tahap integrasi player.</span></div>
+              <div className="deviceFormGuidance full">
+                <b>Setelah inventory disimpan</b>
+                <ol>
+                  <li>Buka TV &amp; Digital Signage lalu pilih Monitor.</li>
+                  <li>Jika status masih Pending, klik Approve.</li>
+                  <li>Klik Enroll Player lalu Generate Code.</li>
+                  <li>Buka <b>/player</b> pada perangkat tujuan dan masukkan kode dalam 10 menit.</li>
+                  <li>Perangkat berhasil terdaftar ketika status berubah menjadi Enrolled dan Online.</li>
+                </ol>
+              </div>
               <div className="modalActions full"><button type="button" onClick={() => setShowDeviceForm(false)}>Cancel</button><button className="primary" type="submit">Save Device</button></div>
             </form>
           </div>

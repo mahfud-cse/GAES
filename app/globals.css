@@ -452,6 +452,97 @@
   color: #fff;
 }
 
+.deviceEnrollmentGuide {
+  align-items: center;
+  border-top: 1px solid var(--color-border);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(190px, .75fr) minmax(520px, 1.8fr) auto;
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.deviceEnrollmentGuide h3,
+.deviceEnrollmentGuide p {
+  margin: 0;
+}
+
+.deviceEnrollmentGuide p {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+.deviceEnrollmentGuide ol {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(3, minmax(145px, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.deviceEnrollmentGuide li {
+  align-items: center;
+  color: var(--color-text);
+  display: flex;
+  font-size: 10px;
+  gap: 7px;
+}
+
+.deviceEnrollmentGuide li > span {
+  align-items: center;
+  background: #e8eff8;
+  border-radius: 50%;
+  color: var(--color-navy-800);
+  display: inline-flex;
+  flex: 0 0 24px;
+  font-size: 10px;
+  height: 24px;
+  justify-content: center;
+}
+
+.deviceEnrollmentGuide > a {
+  align-items: center;
+  border: 1px solid var(--color-navy-900);
+  border-radius: var(--radius-sm);
+  color: var(--color-navy-900);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  justify-content: center;
+  min-height: var(--control-height);
+  padding: 9px 13px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.deviceEnrollmentGuide > a:hover,
+.deviceEnrollmentGuide > a:focus-visible {
+  background: var(--color-navy-900);
+  color: #fff;
+}
+
+.deviceFormGuidance {
+  background: var(--color-surface-soft);
+  border-left: 3px solid var(--color-blue-600);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 13px 15px;
+}
+
+.deviceFormGuidance > b {
+  color: var(--color-text);
+}
+
+.deviceFormGuidance ol {
+  margin: 7px 0 0;
+  padding-left: 19px;
+}
+
 .contentCardGrid {
   display: grid;
   gap: 12px;
@@ -1081,6 +1172,8 @@
 
 @media (max-width: 1280px) {
   .facilityOverviewGrid { grid-template-columns: 1fr; }
+  .deviceEnrollmentGuide { grid-template-columns: 1fr; }
+  .deviceEnrollmentGuide > a { justify-self: start; }
   .bookingToolbar { grid-template-columns: minmax(300px, .9fr) minmax(390px, 1.1fr); }
   .bookingToolbar > label { grid-row: 2; }
   .operationsKpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -1113,6 +1206,7 @@
   .operationContext { grid-template-columns: 1fr; }
   .activitySearch { flex-basis: auto; width: 100%; }
   .displaySubTabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .deviceEnrollmentGuide ol { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .compactChecklist > div { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .deviceHealthKpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pilotDeviceCard > header,
@@ -1122,13 +1216,15 @@
 
 @media (max-width: 480px) {
   .facilityKpis { grid-template-columns: 1fr; }
-  .facilityTitle { padding: 16px; }
+  .facilityTitle { padding: 0; }
   .operationsKpis { grid-template-columns: 1fr; }
   .operationQueue > div:not(.facilityEmpty) { grid-template-columns: auto minmax(0, 1fr); }
   .operationQueue button { grid-column: 1 / -1; width: 100%; }
   .bookingPeriodNav { grid-template-columns: 40px minmax(0, 1fr) 40px; }
   .bookingPeriodNav button:last-child { grid-column: 1 / -1; }
   .displaySubTabs { grid-template-columns: 1fr; }
+  .deviceEnrollmentGuide ol { grid-template-columns: 1fr; }
+  .deviceEnrollmentGuide > a { width: 100%; }
   .compactChecklist > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .deviceHealthKpis { grid-template-columns: 1fr; }
 }
@@ -3681,6 +3777,22 @@ tfoot td {
 .subTabs .selected:not(:disabled):hover {
   background: #0b3e75;
   color: #fff;
+}
+
+/* Active tabs retain navy contrast across every tab pattern. */
+:where(.subTabs, .facilityTabs, .displaySubTabs, .bookingViewSwitch)
+  button:is(.selected, .active, [aria-selected="true"]):not(:disabled) {
+  background: var(--color-navy-900);
+  border-color: var(--color-navy-900);
+  color: #fff;
+}
+
+:where(.subTabs, .facilityTabs, .displaySubTabs, .bookingViewSwitch)
+  button:is(.selected, .active, [aria-selected="true"]):not(:disabled):is(:hover, :focus-visible) {
+  background: var(--color-navy-800);
+  border-color: var(--color-navy-800);
+  color: #fff;
+  transform: none;
 }
 .processPanel > p {
   color: #64748b;

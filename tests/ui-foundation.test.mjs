@@ -208,12 +208,23 @@ test("keeps facility controls readable and responsive across desktop and mobile"
   assert.match(css, /\.facilityTabs\s*\{[\s\S]*?display:\s*flex;[\s\S]*?margin:\s*-4px 0 17px;/);
   assert.doesNotMatch(css, /\.facilityTabs\s*\{[\s\S]*?grid-template-columns:\s*repeat\(6/);
   assert.match(css, /\.facilityStationFilter select\s*\{[\s\S]*?border-radius:\s*20px;/);
+  assert.match(css, /Active tabs retain navy contrast across every tab pattern/);
+  assert.match(css, /button:is\(\.selected, \.active, \[aria-selected="true"\]\):not\(:disabled\):is\(:hover, :focus-visible\)[\s\S]*?background:\s*var\(--color-navy-800\);[\s\S]*?color:\s*#fff;/);
   assert.match(css, /\.facilityKpis\s*\{[\s\S]*?repeat\(auto-fit, minmax\(155px, 1fr\)\)/);
   assert.match(css, /\.operationsColumns\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2/);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.operationsColumns \{ grid-template-columns: 1fr; \}/);
   assert.match(css, /\.operationModal\s*\{[\s\S]*?calc\(100vw - 24px\)/);
   assert.match(css, /\.bookingViewSwitch,\s*\n\.bookingPeriodNav\s*\{[\s\S]*?flex-wrap:\s*nowrap;/);
   assert.match(css, /\.bookingToolbar\s*\{[\s\S]*?minmax\(390px, 1\.15fr\)/);
+});
+
+test("explains device inventory approval and secure player enrollment", async () => {
+  const facilityModule = await read("../app/facility-operations.tsx");
+  assert.match(facilityModule, /Device Registration Guide/);
+  assert.match(facilityModule, /Generate enrollment code/);
+  assert.match(facilityModule, /href="\/player"/);
+  assert.match(facilityModule, /Klik Enroll Player pada tab Monitor/);
+  assert.match(facilityModule, /masukkan kode dalam 10 menit/);
 });
 
 test("implements phase 4 display content, channels, and conflict-safe schedules", async () => {

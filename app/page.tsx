@@ -388,6 +388,27 @@ const interfaceTranslations: Record<string, string> = {
   Persetujuan: "Approval",
   "Belum dipetakan": "Not mapped",
   "Simpan Perangkat": "Save Device",
+  "Panduan Pendaftaran Perangkat": "Device Registration Guide",
+  "Lengkapi inventory, setujui, lalu hubungkan player menggunakan kode sekali pakai.":
+    "Complete the inventory, approve it, then connect the player using a one-time code.",
+  "Tambah dan simpan perangkat": "Add and save device",
+  "Setujui inventory perangkat": "Approve device inventory",
+  "Buat kode enrollment": "Generate enrollment code",
+  "Buka Player pada perangkat": "Open Player on device",
+  "Masukkan kode dalam 10 menit": "Enter code within 10 minutes",
+  "Pastikan status Online": "Confirm Online status",
+  "Buka Player": "Open Player",
+  "Setelah inventory disimpan": "After saving the inventory",
+  "Buka TV & Digital Signage lalu pilih Monitor.":
+    "Open TV & Digital Signage and select Monitor.",
+  "Jika status masih Pending, klik Setujui.":
+    "If the status is still Pending, select Approve.",
+  "Klik Daftarkan Player lalu Buat Kode.":
+    "Select Enroll Player and then Generate Code.",
+  "Buka /player pada perangkat tujuan dan masukkan kode dalam 10 menit.":
+    "Open /player on the target device and enter the code within 10 minutes.",
+  "Perangkat berhasil terdaftar ketika status berubah menjadi Enrolled dan Online.":
+    "The device is registered when its status changes to Enrolled and Online.",
   "Kontrol Operasional": "Operational Control",
   "Check-in, check-out, cleaning turnaround, maintenance, dan insiden dalam satu alur kerja.":
     "Check-in, check-out, cleaning turnaround, maintenance, and incidents in one workflow.",
