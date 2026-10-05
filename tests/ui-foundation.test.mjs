@@ -200,8 +200,14 @@ test("implements guarded room operations and backend-owned audit records", async
 });
 
 test("keeps facility controls readable and responsive across desktop and mobile", async () => {
-  const css = await read("../app/globals.css");
-  assert.match(css, /\.facilityTabs\s*\{[\s\S]*?grid-template-columns:\s*repeat\(6/);
+  const [module, css] = await Promise.all([
+    read("../app/facility-operations.tsx"),
+    read("../app/globals.css"),
+  ]);
+  assert.match(module, /<div className="title facilityTitle">[\s\S]*?<p>FACILITY &amp; ROOM OPERATIONS<\/p>/);
+  assert.match(css, /\.facilityTabs\s*\{[\s\S]*?display:\s*flex;[\s\S]*?margin:\s*-4px 0 17px;/);
+  assert.doesNotMatch(css, /\.facilityTabs\s*\{[\s\S]*?grid-template-columns:\s*repeat\(6/);
+  assert.match(css, /\.facilityStationFilter select\s*\{[\s\S]*?border-radius:\s*20px;/);
   assert.match(css, /\.facilityKpis\s*\{[\s\S]*?repeat\(auto-fit, minmax\(155px, 1fr\)\)/);
   assert.match(css, /\.operationsColumns\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2/);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.operationsColumns \{ grid-template-columns: 1fr; \}/);

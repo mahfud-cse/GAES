@@ -1124,9 +1124,9 @@ export default function FacilityOperations({
     <div className="facilityModule">
       <div className="title facilityTitle">
         <div>
-          <small>FACILITY &amp; ROOM OPERATIONS</small>
+          <p>FACILITY &amp; ROOM OPERATIONS</p>
           <h1>Facility &amp; Room Operations</h1>
-          <p>Kesiapan ruangan, fondasi pemesanan, serta monitoring TV dan digital signage sesuai scope akun.</p>
+          <span>Kesiapan ruangan, fondasi pemesanan, serta monitoring TV dan digital signage sesuai scope akun.</span>
         </div>
         <label className="facilityStationFilter">
           <span>Station</span>

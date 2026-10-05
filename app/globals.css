@@ -60,72 +60,100 @@
 /* Facility & Room Operations — canonical module foundation */
 .facilityModule {
   display: grid;
-  gap: 20px;
+  gap: 0;
   min-width: 0;
 }
 
 .facilityTitle {
   align-items: end;
-  background: #fff;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 8px 24px #062b5c12;
   display: flex;
   gap: 20px;
   justify-content: space-between;
-  padding: 20px;
 }
 
 .facilityTitle > div:first-child {
   min-width: 0;
 }
 
-.facilityTitle h1 {
-  margin: 5px 0;
+.facilityTitle > div:first-child > p {
+  margin: 0 0 7px;
 }
 
-.facilityTitle p {
+.facilityTitle h1 {
+  margin: 0 0 6px;
+}
+
+.facilityTitle > div:first-child > span {
   color: var(--color-text-muted);
-  margin: 0;
+  font-size: 12px;
 }
 
 .facilityStationFilter {
-  display: grid;
-  flex: 0 1 300px;
-  gap: 6px;
+  display: block;
+  flex: 0 0 auto;
+  position: relative;
 }
 
-.facilityStationFilter span {
-  color: var(--color-text-muted);
-  font-size: 12px;
+.facilityStationFilter > span {
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+
+.facilityStationFilter select {
+  background-color: #e8eff8;
+  border-color: transparent;
+  border-radius: 20px;
+  color: var(--color-navy-800);
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: .04em;
-  text-transform: uppercase;
+  min-height: 40px;
+  min-width: 180px;
+  padding: 8px 34px 8px 14px;
+}
+
+.facilityStationFilter select:not(:disabled):hover {
+  background-color: #fff;
+  border-color: var(--color-navy-900);
+}
+
+.facilityStationFilter select:disabled {
+  background-color: #e8eff8;
+  color: var(--color-navy-800);
+  opacity: 1;
 }
 
 .facilityTabs {
-  background: #e7edf5;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  display: grid;
-  gap: 4px;
-  grid-template-columns: repeat(6, minmax(132px, 1fr));
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  display: flex;
+  gap: 7px;
+  margin: -4px 0 17px;
   overflow-x: auto;
-  padding: 4px;
+  padding: 4px 2px 7px;
   scrollbar-width: thin;
 }
 
 .facilityTabs button {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
+  background: #fff;
+  border: 1px solid #b8c9dc;
+  border-radius: 20px;
+  color: #31506f;
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 8px 12px;
   white-space: nowrap;
 }
 
 .facilityTabs button:hover {
-  background: #fff;
-  border-color: var(--color-border);
+  background: #edf3fa;
+  border-color: #b8c9dc;
   color: var(--color-navy-900);
+  transform: none;
 }
 
 .facilityTabs button.active,
@@ -139,17 +167,17 @@
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+  margin-bottom: 18px;
 }
 
 .facilityKpis article {
   background: #fff;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 6px 18px #062b5c14;
+  border-radius: 13px;
   display: grid;
   gap: 5px;
   min-width: 0;
-  padding: 16px;
+  padding: 15px;
 }
 
 .facilityKpis article > span,
@@ -158,9 +186,10 @@
 }
 
 .facilityKpis article > strong {
-  color: var(--color-navy-900);
-  font-size: 26px;
+  color: var(--color-text);
+  font-size: 20px;
   line-height: 1;
+  margin: 3px 0;
 }
 
 .facilityOverviewGrid {
@@ -1066,7 +1095,7 @@
   }
 
   .facilityStationFilter { flex-basis: auto; width: 100%; }
-  .facilityTabs { grid-template-columns: repeat(6, minmax(145px, 1fr)); }
+  .facilityStationFilter select { width: 100%; }
   .facilityRoomGrid { grid-template-columns: 1fr; }
   .bookingToolbar { grid-template-columns: 1fr; }
   .bookingToolbar > label { grid-row: auto; }
