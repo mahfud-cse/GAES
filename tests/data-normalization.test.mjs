@@ -183,7 +183,10 @@ test("builds deterministic 15-minute room locks including cleaning buffers", () 
 
 test("keeps recurrence and station-local booking time consistent", () => {
   const start = new Date("2026-10-05T02:00:00.000Z");
-  assert.equal(addRecurrence(start, "Weekly", 2).toISOString(), "2026-10-19T02:00:00.000Z");
+  assert.equal(
+    addRecurrence(start, "Weekly", 2).toISOString(),
+    "2026-10-19T02:00:00.000Z",
+  );
   assert.equal(localDateInZone(start, "Asia/Jakarta"), "2026-10-05");
   assert.equal(localTimeInZone(start, "Asia/Jakarta"), "09:00");
   assert.doesNotThrow(() =>
@@ -203,15 +206,24 @@ test("keeps recurrence and station-local booking time consistent", () => {
 test("classifies display heartbeat health without trusting stale device status", () => {
   const now = Date.parse("2026-10-05T00:10:00.000Z");
   assert.deepEqual(
-    healthFor({ lastHeartbeat: "2026-10-05T00:09:30.000Z", lastError: "" }, now),
+    healthFor(
+      { lastHeartbeat: "2026-10-05T00:09:50.000Z", lastError: "" },
+      now,
+    ),
     { status: "Online", healthStatus: "Healthy" },
   );
   assert.deepEqual(
-    healthFor({ lastHeartbeat: "2026-10-05T00:07:30.000Z", lastError: "" }, now),
+    healthFor(
+      { lastHeartbeat: "2026-10-05T00:09:30.000Z", lastError: "" },
+      now,
+    ),
     { status: "Degraded", healthStatus: "Degraded" },
   );
   assert.deepEqual(
-    healthFor({ lastHeartbeat: "2026-10-05T00:00:00.000Z", lastError: "" }, now),
+    healthFor(
+      { lastHeartbeat: "2026-10-05T00:08:50.000Z", lastError: "" },
+      now,
+    ),
     { status: "Offline", healthStatus: "Offline" },
   );
 });

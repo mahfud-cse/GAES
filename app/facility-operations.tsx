@@ -80,6 +80,13 @@ type DeviceRecord = {
   healthStatus?: "Healthy" | "Degraded" | "Offline";
   rolloutStatus?: "Testing" | "Ready for Operations";
   rolloutCertifiedAt?: unknown;
+  visibilityState?: "Visible" | "Hidden";
+  fullscreen?: boolean;
+  playbackMode?:
+    "Schedule" | "Manual Override" | "Standby Override" | "Channel" | "Standby";
+  overrideUntil?: string;
+  activeAnnouncementId?: string;
+  viewport?: { width?: number; height?: number; pixelRatio?: number };
 };
 
 type DisplayContent = {
@@ -578,7 +585,27 @@ function isOnline(device: DeviceRecord) {
   if (device.status === "Disabled" || !isDeviceApproved(device)) return false;
   if (!device.lastHeartbeat) return device.status === "Online";
   const heartbeat = activityMillis(device.lastHeartbeat);
-  return heartbeat > 0 && Date.now() - heartbeat < 120_000;
+  return heartbeat > 0 && Date.now() - heartbeat < 20_000;
+}
+
+function playerOperationalStatus(device: DeviceRecord) {
+  if (device.enrollmentStatus !== "Enrolled") return "Not Enrolled";
+  const heartbeat = activityMillis(device.lastHeartbeat);
+  const age = heartbeat ? Date.now() - heartbeat : Number.POSITIVE_INFINITY;
+  if (age > 60_000) return "Offline";
+  if (age > 20_000 || device.lastError) return "Connection Warning";
+  if (device.visibilityState === "Hidden") return "Online – Hidden";
+  if (device.playbackMode === "Standby") return "Online – Standby";
+  if (device.playbackMode === "Standby Override") return "Online – Stopped";
+  return "Online – Playing";
+}
+
+function playerStatusClass(device: DeviceRecord) {
+  const status = playerOperationalStatus(device);
+  if (status === "Offline" || status === "Not Enrolled") return "offline";
+  if (status.includes("Warning") || status.includes("Hidden"))
+    return "degraded";
+  return "online";
 }
 
 function canonicalApprovalStatus(
@@ -1330,6 +1357,12 @@ export default function FacilityOperations({
       stationFilter !== "ALL"
         ? [stationFilter]
         : [...new Set(activeAnnouncements.map((row) => row.station))];
+    if (
+      !window.confirm(
+        `Hentikan seluruh ${activeAnnouncements.length} running text aktif pada scope ini?`,
+      )
+    )
+      return;
     try {
       await Promise.all(
         targetStations.map((station) =>
@@ -1350,6 +1383,67 @@ export default function FacilityOperations({
           error instanceof Error
             ? error.message
             : "Running text tidak dapat dihentikan.",
+      });
+    }
+  }
+
+  async function stopQuickAnnouncement(announcement: DisplayAnnouncement) {
+    if (
+      !window.confirm(
+        `Hentikan running text “${announcement.templateName}” untuk ${announcement.flightNumber || announcement.station}?`,
+      )
+    )
+      return;
+    try {
+      await manageDisplayDevice(user, {
+        action: "stopannouncement",
+        announcementId: announcement.id,
+      });
+      setNotice({
+        kind: "ok",
+        text: "Running text berhasil dihentikan tanpa memengaruhi announcement lain.",
+      });
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Running text tidak dapat dihentikan.",
+      });
+    }
+  }
+
+  async function editQuickAnnouncementDuration(
+    announcement: DisplayAnnouncement,
+  ) {
+    const value = window.prompt(
+      "Durasi baru dihitung dari sekarang (menit):",
+      String(announcement.durationMinutes || 10),
+    );
+    if (value === null) return;
+    const durationMinutes = Number(value);
+    if (!Number.isFinite(durationMinutes) || durationMinutes < 1) {
+      setNotice({ kind: "error", text: "Durasi minimal 1 menit." });
+      return;
+    }
+    try {
+      await manageDisplayDevice(user, {
+        action: "updateannouncementduration",
+        announcementId: announcement.id,
+        durationMinutes,
+      });
+      setNotice({
+        kind: "ok",
+        text: `Durasi ${announcement.templateName} diperbarui menjadi ${durationMinutes} menit dari sekarang.`,
+      });
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Durasi running text tidak dapat diperbarui.",
       });
     }
   }
@@ -2753,16 +2847,44 @@ export default function FacilityOperations({
                           <b>{announcement.templateName}</b>
                           <p>{announcement.message}</p>
                         </div>
-                        <small>
-                          {announcement.station} ·{" "}
-                          {announcement.deviceIds.length} screen · until{" "}
-                          {new Date(
-                            activityMillis(announcement.expiresAt),
-                          ).toLocaleTimeString("id-ID", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </small>
+                        <div className="announcementQueueMeta">
+                          <small>
+                            {announcement.station} ·{" "}
+                            {stringArray(announcement.deviceIds).length} screen
+                            · until{" "}
+                            {new Date(
+                              activityMillis(announcement.expiresAt),
+                            ).toLocaleTimeString("id-ID", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </small>
+                          <div>
+                            {canConfigure && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void editQuickAnnouncementDuration(
+                                    announcement,
+                                  )
+                                }
+                              >
+                                Edit Duration
+                              </button>
+                            )}
+                            {canControl && (
+                              <button
+                                className="danger"
+                                type="button"
+                                onClick={() =>
+                                  void stopQuickAnnouncement(announcement)
+                                }
+                              >
+                                Stop
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -2807,25 +2929,44 @@ export default function FacilityOperations({
                             </td>
                             <td>
                               <span
-                                className={`deviceStatus ${isOnline(device) ? "online" : "offline"}`}
+                                className={`deviceStatus ${playerStatusClass(device)}`}
                               >
                                 {canonicalApprovalStatus(
                                   device.approvalStatus,
                                 ) === "Pending"
                                   ? "Pending Approval"
-                                  : isOnline(device)
-                                    ? "Online"
-                                    : device.status}
+                                  : playerOperationalStatus(device)}
                               </span>
                               <small>
                                 {device.enrollmentStatus || "Not Enrolled"}
+                                {device.visibilityState
+                                  ? ` · ${device.visibilityState}`
+                                  : ""}
+                                {device.fullscreen === false
+                                  ? " · Windowed"
+                                  : device.fullscreen
+                                    ? " · Fullscreen"
+                                    : ""}
                                 {device.lastError
                                   ? ` · ${device.lastError}`
                                   : ""}
                               </small>
                             </td>
-                            <td>{device.nowPlaying || "—"}</td>
-                            <td>{device.overlayText || "—"}</td>
+                            <td>
+                              {device.nowPlaying || "—"}
+                              <small>
+                                {device.playbackMode || "Unknown mode"}
+                                {device.overrideUntil
+                                  ? ` · Override until ${new Date(device.overrideUntil).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`
+                                  : ""}
+                              </small>
+                            </td>
+                            <td>
+                              {device.overlayText || "—"}
+                              {device.activeAnnouncementId && (
+                                <small>Quick announcement active</small>
+                              )}
+                            </td>
                             <td>{readableHeartbeat(device.lastHeartbeat)}</td>
                             <td>
                               {lastCommand ? (
@@ -4443,7 +4584,8 @@ export default function FacilityOperations({
                   <label className="full">
                     <span>Source URL</span>
                     <input
-                      type="url"
+                      type="text"
+                      inputMode="url"
                       value={contentDraft.sourceUrl}
                       onChange={(event) =>
                         setContentDraft({
@@ -4451,8 +4593,12 @@ export default function FacilityOperations({
                           sourceUrl: event.target.value,
                         })
                       }
-                      placeholder="https://... atau upload file di bawah"
+                      placeholder="https://... atau /demo-media/nama-file.mp4"
                     />
+                    <small>
+                      Demo lokal dapat menggunakan /demo-media/nama-file.jpg
+                      atau .mp4 dari folder public/demo-media.
+                    </small>
                   </label>
                   {!["Live TV", "Web URL"].includes(
                     contentDraft.contentType,

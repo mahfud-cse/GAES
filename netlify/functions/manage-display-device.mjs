@@ -431,6 +431,71 @@ async function clearAnnouncements(db, actor, input) {
   return { status: "Cleared", count: rows.length };
 }
 
+async function stopAnnouncement(db, actor, input) {
+  const announcementId = text(input.announcementId, 160);
+  if (!announcementId) throw httpError(400, "Announcement ID wajib tersedia.");
+  const ref = db.collection("displayAnnouncements").doc(announcementId);
+  const snapshot = await ref.get();
+  if (!snapshot.exists)
+    throw httpError(404, "Quick announcement tidak ditemukan.");
+  const announcement = snapshot.data();
+  requireStation(actor, announcement.station);
+  const now = new Date();
+  const batch = db.batch();
+  batch.update(ref, {
+    status: "Cleared",
+    endedAt: now,
+    updatedAt: now,
+    endedBy: actor.decoded.uid,
+  });
+  batch.create(db.collection("displayActivityLogs").doc(), {
+    action: "DISPLAY_ANNOUNCEMENT_STOPPED",
+    station: announcement.station,
+    announcementId,
+    deviceIds: announcement.deviceIds || [],
+    actorId: actor.decoded.uid,
+    actorName: text(actor.profile.name, 120),
+    detail: text(announcement.message, 500),
+    createdAt: now,
+  });
+  await batch.commit();
+  return { id: announcementId, status: "Cleared" };
+}
+
+async function updateAnnouncementDuration(db, actor, input) {
+  requireConfigurator(actor);
+  const announcementId = text(input.announcementId, 160);
+  const requestedDuration = Number(input.durationMinutes);
+  if (
+    !announcementId ||
+    !Number.isFinite(requestedDuration) ||
+    requestedDuration < 1
+  )
+    throw httpError(400, "Announcement dan durasi wajib tersedia.");
+  const durationMinutes = Math.min(180, requestedDuration);
+  const ref = db.collection("displayAnnouncements").doc(announcementId);
+  const snapshot = await ref.get();
+  if (!snapshot.exists)
+    throw httpError(404, "Quick announcement tidak ditemukan.");
+  const announcement = snapshot.data();
+  requireStation(actor, announcement.station);
+  if (announcement.status !== "Active")
+    throw httpError(409, "Quick announcement sudah tidak aktif.");
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + durationMinutes * 60 * 1000);
+  await ref.update({
+    durationMinutes,
+    expiresAt,
+    updatedAt: now,
+    updatedBy: actor.decoded.uid,
+  });
+  return {
+    id: announcementId,
+    status: "Active",
+    expiresAt: expiresAt.toISOString(),
+  };
+}
+
 async function revoke(db, actor, input) {
   const deviceId = text(input.deviceId, 160);
   const device = await loadDevice(db, actor, deviceId);
@@ -499,6 +564,10 @@ const handler = async (request) => {
       return json(200, await announce(db, actor, input));
     if (action === "clearannouncements")
       return json(200, await clearAnnouncements(db, actor, input));
+    if (action === "stopannouncement")
+      return json(200, await stopAnnouncement(db, actor, input));
+    if (action === "updateannouncementduration")
+      return json(200, await updateAnnouncementDuration(db, actor, input));
     if (action === "savetemplate")
       return json(200, await saveAnnouncementTemplate(db, actor, input));
     throw httpError(400, "Device management action tidak valid.");

@@ -87,11 +87,21 @@ async function saveContent(db, actor, input) {
     throw httpError(400, "Judul dan jenis content wajib valid.");
   if (!sourceUrl)
     throw httpError(400, "Source URL atau hasil upload wajib tersedia.");
+  const localDemoMedia =
+    ["Image", "Video"].includes(contentType) &&
+    /^\/demo-media\/[a-zA-Z0-9][a-zA-Z0-9._/-]*$/.test(sourceUrl) &&
+    !sourceUrl.includes("..");
+  let secureExternalUrl = false;
   try {
-    if (new URL(sourceUrl).protocol !== "https:") throw new Error("protocol");
+    secureExternalUrl = new URL(sourceUrl).protocol === "https:";
   } catch {
-    throw httpError(400, "Source URL wajib menggunakan HTTPS yang valid.");
+    secureExternalUrl = false;
   }
+  if (!localDemoMedia && !secureExternalUrl)
+    throw httpError(
+      400,
+      "Gunakan HTTPS atau path lokal /demo-media/... untuk Image dan Video.",
+    );
   if (station !== "ALL") requireStation(actor, station);
   const ref = db.collection("displayContents").doc(id);
   const existing = await ref.get();
@@ -177,18 +187,16 @@ async function saveChannel(db, actor, input) {
     },
     { merge: true },
   );
-  await db
-    .collection("displayActivityLogs")
-    .add({
-      action: existing.exists
-        ? "DISPLAY_CHANNEL_UPDATED"
-        : "DISPLAY_CHANNEL_CREATED",
-      station: "ALL",
-      channelId: id,
-      actorId: actor.decoded.uid,
-      actorName: text(actor.profile.name, 120),
-      createdAt: new Date(),
-    });
+  await db.collection("displayActivityLogs").add({
+    action: existing.exists
+      ? "DISPLAY_CHANNEL_UPDATED"
+      : "DISPLAY_CHANNEL_CREATED",
+    station: "ALL",
+    channelId: id,
+    actorId: actor.decoded.uid,
+    actorName: text(actor.profile.name, 120),
+    createdAt: new Date(),
+  });
   return { id, status: "Saved" };
 }
 

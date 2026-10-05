@@ -98,6 +98,8 @@ export default function DisplayPlayerPage() {
   const [playback, setPlayback] = useState<Playback | null>(null);
   const [itemIndex, setItemIndex] = useState(0);
   const [overlayText, setOverlayText] = useState("");
+  const [tickerCycle, setTickerCycle] = useState(0);
+  const [fullscreenActive, setFullscreenActive] = useState(false);
   const [paused, setPaused] = useState(false);
   const [online, setOnline] = useState(true);
   const [lastError, setLastError] = useState("");
@@ -190,12 +192,14 @@ export default function DisplayPlayerPage() {
               new Date(Date.now() + 15 * 60 * 1000).toISOString(),
           };
           setOverlayText(manualOverlay.current.text);
+          setTickerCycle((value) => value + 1);
         } else if (command.type === "CLEAR_OVERLAY") {
           manualOverlay.current = null;
           setOverlayText(
             announcementQueue.current[announcementIndex.current]?.message ||
               scheduledOverlay.current,
           );
+          setTickerCycle((value) => value + 1);
         } else if (command.type === "STOP_PLAYBACK") {
           manualOverride.current = null;
           stoppedUntil.current =
@@ -267,6 +271,27 @@ export default function DisplayPlayerPage() {
           nowPlaying: playback?.items[itemIndex]?.title || "",
           overlayText,
           lastError,
+          visibilityState: document.visibilityState,
+          fullscreen: Boolean(document.fullscreenElement),
+          playbackMode: stoppedUntil.current
+            ? "Standby Override"
+            : manualOverride.current
+              ? "Manual Override"
+              : playback?.source === "Schedule"
+                ? "Schedule"
+                : playback
+                  ? "Channel"
+                  : "Standby",
+          overrideUntil:
+            stoppedUntil.current || manualOverride.current?.until || "",
+          activeAnnouncementId:
+            announcementQueue.current[announcementIndex.current]
+              ?.announcementId || "",
+          viewport: {
+            width: window.innerWidth,
+            height: window.innerHeight,
+            pixelRatio: window.devicePixelRatio,
+          },
         },
       });
       acks.current = acks.current.slice(sentAcks.length);
@@ -301,8 +326,14 @@ export default function DisplayPlayerPage() {
       const nextAnnouncements = (result.announcements || []).filter(
         (row) => row.message && Date.parse(row.expiresAt) > Date.now(),
       );
+      const currentAnnouncementId =
+        announcementQueue.current[announcementIndex.current]?.id;
       announcementQueue.current = nextAnnouncements;
-      if (announcementIndex.current >= nextAnnouncements.length)
+      const preservedIndex = currentAnnouncementId
+        ? nextAnnouncements.findIndex((row) => row.id === currentAnnouncementId)
+        : -1;
+      if (preservedIndex >= 0) announcementIndex.current = preservedIndex;
+      else if (announcementIndex.current >= nextAnnouncements.length)
         announcementIndex.current = 0;
       scheduledOverlay.current = next?.overlayEnabled
         ? next.overlayText || ""
@@ -311,7 +342,10 @@ export default function DisplayPlayerPage() {
         ? manualOverlay.current.text
         : nextAnnouncements[announcementIndex.current]?.message ||
           scheduledOverlay.current;
-      if (overlayText !== nextOverlay) setOverlayText(nextOverlay);
+      if (overlayText !== nextOverlay) {
+        setOverlayText(nextOverlay);
+        setTickerCycle((value) => value + 1);
+      }
       cacheState(next, nextOverlay);
     } catch (error) {
       if (
@@ -343,25 +377,64 @@ export default function DisplayPlayerPage() {
     if (!credential) return;
     const initial = window.setTimeout(() => void heartbeat(), 0);
     const timer = window.setInterval(() => void heartbeat(), 5000);
+    const reportVisibility = () => {
+      setFullscreenActive(Boolean(document.fullscreenElement));
+      void heartbeat();
+    };
+    const fullscreenTimer = window.setTimeout(
+      () => setFullscreenActive(Boolean(document.fullscreenElement)),
+      0,
+    );
+    document.addEventListener("visibilitychange", reportVisibility);
+    document.addEventListener("fullscreenchange", reportVisibility);
     return () => {
       window.clearTimeout(initial);
+      window.clearTimeout(fullscreenTimer);
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", reportVisibility);
+      document.removeEventListener("fullscreenchange", reportVisibility);
     };
   }, [credential, heartbeat]);
 
   useEffect(() => {
     if (!credential) return;
-    const timer = window.setInterval(() => {
-      if (manualOverlay.current || !announcementQueue.current.length) return;
+    let wakeLock: { release: () => Promise<void> } | null = null;
+    const wakeLockApi = (
+      navigator as Navigator & {
+        wakeLock?: {
+          request: (
+            type: "screen",
+          ) => Promise<{ release: () => Promise<void> }>;
+        };
+      }
+    ).wakeLock;
+    const requestWakeLock = async () => {
+      if (!wakeLockApi || document.visibilityState !== "visible") return;
+      try {
+        wakeLock = await wakeLockApi.request("screen");
+      } catch {
+        // Some Smart TV browsers do not expose the Screen Wake Lock API.
+      }
+    };
+    void requestWakeLock();
+    document.addEventListener("visibilitychange", requestWakeLock);
+    return () => {
+      document.removeEventListener("visibilitychange", requestWakeLock);
+      void wakeLock?.release();
+    };
+  }, [credential]);
+
+  function advanceTicker() {
+    if (!manualOverlay.current && announcementQueue.current.length) {
       announcementIndex.current =
         (announcementIndex.current + 1) % announcementQueue.current.length;
       setOverlayText(
         announcementQueue.current[announcementIndex.current]?.message ||
           scheduledOverlay.current,
       );
-    }, 12_000);
-    return () => window.clearInterval(timer);
-  }, [credential]);
+    }
+    setTickerCycle((value) => value + 1);
+  }
 
   const current = playback?.items[itemIndex];
   useEffect(() => {
@@ -500,7 +573,15 @@ export default function DisplayPlayerPage() {
         {paused && <div className="playerPaused">PAUSED</div>}
         {overlayText && (
           <div className="playerTicker">
-            <div>{overlayText}</div>
+            <div
+              key={`${overlayText}-${tickerCycle}`}
+              style={{
+                animationDuration: `${Math.max(12, Math.min(50, 8 + overlayText.length * 0.22))}s`,
+              }}
+              onAnimationEnd={advanceTicker}
+            >
+              {overlayText}
+            </div>
           </div>
         )}
       </div>
@@ -510,6 +591,7 @@ export default function DisplayPlayerPage() {
         </span>
         <b>{credential.name}</b>
         <span>{current?.title || "Standby"}</span>
+        <small>{fullscreenActive ? "Fullscreen" : "Windowed"}</small>
         <small>
           {lastHeartbeat
             ? new Date(lastHeartbeat).toLocaleTimeString("id-ID")

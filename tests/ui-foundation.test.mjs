@@ -503,14 +503,38 @@ test("implements priority-based quick announcements and safe display standby", a
   assert.match(playerBackend, /async function announcementPlan/);
   assert.match(playerBackend, /active\[0\]\?\.priority >= 100/);
   assert.match(player, /announcementIndex\.current/);
-  assert.match(player, /12_000/);
+  assert.match(player, /onAnimationEnd=\{advanceTicker\}/);
+  assert.doesNotMatch(player, /12_000/);
   assert.match(player, /clearEnrollment/);
   assert.match(player, /\[401, 403\]\.includes/);
   assert.match(player, /stoppedUntil/);
+  assert.match(player, /visibilityState: document\.visibilityState/);
+  assert.match(player, /fullscreen: Boolean\(document\.fullscreenElement\)/);
+  assert.match(player, /wakeLock/);
+  assert.match(module, /stopQuickAnnouncement/);
+  assert.match(module, /editQuickAnnouncementDuration/);
+  assert.match(deviceBackend, /async function stopAnnouncement/);
+  assert.match(deviceBackend, /async function updateAnnouncementDuration/);
   assert.match(repository, /displayAnnouncementTemplates/);
   assert.match(repository, /displayAnnouncements/);
   assert.match(rules, /match \/displayAnnouncementTemplates\/\{id\}/);
   assert.match(rules, /match \/displayAnnouncements\/\{id\}/);
   assert.match(page, /Jadwal:\s*"Schedule"/);
   assert.doesNotMatch(`${module}\n${page}`, /jadwald/i);
+});
+
+test("accepts safe local demo media and preserves tab contrast", async () => {
+  const [module, contentBackend, css] = await Promise.all([
+    read("../app/facility-operations.tsx"),
+    read("../netlify/functions/manage-display-content.mjs"),
+    read("../app/globals.css"),
+  ]);
+  assert.match(module, /inputMode="url"/);
+  assert.match(module, /\/demo-media\/nama-file\.mp4/);
+  assert.match(contentBackend, /localDemoMedia/);
+  assert.match(contentBackend, /!sourceUrl\.includes\("\.\."\)/);
+  assert.match(
+    css,
+    /button\s+:where\(span, b, strong, small, em, svg\)\s*\{\s*color: inherit;/,
+  );
 });

@@ -301,6 +301,11 @@
   color: #a33126;
 }
 
+.deviceStatus.degraded {
+  background: var(--color-warning-soft);
+  color: var(--color-warning-700);
+}
+
 .facilityActionHeading {
   align-items: flex-start;
   display: flex;
@@ -716,9 +721,22 @@
 }
 
 .announcementQueueItem > small,
+.announcementQueueMeta > small,
 .announcementQueueEmpty {
   color: var(--color-text-muted);
   margin: 0;
+}
+
+.announcementQueueMeta {
+  justify-items: end;
+  min-width: 220px;
+}
+
+.announcementQueueMeta > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
 }
 
 .announcementPriority {
@@ -1505,6 +1523,14 @@
     align-items: flex-start;
     flex-direction: column;
   }
+  .announcementQueueMeta {
+    justify-items: start;
+    min-width: 0;
+    width: 100%;
+  }
+  .announcementQueueMeta > div {
+    justify-content: flex-start;
+  }
   .quickDevicePicker,
   .bookingDetailGrid {
     grid-template-columns: 1fr;
@@ -1712,15 +1738,15 @@ body {
 }
 
 .playerTicker > div {
-  animation: playerTicker 24s linear infinite;
+  animation: playerTicker 24s linear 1;
   display: inline-block;
-  min-width: 100%;
-  padding-left: 100%;
+  padding-left: 0;
+  will-change: transform;
 }
 
 @keyframes playerTicker {
   from {
-    transform: translateX(0);
+    transform: translateX(100vw);
   }
   to {
     transform: translateX(-100%);
@@ -4132,6 +4158,12 @@ tfoot td {
   border-color: var(--color-navy-800);
   color: #fff;
   transform: none;
+}
+
+:where(.subTabs, .facilityTabs, .displaySubTabs, .bookingViewSwitch)
+  button
+  :where(span, b, strong, small, em, svg) {
+  color: inherit;
 }
 
 /* Facility submenus: inactive hover is navy; the selected tab never changes. */

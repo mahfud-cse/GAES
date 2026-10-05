@@ -323,19 +323,53 @@ async function heartbeat(db, input) {
   await acknowledge(db, device, input.acknowledgments);
   const state = input.state || {};
   const capabilities = input.capabilities || {};
-  await db
-    .collection("displayDevices")
-    .doc(device.id)
-    .update({
-      status: state.status === "Degraded" ? "Degraded" : "Online",
-      nowPlaying: text(state.nowPlaying, 160),
-      overlayText: text(state.overlayText, 500),
-      playerVersion: text(input.playerVersion, 40),
-      capabilities,
-      lastError: text(state.lastError, 500),
-      lastHeartbeat: new Date(),
-      updatedAt: new Date(),
-    });
+  const telemetry = {
+    visibilityState: state.visibilityState === "hidden" ? "Hidden" : "Visible",
+    fullscreen: state.fullscreen === true,
+    playbackMode: text(state.playbackMode, 40) || "Standby",
+    overrideUntil: text(state.overrideUntil, 80),
+    activeAnnouncementId: text(state.activeAnnouncementId, 160),
+    viewport: {
+      width: Math.max(0, Math.min(16384, Number(state.viewport?.width) || 0)),
+      height: Math.max(0, Math.min(16384, Number(state.viewport?.height) || 0)),
+      pixelRatio: Math.max(
+        0,
+        Math.min(10, Number(state.viewport?.pixelRatio) || 0),
+      ),
+    },
+  };
+  const now = new Date();
+  const deviceRef = db.collection("displayDevices").doc(device.id);
+  const batch = db.batch();
+  batch.update(deviceRef, {
+    status: state.status === "Degraded" ? "Degraded" : "Online",
+    healthStatus: state.status === "Degraded" ? "Degraded" : "Healthy",
+    nowPlaying: text(state.nowPlaying, 160),
+    overlayText: text(state.overlayText, 500),
+    playerVersion: text(input.playerVersion, 40),
+    capabilities,
+    ...telemetry,
+    lastError: text(state.lastError, 500),
+    lastHeartbeat: now,
+    updatedAt: now,
+  });
+  const transitions = [
+    ["visibilityState", device.visibilityState, telemetry.visibilityState],
+    ["fullscreen", device.fullscreen, telemetry.fullscreen],
+    ["playbackMode", device.playbackMode, telemetry.playbackMode],
+  ].filter(([, previous, next]) => previous !== undefined && previous !== next);
+  transitions.forEach(([field, previous, next]) =>
+    batch.create(db.collection("displayActivityLogs").doc(), {
+      action: `DISPLAY_PLAYER_${String(field).toUpperCase()}_CHANGED`,
+      station: device.station,
+      deviceId: device.id,
+      actorId: device.id,
+      actorName: device.name,
+      detail: `${String(previous)} → ${String(next)}`,
+      createdAt: now,
+    }),
+  );
+  await batch.commit();
   const commandSnapshots = await db
     .collection("displayCommands")
     .where("deviceId", "==", device.id)
