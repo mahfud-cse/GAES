@@ -671,6 +671,141 @@
   font-size: 22px;
 }
 
+.announcementQueue {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px;
+}
+
+.announcementQueueHeading,
+.announcementQueueItem {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.announcementQueueHeading h3,
+.announcementQueueItem p {
+  margin: 0;
+}
+
+.announcementQueueList {
+  display: grid;
+  gap: 8px;
+}
+
+.announcementQueueItem {
+  background: var(--color-surface-soft);
+  border-left: 4px solid var(--color-blue-600);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.announcementQueueItem.emergency {
+  background: var(--color-danger-soft);
+  border-left-color: var(--color-danger-700);
+}
+
+.announcementQueueItem > div {
+  display: grid;
+  gap: 3px;
+}
+
+.announcementQueueItem > small,
+.announcementQueueEmpty {
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.announcementPriority {
+  color: var(--color-blue-700);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.announcementTemplateConfig {
+  border-top: 1px solid var(--color-border);
+  margin-top: 20px;
+  padding-top: 20px;
+}
+
+.announcementTemplateTable input,
+.announcementTemplateTable select {
+  min-width: 76px;
+  width: 100%;
+}
+
+.announcementTemplateTable td:nth-child(2) input {
+  min-width: 320px;
+}
+
+.quickAnnouncementModal {
+  width: min(820px, calc(100vw - 24px));
+}
+
+.quickDevicePicker {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  min-width: 0;
+  padding: 12px;
+}
+
+.quickDevicePicker legend {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.quickDevicePicker label {
+  align-items: center;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: row;
+  gap: 9px;
+  padding: 9px;
+}
+
+.quickDevicePicker input {
+  flex: 0 0 auto;
+  min-height: auto;
+  width: auto;
+}
+
+.quickDevicePicker label > span {
+  display: grid;
+  gap: 2px;
+}
+
+.quickAnnouncementPreview {
+  background: var(--color-navy-900);
+  border-radius: var(--radius-lg);
+  color: #fff;
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.quickAnnouncementPreview strong {
+  font-size: 16px;
+  letter-spacing: 0.03em;
+}
+
+.quickAnnouncementPreview small,
+.quickAnnouncementPreview span {
+  color: #d7e3f2;
+}
+
 .pilotDeviceList {
   display: grid;
   gap: 16px;
@@ -1074,10 +1209,11 @@
   gap: 5px;
   min-width: 0;
   padding: 10px;
+  cursor: pointer;
 }
 
 .bookingEvent.compact {
-  cursor: default;
+  cursor: pointer;
   font-size: 10px;
   gap: 2px;
   padding: 6px;
@@ -1122,6 +1258,55 @@
 }
 .bookingEvent.status-completed {
   border-left-color: #2457a7;
+}
+
+.bookingEvent:hover,
+.bookingEvent:focus-visible,
+.bookingListRow:hover {
+  background: #e8eff8;
+  outline: none;
+}
+
+.bookingListRow {
+  cursor: pointer;
+}
+
+.bookingDetailModal {
+  width: min(720px, calc(100vw - 24px));
+}
+
+.bookingDetailGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 18px;
+}
+
+.bookingDetailGrid > div {
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 4px;
+  padding: 11px;
+}
+
+.bookingDetailGrid > div.full {
+  grid-column: 1 / -1;
+}
+
+.bookingDetailGrid span {
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.bookingDetailActions {
+  align-items: center;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 14px 18px 18px;
 }
 
 .bookingStatus {
@@ -1314,6 +1499,18 @@
   }
   .pilotProgress {
     grid-template-columns: 1fr;
+  }
+  .announcementQueueHeading,
+  .announcementQueueItem {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .quickDevicePicker,
+  .bookingDetailGrid {
+    grid-template-columns: 1fr;
+  }
+  .bookingDetailGrid > div.full {
+    grid-column: auto;
   }
 }
 

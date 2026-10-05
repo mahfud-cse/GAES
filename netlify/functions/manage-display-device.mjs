@@ -21,6 +21,7 @@ const COMMANDS = new Set([
   "PLAY_CHANNEL",
   "SET_OVERLAY",
   "CLEAR_OVERLAY",
+  "STOP_PLAYBACK",
   "PAUSE",
   "RESUME",
   "REFRESH",
@@ -31,6 +32,58 @@ const text = (value, max = 500) =>
     .trim()
     .slice(0, max);
 const sha = (value) => createHash("sha256").update(value).digest("hex");
+
+const DEFAULT_ANNOUNCEMENT_TEMPLATES = {
+  boarding: {
+    name: "Boarding Now",
+    messageTemplate: "{flight} {route} — BOARDING NOW",
+    defaultDurationMinutes: 10,
+    priority: 60,
+    repeatCount: 1,
+  },
+  "final-call": {
+    name: "Final Call",
+    messageTemplate: "{flight} {route} — FINAL CALL",
+    defaultDurationMinutes: 5,
+    priority: 80,
+    repeatCount: 2,
+  },
+  delay: {
+    name: "New ETD / Delay",
+    messageTemplate: "{flight} {route} — NEW ETD {etd}",
+    defaultDurationMinutes: 15,
+    priority: 50,
+    repeatCount: 1,
+  },
+  "gate-change": {
+    name: "Gate Change",
+    messageTemplate: "{flight} {route} — GATE CHANGE: {oldGate} TO {newGate}",
+    defaultDurationMinutes: 15,
+    priority: 70,
+    repeatCount: 2,
+  },
+  cancellation: {
+    name: "Cancellation",
+    messageTemplate: "{flight} {route} — FLIGHT CANCELLED",
+    defaultDurationMinutes: 15,
+    priority: 90,
+    repeatCount: 2,
+  },
+  emergency: {
+    name: "Emergency",
+    messageTemplate: "{message}",
+    defaultDurationMinutes: 30,
+    priority: 100,
+    repeatCount: 3,
+  },
+  custom: {
+    name: "Custom Message",
+    messageTemplate: "{message}",
+    defaultDurationMinutes: 10,
+    priority: 40,
+    repeatCount: 1,
+  },
+};
 
 function requireController(actor) {
   if (!CONTROL_ROLES.has(actor.profile.role))
@@ -175,6 +228,209 @@ async function sendCommand(db, actor, input) {
   };
 }
 
+function announcementMessage(template, input) {
+  const values = {
+    flight: text(input.flightNumber, 24).toUpperCase(),
+    route: text(input.route, 32).toUpperCase(),
+    etd: text(input.etd, 12).toUpperCase(),
+    oldGate: text(input.oldGate, 24).toUpperCase(),
+    newGate: text(input.newGate, 24).toUpperCase(),
+    message: text(input.message, 500),
+  };
+  return text(template.messageTemplate, 500)
+    .replace(
+      /\{(flight|route|etd|oldGate|newGate|message)\}/g,
+      (_, key) => values[key] || "",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function loadAnnouncementTemplate(db, templateId) {
+  const fallback = DEFAULT_ANNOUNCEMENT_TEMPLATES[templateId];
+  if (!fallback)
+    throw httpError(400, "Quick announcement template tidak valid.");
+  const snapshot = await db
+    .collection("displayAnnouncementTemplates")
+    .doc(templateId)
+    .get();
+  return {
+    id: templateId,
+    ...fallback,
+    ...(snapshot.exists ? snapshot.data() : {}),
+  };
+}
+
+async function announce(db, actor, input) {
+  const station = text(input.station, 12).toUpperCase();
+  requireStation(actor, station);
+  const deviceIds = [
+    ...new Set(
+      (Array.isArray(input.deviceIds) ? input.deviceIds : [])
+        .map((value) => text(value, 160))
+        .filter(Boolean),
+    ),
+  ].slice(0, 50);
+  if (!deviceIds.length)
+    throw httpError(400, "Pilih minimal satu target device.");
+  const deviceSnapshots = await Promise.all(
+    deviceIds.map((id) => db.collection("displayDevices").doc(id).get()),
+  );
+  if (
+    deviceSnapshots.some(
+      (snapshot) =>
+        !snapshot.exists ||
+        snapshot.data()?.station !== station ||
+        snapshot.data()?.enrollmentStatus !== "Enrolled",
+    )
+  )
+    throw httpError(
+      409,
+      "Seluruh target harus merupakan device Enrolled pada station yang dipilih.",
+    );
+  const templateId = text(input.templateId, 40).toLowerCase();
+  const template = await loadAnnouncementTemplate(db, templateId);
+  if (template.status === "Inactive")
+    throw httpError(409, "Quick announcement template sedang tidak aktif.");
+  const message = announcementMessage(template, input);
+  if (!message) throw httpError(400, "Isi quick announcement belum lengkap.");
+  const configuredDuration = Number(template.defaultDurationMinutes) || 10;
+  const durationMinutes = CONFIG_ROLES.has(actor.profile.role)
+    ? Math.max(
+        1,
+        Math.min(180, Number(input.durationMinutes) || configuredDuration),
+      )
+    : Math.max(1, Math.min(180, configuredDuration));
+  const flightNumber = text(input.flightNumber, 24).toUpperCase();
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + durationMinutes * 60 * 1000);
+  const existing = await db
+    .collection("displayAnnouncements")
+    .where("station", "==", station)
+    .get();
+  const batch = db.batch();
+  if (flightNumber) {
+    existing.docs
+      .filter(
+        (snapshot) =>
+          snapshot.data()?.status === "Active" &&
+          text(snapshot.data()?.flightNumber, 24).toUpperCase() ===
+            flightNumber,
+      )
+      .forEach((snapshot) =>
+        batch.update(snapshot.ref, {
+          status: "Replaced",
+          endedAt: now,
+          updatedAt: now,
+        }),
+      );
+  }
+  const id = randomUUID();
+  batch.create(db.collection("displayAnnouncements").doc(id), {
+    id,
+    station,
+    deviceIds,
+    templateId,
+    templateName: text(template.name, 80),
+    message,
+    flightNumber,
+    route: text(input.route, 32).toUpperCase(),
+    priority: Math.max(1, Math.min(100, Number(template.priority) || 40)),
+    repeatCount: Math.max(1, Math.min(5, Number(template.repeatCount) || 1)),
+    durationMinutes,
+    status: "Active",
+    startsAt: now,
+    expiresAt,
+    createdAt: now,
+    createdBy: actor.decoded.uid,
+    createdByName: text(actor.profile.name, 120),
+  });
+  batch.create(db.collection("displayActivityLogs").doc(), {
+    action: "DISPLAY_ANNOUNCEMENT_CREATED",
+    station,
+    announcementId: id,
+    deviceIds,
+    actorId: actor.decoded.uid,
+    actorName: text(actor.profile.name, 120),
+    detail: message,
+    createdAt: now,
+  });
+  await batch.commit();
+  return { id, status: "Active", expiresAt: expiresAt.toISOString() };
+}
+
+async function saveAnnouncementTemplate(db, actor, input) {
+  requireConfigurator(actor);
+  const id = text(input.templateId, 40).toLowerCase();
+  if (!DEFAULT_ANNOUNCEMENT_TEMPLATES[id])
+    throw httpError(400, "Template tidak valid.");
+  const fallback = DEFAULT_ANNOUNCEMENT_TEMPLATES[id];
+  await db
+    .collection("displayAnnouncementTemplates")
+    .doc(id)
+    .set(
+      {
+        id,
+        name: text(input.name, 80) || fallback.name,
+        messageTemplate:
+          text(input.messageTemplate, 500) || fallback.messageTemplate,
+        defaultDurationMinutes: Math.max(
+          1,
+          Math.min(
+            180,
+            Number(input.defaultDurationMinutes) ||
+              fallback.defaultDurationMinutes,
+          ),
+        ),
+        priority: Math.max(
+          1,
+          Math.min(100, Number(input.priority) || fallback.priority),
+        ),
+        repeatCount: Math.max(
+          1,
+          Math.min(5, Number(input.repeatCount) || fallback.repeatCount),
+        ),
+        status: input.status === "Inactive" ? "Inactive" : "Active",
+        updatedAt: new Date(),
+        updatedBy: actor.decoded.uid,
+      },
+      { merge: true },
+    );
+  return { id, status: "Saved" };
+}
+
+async function clearAnnouncements(db, actor, input) {
+  const station = text(input.station, 12).toUpperCase();
+  requireStation(actor, station);
+  const targetIds = new Set(
+    (Array.isArray(input.deviceIds) ? input.deviceIds : [])
+      .map((value) => text(value, 160))
+      .filter(Boolean),
+  );
+  const snapshot = await db
+    .collection("displayAnnouncements")
+    .where("station", "==", station)
+    .get();
+  const rows = snapshot.docs.filter(
+    (row) =>
+      row.data()?.status === "Active" &&
+      (!targetIds.size ||
+        (row.data()?.deviceIds || []).some((id) => targetIds.has(id))),
+  );
+  if (rows.length) {
+    const batch = db.batch();
+    rows.forEach((row) =>
+      batch.update(row.ref, {
+        status: "Cleared",
+        endedAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    );
+    await batch.commit();
+  }
+  return { status: "Cleared", count: rows.length };
+}
+
 async function revoke(db, actor, input) {
   const deviceId = text(input.deviceId, 160);
   const device = await loadDevice(db, actor, deviceId);
@@ -239,6 +495,12 @@ const handler = async (request) => {
     if (action === "revoke") return json(200, await revoke(db, actor, input));
     if (action === "delete")
       return json(200, await deleteDevice(db, actor, input));
+    if (action === "announce")
+      return json(200, await announce(db, actor, input));
+    if (action === "clearannouncements")
+      return json(200, await clearAnnouncements(db, actor, input));
+    if (action === "savetemplate")
+      return json(200, await saveAnnouncementTemplate(db, actor, input));
     throw httpError(400, "Device management action tidak valid.");
   } catch (error) {
     return failure(error);

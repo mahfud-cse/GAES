@@ -126,6 +126,53 @@ type DisplayCommand = {
   message?: string;
   createdAt?: unknown;
 };
+type FlightReference = {
+  id: string;
+  date: string;
+  flight: string;
+  origin: string;
+  destination: string;
+  std: string;
+  etd: string;
+  status: string;
+};
+type AnnouncementTemplate = {
+  id: string;
+  name: string;
+  messageTemplate: string;
+  defaultDurationMinutes: number;
+  priority: number;
+  repeatCount: number;
+  status: "Active" | "Inactive";
+};
+type DisplayAnnouncement = {
+  id: string;
+  station: string;
+  deviceIds: string[];
+  templateId: string;
+  templateName: string;
+  message: string;
+  flightNumber: string;
+  route: string;
+  priority: number;
+  durationMinutes: number;
+  status: string;
+  expiresAt?: unknown;
+  createdByName?: string;
+};
+type QuickAnnouncementDraft = {
+  station: string;
+  templateId: string;
+  flightId: string;
+  flightNumber: string;
+  route: string;
+  etd: string;
+  oldGate: string;
+  newGate: string;
+  message: string;
+  durationMinutes: number;
+  deviceIds: string[];
+};
 type DisplayPilotTest = {
   id: string;
   deviceId: string;
@@ -354,6 +401,94 @@ const EMPTY_DEVICE: Omit<DeviceRecord, "id"> = {
   playerVersion: "",
 };
 
+const DEFAULT_ANNOUNCEMENT_TEMPLATES: AnnouncementTemplate[] = [
+  {
+    id: "boarding",
+    name: "Boarding Now",
+    messageTemplate: "{flight} {route} — BOARDING NOW",
+    defaultDurationMinutes: 10,
+    priority: 60,
+    repeatCount: 1,
+    status: "Active",
+  },
+  {
+    id: "final-call",
+    name: "Final Call",
+    messageTemplate: "{flight} {route} — FINAL CALL",
+    defaultDurationMinutes: 5,
+    priority: 80,
+    repeatCount: 2,
+    status: "Active",
+  },
+  {
+    id: "delay",
+    name: "New ETD / Delay",
+    messageTemplate: "{flight} {route} — NEW ETD {etd}",
+    defaultDurationMinutes: 15,
+    priority: 50,
+    repeatCount: 1,
+    status: "Active",
+  },
+  {
+    id: "gate-change",
+    name: "Gate Change",
+    messageTemplate: "{flight} {route} — GATE CHANGE: {oldGate} TO {newGate}",
+    defaultDurationMinutes: 15,
+    priority: 70,
+    repeatCount: 2,
+    status: "Active",
+  },
+  {
+    id: "cancellation",
+    name: "Cancellation",
+    messageTemplate: "{flight} {route} — FLIGHT CANCELLED",
+    defaultDurationMinutes: 15,
+    priority: 90,
+    repeatCount: 2,
+    status: "Active",
+  },
+  {
+    id: "emergency",
+    name: "Emergency",
+    messageTemplate: "{message}",
+    defaultDurationMinutes: 30,
+    priority: 100,
+    repeatCount: 3,
+    status: "Active",
+  },
+  {
+    id: "custom",
+    name: "Custom Message",
+    messageTemplate: "{message}",
+    defaultDurationMinutes: 10,
+    priority: 40,
+    repeatCount: 1,
+    status: "Active",
+  },
+];
+
+function announcementPreview(
+  template: AnnouncementTemplate | undefined,
+  draft: QuickAnnouncementDraft,
+) {
+  if (!template) return "";
+  const values: Record<string, string> = {
+    flight: draft.flightNumber.trim().toUpperCase(),
+    route: draft.route.trim().toUpperCase(),
+    etd: draft.etd.trim(),
+    oldGate: draft.oldGate.trim().toUpperCase(),
+    newGate: draft.newGate.trim().toUpperCase(),
+    message: draft.message.trim(),
+  };
+  return template.messageTemplate
+    .replace(
+      /\{(flight|route|etd|oldGate|newGate|message)\}/g,
+      (_, key) => values[key] || `[${key}]`,
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function localToday() {
   const date = new Date();
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
@@ -541,6 +676,13 @@ export default function FacilityOperations({
     [],
   );
   const [displayCommands, setDisplayCommands] = useState<DisplayCommand[]>([]);
+  const [flights, setFlights] = useState<FlightReference[]>([]);
+  const [announcementTemplates, setAnnouncementTemplates] = useState<
+    AnnouncementTemplate[]
+  >([]);
+  const [displayAnnouncements, setDisplayAnnouncements] = useState<
+    DisplayAnnouncement[]
+  >([]);
   const [displayPilotTests, setDisplayPilotTests] = useState<
     DisplayPilotTest[]
   >([]);
@@ -573,6 +715,7 @@ export default function FacilityOperations({
   const [bookingRequestId, setBookingRequestId] = useState("");
   const [editingBooking, setEditingBooking] = useState<string | null>(null);
   const [showBookingForm, setShowBookingForm] = useState(false);
+  const [bookingDetail, setBookingDetail] = useState<RoomBooking | null>(null);
   const [savingBooking, setSavingBooking] = useState(false);
   const [operationDialog, setOperationDialog] =
     useState<OperationDialog | null>(null);
@@ -606,6 +749,23 @@ export default function FacilityOperations({
     expiresAt: string;
   } | null>(null);
   const [savingRemote, setSavingRemote] = useState(false);
+  const [showQuickAnnouncement, setShowQuickAnnouncement] = useState(false);
+  const [savingAnnouncement, setSavingAnnouncement] = useState(false);
+  const [announcementClock, setAnnouncementClock] = useState(0);
+  const [quickAnnouncement, setQuickAnnouncement] =
+    useState<QuickAnnouncementDraft>({
+      station: account.station === "ALL" ? "CGK" : account.station,
+      templateId: "boarding",
+      flightId: "",
+      flightNumber: "",
+      route: "",
+      etd: "",
+      oldGate: "",
+      newGate: "",
+      message: "",
+      durationMinutes: 10,
+      deviceIds: [],
+    });
   const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
   const [pilotDialog, setPilotDialog] = useState<{
     device: DeviceRecord;
@@ -623,6 +783,16 @@ export default function FacilityOperations({
     (value: string) => globalScope || value === account.station,
     [account.station, globalScope],
   );
+
+  useEffect(() => {
+    const updateClock = () => setAnnouncementClock(Date.now());
+    const initial = window.setTimeout(updateClock, 0);
+    const timer = window.setInterval(updateClock, 30_000);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     const onError = (error: Error) =>
@@ -665,6 +835,24 @@ export default function FacilityOperations({
         "displayCommands",
         globalScope ? "ALL" : account.station,
         setDisplayCommands,
+        onError,
+      ),
+      subscribeCollection<FlightReference>(
+        "flights",
+        setFlights,
+        undefined,
+        onError,
+      ),
+      subscribeCollection<AnnouncementTemplate>(
+        "displayAnnouncementTemplates",
+        setAnnouncementTemplates,
+        undefined,
+        onError,
+      ),
+      subscribeStationCollection<DisplayAnnouncement>(
+        "displayAnnouncements",
+        globalScope ? "ALL" : account.station,
+        setDisplayAnnouncements,
         onError,
       ),
       subscribeStationCollection<DisplayPilotTest>(
@@ -823,6 +1011,20 @@ export default function FacilityOperations({
   const activeStations = stations.filter((station) =>
     permittedStation(station.code),
   );
+  const effectiveAnnouncementTemplates = DEFAULT_ANNOUNCEMENT_TEMPLATES.map(
+    (fallback) => ({
+      ...fallback,
+      ...announcementTemplates.find((row) => row.id === fallback.id),
+    }),
+  );
+  const activeAnnouncements = displayAnnouncements
+    .filter(
+      (row) =>
+        row.status === "Active" &&
+        activityMillis(row.expiresAt) > announcementClock &&
+        (stationFilter === "ALL" || row.station === stationFilter),
+    )
+    .sort((a, b) => b.priority - a.priority);
   const roomName = (id: string) =>
     rooms.find((room) => room.id === id)?.name || "Belum dipetakan";
   const latestDisplayCommand = (deviceId: string) =>
@@ -1067,6 +1269,126 @@ export default function FacilityOperations({
     );
     setRemoteOverlayText("");
     setRemoteDuration(60);
+  }
+
+  function openQuickAnnouncementDialog() {
+    const station =
+      stationFilter !== "ALL"
+        ? stationFilter
+        : activeStations[0]?.code || account.station;
+    const template =
+      effectiveAnnouncementTemplates.find((row) => row.status === "Active") ||
+      DEFAULT_ANNOUNCEMENT_TEMPLATES[0];
+    setQuickAnnouncement({
+      station,
+      templateId: template.id,
+      flightId: "",
+      flightNumber: "",
+      route: "",
+      etd: "",
+      oldGate: "",
+      newGate: "",
+      message: "",
+      durationMinutes: template.defaultDurationMinutes,
+      deviceIds: devices
+        .filter(
+          (device) => device.station === station && isDeviceEnrolled(device),
+        )
+        .map((device) => device.id),
+    });
+    setShowQuickAnnouncement(true);
+  }
+
+  async function sendQuickAnnouncement(event: FormEvent) {
+    event.preventDefault();
+    setSavingAnnouncement(true);
+    try {
+      const result = await manageDisplayDevice(user, {
+        action: "announce",
+        ...quickAnnouncement,
+      });
+      setNotice({
+        kind: "ok",
+        text: `Quick announcement aktif sampai ${result.expiresAt ? new Date(result.expiresAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "durasi berakhir"}.`,
+      });
+      setShowQuickAnnouncement(false);
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Quick announcement tidak dapat dikirim.",
+      });
+    } finally {
+      setSavingAnnouncement(false);
+    }
+  }
+
+  async function clearQuickAnnouncements() {
+    const targetStations =
+      stationFilter !== "ALL"
+        ? [stationFilter]
+        : [...new Set(activeAnnouncements.map((row) => row.station))];
+    try {
+      await Promise.all(
+        targetStations.map((station) =>
+          manageDisplayDevice(user, {
+            action: "clearannouncements",
+            station,
+          }),
+        ),
+      );
+      setNotice({
+        kind: "ok",
+        text: "Running text aktif berhasil dihentikan.",
+      });
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Running text tidak dapat dihentikan.",
+      });
+    }
+  }
+
+  function updateAnnouncementTemplate(
+    id: string,
+    changes: Partial<AnnouncementTemplate>,
+  ) {
+    setAnnouncementTemplates((rows) => {
+      const base =
+        rows.find((row) => row.id === id) ||
+        effectiveAnnouncementTemplates.find((row) => row.id === id)!;
+      const next = { ...base, ...changes };
+      return rows.some((row) => row.id === id)
+        ? rows.map((row) => (row.id === id ? next : row))
+        : [...rows, next];
+    });
+  }
+
+  async function saveAnnouncementTemplate(template: AnnouncementTemplate) {
+    try {
+      await manageDisplayDevice(user, {
+        action: "savetemplate",
+        templateId: template.id,
+        ...template,
+      });
+      setNotice({
+        kind: "ok",
+        text: `Template ${template.name} berhasil disimpan.`,
+      });
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Template tidak dapat disimpan.",
+      });
+    }
   }
 
   async function submitRemoteControl(event: FormEvent) {
@@ -1823,6 +2145,7 @@ export default function FacilityOperations({
             bookings={scopedBookings}
             currentUserId={account.id}
             canApprove={canApproveBooking}
+            onOpen={setBookingDetail}
             onEdit={editDraft}
             onAction={(booking, action) => void bookingAction(booking, action)}
           />
@@ -2207,9 +2530,24 @@ export default function FacilityOperations({
                 </p>
               </div>
               <div className="facilityHeaderActions">
-                {displaySection === "Monitor" && canConfigure && (
+                {displaySection === "Monitor" && canControl && (
                   <button
                     className="primary"
+                    type="button"
+                    onClick={openQuickAnnouncementDialog}
+                  >
+                    + Quick Announcement
+                  </button>
+                )}
+                {displaySection === "Monitor" &&
+                  canControl &&
+                  activeAnnouncements.length > 0 && (
+                    <button type="button" onClick={clearQuickAnnouncements}>
+                      Clear Running Text
+                    </button>
+                  )}
+                {displaySection === "Monitor" && canConfigure && (
+                  <button
                     type="button"
                     onClick={() => {
                       setEditingDevice(null);
@@ -2259,20 +2597,23 @@ export default function FacilityOperations({
             >
               {(
                 [
-                  "Monitor",
-                  "Schedules",
-                  "Channels",
-                  "Content Library",
-                  "Pilot & Rollout",
+                  { key: "Monitor", label: "Monitor" },
+                  { key: "Schedules", label: "Jadwal" },
+                  { key: "Channels", label: "Channels" },
+                  { key: "Content Library", label: "Content Library" },
+                  {
+                    key: "Pilot & Rollout",
+                    label: "Testing & Activation",
+                  },
                 ] as const
               ).map((item) => (
                 <button
-                  key={item}
+                  key={item.key}
                   type="button"
-                  className={displaySection === item ? "active" : ""}
-                  onClick={() => setDisplaySection(item)}
+                  className={displaySection === item.key ? "active" : ""}
+                  onClick={() => setDisplaySection(item.key)}
                 >
-                  {item}
+                  {item.label}
                 </button>
               ))}
             </div>
@@ -2388,6 +2729,50 @@ export default function FacilityOperations({
                   </strong>
                 </div>
               </div>
+              <section className="announcementQueue" aria-live="polite">
+                <div className="announcementQueueHeading">
+                  <div>
+                    <small>RUNNING TEXT QUEUE</small>
+                    <h3>Active Announcements</h3>
+                  </div>
+                  <span className="scopeBadge">
+                    {activeAnnouncements.length} active
+                  </span>
+                </div>
+                {activeAnnouncements.length ? (
+                  <div className="announcementQueueList">
+                    {activeAnnouncements.map((announcement) => (
+                      <div
+                        className={`announcementQueueItem ${announcement.priority >= 100 ? "emergency" : ""}`}
+                        key={announcement.id}
+                      >
+                        <div>
+                          <span className="announcementPriority">
+                            Priority {announcement.priority}
+                          </span>
+                          <b>{announcement.templateName}</b>
+                          <p>{announcement.message}</p>
+                        </div>
+                        <small>
+                          {announcement.station} ·{" "}
+                          {announcement.deviceIds.length} screen · until{" "}
+                          {new Date(
+                            activityMillis(announcement.expiresAt),
+                          ).toLocaleTimeString("id-ID", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </small>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="announcementQueueEmpty">
+                    Tidak ada running text aktif. Pesan terjadwal tetap berjalan
+                    sesuai jadwal layar.
+                  </p>
+                )}
+              </section>
               {!scopedDevices.length ? (
                 <EmptyState text="Belum ada device. Tambahkan inventory device lalu buat kode enrollment untuk menghubungkan player." />
               ) : (
@@ -2791,11 +3176,11 @@ export default function FacilityOperations({
             <article className="card facilitySectionCard">
               <div className="facilitySectionHeader">
                 <div>
-                  <small>CGK &amp; DPS PILOT</small>
-                  <h2>Pilot UAT &amp; Rollout Readiness</h2>
+                  <small>DEVICE READINESS</small>
+                  <h2>Device Testing &amp; Activation</h2>
                   <p>
-                    Each device must complete every required check before it can
-                    be certified Ready for Operations.
+                    Complete the required device checks before activating the
+                    screen for daily operations.
                   </p>
                 </div>
                 <span className="scopeBadge">
@@ -2869,8 +3254,8 @@ export default function FacilityOperations({
                         <footer>
                           <small>
                             {approval
-                              ? `Certified by ${approval.certifiedByName || "Approver"} · ${formatActivityTime(approval.certifiedAt)}`
-                              : "Rollout certification has not been granted."}
+                              ? `Activated by ${approval.certifiedByName || "Approver"} · ${formatActivityTime(approval.certifiedAt)}`
+                              : "The device is not yet activated for operations."}
                           </small>
                           {canSuperviseOperations && (
                             <button
@@ -2883,7 +3268,7 @@ export default function FacilityOperations({
                               }
                               onClick={() => void certifyRollout(device)}
                             >
-                              Certify Rollout
+                              Activate for Operations
                             </button>
                           )}
                         </footer>
@@ -2891,7 +3276,7 @@ export default function FacilityOperations({
                     );
                   })
                 ) : (
-                  <EmptyState text="Belum ada display device pada scope pilot." />
+                  <EmptyState text="Belum ada display device untuk diuji." />
                 )}
               </div>
             </article>
@@ -3133,6 +3518,126 @@ export default function FacilityOperations({
               </tbody>
             </table>
           </div>
+          {canConfigure && (
+            <section className="announcementTemplateConfig">
+              <div className="facilitySectionHeader compact">
+                <div>
+                  <small>OPERATOR QUICK ACTIONS</small>
+                  <h2>Quick Announcement Templates</h2>
+                  <p>
+                    Atur teks, durasi, prioritas, dan jumlah pengulangan yang
+                    dipakai petugas lounge. Priority 100 ditampilkan eksklusif.
+                  </p>
+                </div>
+              </div>
+              <div className="tableWrap">
+                <table className="facilityTable announcementTemplateTable">
+                  <thead>
+                    <tr>
+                      <th>Template</th>
+                      <th>Message Format</th>
+                      <th>Duration</th>
+                      <th>Priority</th>
+                      <th>Repeat</th>
+                      <th>Status</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {effectiveAnnouncementTemplates.map((template) => (
+                      <tr key={template.id}>
+                        <td>
+                          <b>{template.name}</b>
+                          <small>{template.id}</small>
+                        </td>
+                        <td>
+                          <input
+                            aria-label={`${template.name} message format`}
+                            value={template.messageTemplate}
+                            onChange={(event) =>
+                              updateAnnouncementTemplate(template.id, {
+                                messageTemplate: event.target.value,
+                              })
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            aria-label={`${template.name} duration minutes`}
+                            type="number"
+                            min="1"
+                            max="480"
+                            value={template.defaultDurationMinutes}
+                            onChange={(event) =>
+                              updateAnnouncementTemplate(template.id, {
+                                defaultDurationMinutes: Number(
+                                  event.target.value,
+                                ),
+                              })
+                            }
+                          />
+                          <small>minutes</small>
+                        </td>
+                        <td>
+                          <input
+                            aria-label={`${template.name} priority`}
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={template.priority}
+                            onChange={(event) =>
+                              updateAnnouncementTemplate(template.id, {
+                                priority: Number(event.target.value),
+                              })
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            aria-label={`${template.name} repeat count`}
+                            type="number"
+                            min="1"
+                            max="5"
+                            value={template.repeatCount}
+                            onChange={(event) =>
+                              updateAnnouncementTemplate(template.id, {
+                                repeatCount: Number(event.target.value),
+                              })
+                            }
+                          />
+                        </td>
+                        <td>
+                          <select
+                            aria-label={`${template.name} status`}
+                            value={template.status}
+                            onChange={(event) =>
+                              updateAnnouncementTemplate(template.id, {
+                                status: event.target.value as
+                                  "Active" | "Inactive",
+                              })
+                            }
+                          >
+                            <option>Active</option>
+                            <option>Inactive</option>
+                          </select>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void saveAnnouncementTemplate(template)
+                            }
+                          >
+                            Save
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
         </article>
       )}
 
@@ -3210,8 +3715,8 @@ export default function FacilityOperations({
           <div className="modal pilotTestModal">
             <div className="modalHead">
               <div>
-                <small>PILOT UAT</small>
-                <h2>Record Test Result</h2>
+                <small>DEVICE TEST</small>
+                <h2>Record Check Result</h2>
               </div>
               <button type="button" onClick={() => setPilotDialog(null)}>
                 ×
@@ -3231,7 +3736,7 @@ export default function FacilityOperations({
                   <b>{pilotDialog.device.station}</b>
                 </div>
                 <div>
-                  <span>UAT Check</span>
+                  <span>Check Item</span>
                   <b>
                     {
                       DISPLAY_UAT_CHECKS.find(
@@ -3271,8 +3776,8 @@ export default function FacilityOperations({
               </label>
               <div className="notice warn full">
                 <span>
-                  Changing a UAT result returns rollout status to Testing until
-                  all required checks pass again and are recertified.
+                  Changing a check result returns the device to Testing until
+                  all required checks pass and it is activated again.
                 </span>
               </div>
               <div className="modalActions full">
@@ -3284,7 +3789,333 @@ export default function FacilityOperations({
                   type="submit"
                   disabled={savingPilot}
                 >
-                  {savingPilot ? "Saving..." : "Save Test Result"}
+                  {savingPilot ? "Saving..." : "Save Check Result"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showQuickAnnouncement && (
+        <div
+          className="back"
+          onMouseDown={(event) =>
+            event.target === event.currentTarget &&
+            setShowQuickAnnouncement(false)
+          }
+        >
+          <div className="modal quickAnnouncementModal">
+            <div className="modalHead">
+              <div>
+                <small>FRONT OFFICE QUICK ACTION</small>
+                <h2>Send Running Text</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQuickAnnouncement(false)}
+              >
+                ×
+              </button>
+            </div>
+            <form
+              className="form"
+              onSubmit={(event) => void sendQuickAnnouncement(event)}
+            >
+              <label>
+                <span>Station</span>
+                <select
+                  value={quickAnnouncement.station}
+                  disabled={!globalScope}
+                  onChange={(event) => {
+                    const station = event.target.value;
+                    setQuickAnnouncement({
+                      ...quickAnnouncement,
+                      station,
+                      flightId: "",
+                      flightNumber: "",
+                      route: "",
+                      deviceIds: devices
+                        .filter(
+                          (device) =>
+                            device.station === station &&
+                            isDeviceEnrolled(device),
+                        )
+                        .map((device) => device.id),
+                    });
+                  }}
+                >
+                  {activeStations.map((station) => (
+                    <option key={station.code} value={station.code}>
+                      {station.code} — {station.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Announcement Type</span>
+                <select
+                  value={quickAnnouncement.templateId}
+                  onChange={(event) => {
+                    const template = effectiveAnnouncementTemplates.find(
+                      (row) => row.id === event.target.value,
+                    );
+                    setQuickAnnouncement({
+                      ...quickAnnouncement,
+                      templateId: event.target.value,
+                      durationMinutes:
+                        template?.defaultDurationMinutes ||
+                        quickAnnouncement.durationMinutes,
+                    });
+                  }}
+                >
+                  {effectiveAnnouncementTemplates
+                    .filter((template) => template.status === "Active")
+                    .map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              {!["emergency", "custom"].includes(
+                quickAnnouncement.templateId,
+              ) && (
+                <label className="full">
+                  <span>Flight</span>
+                  <select
+                    value={quickAnnouncement.flightId}
+                    onChange={(event) => {
+                      const flight = flights.find(
+                        (row) => row.id === event.target.value,
+                      );
+                      setQuickAnnouncement({
+                        ...quickAnnouncement,
+                        flightId: event.target.value,
+                        flightNumber:
+                          flight?.flight || quickAnnouncement.flightNumber,
+                        route: flight
+                          ? `${flight.origin}-${flight.destination}`
+                          : quickAnnouncement.route,
+                        etd:
+                          flight?.etd || flight?.std || quickAnnouncement.etd,
+                      });
+                    }}
+                  >
+                    <option value="">Select flight or enter manually</option>
+                    {flights
+                      .filter(
+                        (flight) =>
+                          flight.origin === quickAnnouncement.station &&
+                          flight.date >= localToday(),
+                      )
+                      .sort((a, b) =>
+                        `${a.date}${a.etd || a.std}`.localeCompare(
+                          `${b.date}${b.etd || b.std}`,
+                        ),
+                      )
+                      .slice(0, 100)
+                      .map((flight) => (
+                        <option key={flight.id} value={flight.id}>
+                          {flight.date} · {flight.flight} · {flight.origin}-
+                          {flight.destination} · {flight.etd || flight.std}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
+              {!["emergency", "custom"].includes(
+                quickAnnouncement.templateId,
+              ) && (
+                <>
+                  <label>
+                    <span>Flight Number</span>
+                    <input
+                      value={quickAnnouncement.flightNumber}
+                      onChange={(event) =>
+                        setQuickAnnouncement({
+                          ...quickAnnouncement,
+                          flightNumber: event.target.value,
+                        })
+                      }
+                      placeholder="GA 123"
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span>Route</span>
+                    <input
+                      value={quickAnnouncement.route}
+                      onChange={(event) =>
+                        setQuickAnnouncement({
+                          ...quickAnnouncement,
+                          route: event.target.value,
+                        })
+                      }
+                      placeholder="CGK-PLM"
+                      required
+                    />
+                  </label>
+                </>
+              )}
+              {quickAnnouncement.templateId === "delay" && (
+                <label>
+                  <span>New ETD</span>
+                  <input
+                    type="time"
+                    value={quickAnnouncement.etd}
+                    onChange={(event) =>
+                      setQuickAnnouncement({
+                        ...quickAnnouncement,
+                        etd: event.target.value,
+                      })
+                    }
+                    required
+                  />
+                </label>
+              )}
+              {quickAnnouncement.templateId === "gate-change" && (
+                <>
+                  <label>
+                    <span>Previous Gate</span>
+                    <input
+                      value={quickAnnouncement.oldGate}
+                      onChange={(event) =>
+                        setQuickAnnouncement({
+                          ...quickAnnouncement,
+                          oldGate: event.target.value,
+                        })
+                      }
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span>New Gate</span>
+                    <input
+                      value={quickAnnouncement.newGate}
+                      onChange={(event) =>
+                        setQuickAnnouncement({
+                          ...quickAnnouncement,
+                          newGate: event.target.value,
+                        })
+                      }
+                      required
+                    />
+                  </label>
+                </>
+              )}
+              {["emergency", "custom"].includes(
+                quickAnnouncement.templateId,
+              ) && (
+                <label className="full">
+                  <span>Message</span>
+                  <textarea
+                    value={quickAnnouncement.message}
+                    onChange={(event) =>
+                      setQuickAnnouncement({
+                        ...quickAnnouncement,
+                        message: event.target.value,
+                      })
+                    }
+                    placeholder="Type the message shown on screen"
+                    required
+                  />
+                </label>
+              )}
+              <fieldset className="full quickDevicePicker">
+                <legend>Target Screens</legend>
+                {devices.filter(
+                  (device) =>
+                    device.station === quickAnnouncement.station &&
+                    isDeviceEnrolled(device),
+                ).length ? (
+                  devices
+                    .filter(
+                      (device) =>
+                        device.station === quickAnnouncement.station &&
+                        isDeviceEnrolled(device),
+                    )
+                    .map((device) => (
+                      <label key={device.id}>
+                        <input
+                          type="checkbox"
+                          checked={quickAnnouncement.deviceIds.includes(
+                            device.id,
+                          )}
+                          onChange={(event) =>
+                            setQuickAnnouncement({
+                              ...quickAnnouncement,
+                              deviceIds: event.target.checked
+                                ? [...quickAnnouncement.deviceIds, device.id]
+                                : quickAnnouncement.deviceIds.filter(
+                                    (id) => id !== device.id,
+                                  ),
+                            })
+                          }
+                        />
+                        <span>
+                          <b>{device.name}</b>
+                          <small>{roomName(device.roomId)}</small>
+                        </span>
+                      </label>
+                    ))
+                ) : (
+                  <p>No enrolled screen is available at this station.</p>
+                )}
+              </fieldset>
+              <label>
+                <span>Duration</span>
+                {canConfigure ? (
+                  <input
+                    type="number"
+                    min="1"
+                    max="480"
+                    value={quickAnnouncement.durationMinutes}
+                    onChange={(event) =>
+                      setQuickAnnouncement({
+                        ...quickAnnouncement,
+                        durationMinutes: Number(event.target.value),
+                      })
+                    }
+                  />
+                ) : (
+                  <input
+                    value={`${quickAnnouncement.durationMinutes} minutes`}
+                    readOnly
+                  />
+                )}
+              </label>
+              <div className="quickAnnouncementPreview full">
+                <small>SCREEN PREVIEW</small>
+                <strong>
+                  {announcementPreview(
+                    effectiveAnnouncementTemplates.find(
+                      (row) => row.id === quickAnnouncement.templateId,
+                    ),
+                    quickAnnouncement,
+                  )}
+                </strong>
+                <span>
+                  Multiple active flights rotate automatically by priority.
+                  Emergency messages temporarily take over the queue.
+                </span>
+              </div>
+              <div className="modalActions full">
+                <button
+                  type="button"
+                  onClick={() => setShowQuickAnnouncement(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="primary"
+                  type="submit"
+                  disabled={
+                    savingAnnouncement ||
+                    quickAnnouncement.deviceIds.length === 0
+                  }
+                >
+                  {savingAnnouncement ? "Sending..." : "Send Now"}
                 </button>
               </div>
             </form>
@@ -3372,6 +4203,7 @@ export default function FacilityOperations({
                       <option value="PLAY_CHANNEL">Play Channel Now</option>
                       <option value="SET_OVERLAY">Set Running Text</option>
                       <option value="CLEAR_OVERLAY">Clear Running Text</option>
+                      <option value="STOP_PLAYBACK">Stop &amp; Standby</option>
                       <option value="PAUSE">Pause Screen</option>
                       <option value="RESUME">Resume Screen</option>
                       <option value="REFRESH">Refresh Player</option>
@@ -3421,18 +4253,52 @@ export default function FacilityOperations({
                       </label>
                     </>
                   )}
-                  {remoteType === "SET_OVERLAY" && (
-                    <label className="full">
-                      <span>Running Text</span>
-                      <textarea
-                        value={remoteOverlayText}
+                  {remoteType === "STOP_PLAYBACK" && (
+                    <label>
+                      <span>Standby Duration</span>
+                      <select
+                        value={remoteDuration}
                         onChange={(event) =>
-                          setRemoteOverlayText(event.target.value)
+                          setRemoteDuration(Number(event.target.value))
                         }
-                        placeholder="Boarding information, final call, or lounge message"
-                        required
-                      />
+                      >
+                        {[15, 30, 60, 120, 240, 480].map((value) => (
+                          <option key={value} value={value}>
+                            {value} minutes
+                          </option>
+                        ))}
+                      </select>
                     </label>
+                  )}
+                  {remoteType === "SET_OVERLAY" && (
+                    <>
+                      <label className="full">
+                        <span>Running Text</span>
+                        <textarea
+                          value={remoteOverlayText}
+                          onChange={(event) =>
+                            setRemoteOverlayText(event.target.value)
+                          }
+                          placeholder="Boarding information, final call, or lounge message"
+                          required
+                        />
+                      </label>
+                      <label>
+                        <span>Display Duration</span>
+                        <select
+                          value={remoteDuration}
+                          onChange={(event) =>
+                            setRemoteDuration(Number(event.target.value))
+                          }
+                        >
+                          {[5, 10, 15, 30, 60, 120].map((value) => (
+                            <option key={value} value={value}>
+                              {value} minutes
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </>
                   )}
                   {remoteDevice.capabilities?.browserPlayer &&
                     !remoteDevice.capabilities?.screenshot && (
@@ -4703,6 +5569,91 @@ export default function FacilityOperations({
         </div>
       )}
 
+      {bookingDetail && (
+        <div
+          className="back"
+          onMouseDown={(event) =>
+            event.target === event.currentTarget && setBookingDetail(null)
+          }
+        >
+          <div className="modal bookingDetailModal">
+            <div className="modalHead">
+              <div>
+                <small>BOOKING DETAIL</small>
+                <h2>{bookingDetail.title}</h2>
+              </div>
+              <button type="button" onClick={() => setBookingDetail(null)}>
+                ×
+              </button>
+            </div>
+            <div className="bookingDetailGrid">
+              <div>
+                <span>Status</span>
+                <b>{bookingDetail.status}</b>
+              </div>
+              <div>
+                <span>Room</span>
+                <b>
+                  {bookingDetail.station} · {bookingDetail.roomName}
+                </b>
+              </div>
+              <div>
+                <span>Date &amp; Time</span>
+                <b>
+                  {bookingDetail.localDate} · {bookingDetail.startTime}–
+                  {bookingDetail.endTime}
+                </b>
+              </div>
+              <div>
+                <span>Organizer</span>
+                <b>{bookingDetail.organizer || "—"}</b>
+              </div>
+              <div>
+                <span>Contact</span>
+                <b>{bookingDetail.contact || "—"}</b>
+              </div>
+              <div>
+                <span>Attendees</span>
+                <b>{bookingDetail.attendees}</b>
+              </div>
+              <div>
+                <span>Purpose</span>
+                <b>{bookingDetail.purpose || "—"}</b>
+              </div>
+              <div>
+                <span>Preparation / Cleaning Buffer</span>
+                <b>
+                  {bookingDetail.bufferBeforeMinutes} /{" "}
+                  {bookingDetail.bufferAfterMinutes} minutes
+                </b>
+              </div>
+              <div className="full">
+                <span>Notes</span>
+                <b>{bookingDetail.notes || "—"}</b>
+              </div>
+            </div>
+            <div className="bookingDetailActions">
+              <BookingActions
+                booking={bookingDetail}
+                currentUserId={account.id}
+                canApprove={canApproveBooking}
+                onEdit={(booking) => {
+                  setBookingDetail(null);
+                  editDraft(booking);
+                }}
+                onAction={(booking, action) => {
+                  void bookingAction(booking, action);
+                  setBookingDetail(null);
+                }}
+              />
+              <button type="button" onClick={() => setBookingDetail(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showRoomForm && (
         <div
           className="back"
@@ -5086,6 +6037,7 @@ function BookingCalendar({
   bookings,
   currentUserId,
   canApprove,
+  onOpen,
   onEdit,
   onAction,
 }: {
@@ -5094,6 +6046,7 @@ function BookingCalendar({
   bookings: RoomBooking[];
   currentUserId: string;
   canApprove: boolean;
+  onOpen: (booking: RoomBooking) => void;
   onEdit: (booking: RoomBooking) => void;
   onAction: (
     booking: RoomBooking,
@@ -5106,6 +6059,12 @@ function BookingCalendar({
     <div
       className={`bookingEvent status-${booking.status.toLowerCase().replaceAll(" ", "-")} ${compact ? "compact" : ""}`}
       key={booking.id}
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(booking)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") onOpen(booking);
+      }}
     >
       <div>
         <b>
@@ -5123,13 +6082,15 @@ function BookingCalendar({
             {booking.attendees} attendees · Buffer {booking.bufferBeforeMinutes}
             /{booking.bufferAfterMinutes} min
           </span>
-          <BookingActions
-            booking={booking}
-            currentUserId={currentUserId}
-            canApprove={canApprove}
-            onEdit={onEdit}
-            onAction={onAction}
-          />
+          <div onClick={(event) => event.stopPropagation()}>
+            <BookingActions
+              booking={booking}
+              currentUserId={currentUserId}
+              canApprove={canApprove}
+              onEdit={onEdit}
+              onAction={onAction}
+            />
+          </div>
         </>
       )}
     </div>
@@ -5152,8 +6113,12 @@ function BookingCalendar({
           <tbody>
             {bookings.length ? (
               bookings.map((booking) => (
-                <tr key={booking.id}>
-                  <td>
+                <tr
+                  key={booking.id}
+                  className="bookingListRow"
+                  onClick={() => onOpen(booking)}
+                >
+                  <td onClick={(event) => event.stopPropagation()}>
                     <b>{booking.localDate}</b>
                     <small>
                       {booking.startTime}–{booking.endTime}

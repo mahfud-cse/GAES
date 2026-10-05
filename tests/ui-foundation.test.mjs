@@ -457,8 +457,8 @@ test("implements phase 6 endpoint hardening, health sweep, and rollout gates", a
   assert.match(pilotBackend, /REQUIRED_CHECKS/);
   assert.match(pilotBackend, /DISPLAY_UAT_INCOMPLETE/);
   assert.match(pilotBackend, /Ready for Operations/);
-  assert.match(module, /Pilot UAT &amp; Rollout Readiness/);
-  assert.match(module, /Certify Rollout/);
+  assert.match(module, /Device Testing &amp; Activation/);
+  assert.match(module, /Activate for Operations/);
   assert.match(repository, /\| "displayPilotTests"/);
   for (const collection of [
     "displayRateLimits",
@@ -470,4 +470,47 @@ test("implements phase 6 endpoint hardening, health sweep, and rollout gates", a
   assert.match(netlify, /Permissions-Policy/);
   assert.match(css, /\.deviceHealthKpis\s*\{/);
   assert.match(css, /\.pilotChecklist\s*\{/);
+});
+
+test("implements priority-based quick announcements and safe display standby", async () => {
+  const [
+    module,
+    player,
+    deviceBackend,
+    playerBackend,
+    repository,
+    rules,
+    page,
+  ] = await Promise.all([
+    read("../app/facility-operations.tsx"),
+    read("../app/player/page.tsx"),
+    read("../netlify/functions/manage-display-device.mjs"),
+    read("../netlify/functions/display-player.mjs"),
+    read("../lib/firebase/repository.ts"),
+    read("../firestore.rules"),
+    read("../app/page.tsx"),
+  ]);
+
+  assert.match(module, /Quick Announcement/);
+  assert.match(module, /Quick Announcement Templates/);
+  assert.match(module, /Active Announcements/);
+  assert.match(module, /onOpen=\{setBookingDetail\}/);
+  assert.match(module, /Stop &amp; Standby/);
+  assert.match(deviceBackend, /async function announce/);
+  assert.match(deviceBackend, /status: "Replaced"/);
+  assert.match(deviceBackend, /CONFIG_ROLES\.has\(actor\.profile\.role\)/);
+  assert.match(deviceBackend, /"STOP_PLAYBACK"/);
+  assert.match(playerBackend, /async function announcementPlan/);
+  assert.match(playerBackend, /active\[0\]\?\.priority >= 100/);
+  assert.match(player, /announcementIndex\.current/);
+  assert.match(player, /12_000/);
+  assert.match(player, /clearEnrollment/);
+  assert.match(player, /\[401, 403\]\.includes/);
+  assert.match(player, /stoppedUntil/);
+  assert.match(repository, /displayAnnouncementTemplates/);
+  assert.match(repository, /displayAnnouncements/);
+  assert.match(rules, /match \/displayAnnouncementTemplates\/\{id\}/);
+  assert.match(rules, /match \/displayAnnouncements\/\{id\}/);
+  assert.match(page, /Jadwal:\s*"Schedule"/);
+  assert.doesNotMatch(`${module}\n${page}`, /jadwald/i);
 });

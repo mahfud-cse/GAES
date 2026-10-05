@@ -126,6 +126,15 @@ service cloud.firestore {
         && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
       allow write: if false;
     }
+    match /displayAnnouncementTemplates/{id} {
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager']);
+      allow write: if false;
+    }
+    match /displayAnnouncements/{id} {
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow write: if false;
+    }
     match /displayEnrollments/{id} {
       allow read, write: if false;
     }

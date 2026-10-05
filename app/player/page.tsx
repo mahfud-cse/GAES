@@ -3,17 +3,68 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
-type Credential = { deviceId: string; deviceSecret: string; name: string; station: string; roomId: string };
-type ContentItem = { id: string; title: string; contentType: "Live TV" | "Video" | "Image" | "Web URL"; sourceUrl: string; durationSeconds: number };
-type Playback = { channelId: string; channelName: string; items: ContentItem[]; overlayEnabled?: boolean; overlayText?: string; source?: string; scheduleId?: string };
-type Command = { id: string; type: string; payload?: { overlayText?: string; overrideUntil?: string }; playback?: Playback | null };
-type HeartbeatResponse = { schedule?: Playback | null; commands?: Command[]; device?: { name: string; station: string } };
-type Ack = { commandId: string; status: "Executed" | "Failed"; message: string };
+type Credential = {
+  deviceId: string;
+  deviceSecret: string;
+  name: string;
+  station: string;
+  roomId: string;
+};
+type ContentItem = {
+  id: string;
+  title: string;
+  contentType: "Live TV" | "Video" | "Image" | "Web URL";
+  sourceUrl: string;
+  durationSeconds: number;
+};
+type Playback = {
+  channelId: string;
+  channelName: string;
+  items: ContentItem[];
+  overlayEnabled?: boolean;
+  overlayText?: string;
+  source?: string;
+  scheduleId?: string;
+};
+type Command = {
+  id: string;
+  type: string;
+  payload?: { overlayText?: string; overrideUntil?: string };
+  playback?: Playback | null;
+};
+type Announcement = {
+  id: string;
+  announcementId: string;
+  message: string;
+  priority: number;
+  templateName: string;
+  flightNumber: string;
+  expiresAt: string;
+};
+type HeartbeatResponse = {
+  schedule?: Playback | null;
+  announcements?: Announcement[];
+  commands?: Command[];
+  device?: { name: string; station: string };
+};
+type Ack = {
+  commandId: string;
+  status: "Executed" | "Failed";
+  message: string;
+};
 
 const CREDENTIAL_KEY = "gaes-display-player-credential-v1";
 const CACHE_KEY = "gaes-display-player-cache-v1";
 const PROCESSED_KEY = "gaes-display-player-processed-v1";
 const VERSION = "web-player-1.0.0";
+
+class PlayerRequestError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
 
 async function playerCall<T>(payload: Record<string, unknown>): Promise<T> {
   const response = await fetch("/.netlify/functions/display-player", {
@@ -23,7 +74,11 @@ async function playerCall<T>(payload: Record<string, unknown>): Promise<T> {
     cache: "no-store",
   });
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || `Player request failed (HTTP ${response.status}).`);
+  if (!response.ok)
+    throw new PlayerRequestError(
+      result.error || `Player request failed (HTTP ${response.status}).`,
+      response.status,
+    );
   return result as T;
 }
 
@@ -49,65 +104,147 @@ export default function DisplayPlayerPage() {
   const [lastHeartbeat, setLastHeartbeat] = useState("");
   const acks = useRef<Ack[]>([]);
   const processed = useRef<Set<string>>(new Set());
-  const manualOverride = useRef<{ playback: Playback; until: string } | null>(null);
-  const manualOverlay = useRef<string | null>(null);
+  const manualOverride = useRef<{ playback: Playback; until: string } | null>(
+    null,
+  );
+  const manualOverlay = useRef<{ text: string; until: string } | null>(null);
+  const stoppedUntil = useRef("");
+  const announcementQueue = useRef<Announcement[]>([]);
+  const announcementIndex = useRef(0);
+  const scheduledOverlay = useRef("");
+
+  const clearEnrollment = useCallback((reason = "") => {
+    localStorage.removeItem(CREDENTIAL_KEY);
+    localStorage.removeItem(CACHE_KEY);
+    localStorage.removeItem(PROCESSED_KEY);
+    setCredential(null);
+    setPlayback(null);
+    setOverlayText("");
+    setPaused(false);
+    setMessage(reason);
+    manualOverride.current = null;
+    manualOverlay.current = null;
+    announcementQueue.current = [];
+    stoppedUntil.current = "";
+  }, []);
 
   useEffect(() => {
     const initialize = window.setTimeout(() => {
       const saved = readJson<Credential | null>(CREDENTIAL_KEY, null);
-      const cached = readJson<{ playback?: Playback; overlayText?: string; manualOverride?: { playback: Playback; until: string } }>(CACHE_KEY, {});
+      const cached = readJson<{
+        playback?: Playback;
+        overlayText?: string;
+        manualOverride?: { playback: Playback; until: string };
+      }>(CACHE_KEY, {});
       processed.current = new Set(readJson<string[]>(PROCESSED_KEY, []));
       if (saved) setCredential(saved);
       if (cached.playback) setPlayback(cached.playback);
       if (cached.overlayText) setOverlayText(cached.overlayText);
-      if (cached.manualOverride && Date.parse(cached.manualOverride.until) > Date.now()) manualOverride.current = cached.manualOverride;
+      if (
+        cached.manualOverride &&
+        Date.parse(cached.manualOverride.until) > Date.now()
+      )
+        manualOverride.current = cached.manualOverride;
     }, 0);
     return () => window.clearTimeout(initialize);
   }, []);
 
-  const cacheState = useCallback((nextPlayback: Playback | null, nextOverlay: string) => {
-    if (!nextPlayback) return;
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ playback: nextPlayback, overlayText: nextOverlay, manualOverride: manualOverride.current }));
-  }, []);
+  const cacheState = useCallback(
+    (nextPlayback: Playback | null, nextOverlay: string) => {
+      if (!nextPlayback) return;
+      localStorage.setItem(
+        CACHE_KEY,
+        JSON.stringify({
+          playback: nextPlayback,
+          overlayText: nextOverlay,
+          manualOverride: manualOverride.current,
+        }),
+      );
+    },
+    [],
+  );
 
   const executeCommands = useCallback((commands: Command[]) => {
     for (const command of commands) {
       if (processed.current.has(command.id)) {
-        acks.current.push({ commandId: command.id, status: "Executed", message: "Idempotent replay acknowledged." });
+        acks.current.push({
+          commandId: command.id,
+          status: "Executed",
+          message: "Idempotent replay acknowledged.",
+        });
         continue;
       }
       try {
         if (command.type === "PLAY_CHANNEL" && command.playback) {
-          const until = command.payload?.overrideUntil || new Date(Date.now() + 60 * 60 * 1000).toISOString();
+          const until =
+            command.payload?.overrideUntil ||
+            new Date(Date.now() + 60 * 60 * 1000).toISOString();
           manualOverride.current = { playback: command.playback, until };
           setPlayback(command.playback);
           setItemIndex(0);
         } else if (command.type === "SET_OVERLAY") {
-          manualOverlay.current = command.payload?.overlayText || "";
-          setOverlayText(manualOverlay.current);
+          manualOverlay.current = {
+            text: command.payload?.overlayText || "",
+            until:
+              command.payload?.overrideUntil ||
+              new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+          };
+          setOverlayText(manualOverlay.current.text);
         } else if (command.type === "CLEAR_OVERLAY") {
-          manualOverlay.current = "";
-          setOverlayText("");
+          manualOverlay.current = null;
+          setOverlayText(
+            announcementQueue.current[announcementIndex.current]?.message ||
+              scheduledOverlay.current,
+          );
+        } else if (command.type === "STOP_PLAYBACK") {
+          manualOverride.current = null;
+          stoppedUntil.current =
+            command.payload?.overrideUntil ||
+            new Date(Date.now() + 60 * 60 * 1000).toISOString();
+          setPlayback(null);
+          setItemIndex(0);
+          setPaused(false);
+          localStorage.removeItem(CACHE_KEY);
         } else if (command.type === "PAUSE") {
           setPaused(true);
         } else if (command.type === "RESUME") {
           setPaused(false);
         } else if (command.type === "REFRESH") {
-          acks.current.push({ commandId: command.id, status: "Executed", message: "Player refresh accepted." });
+          acks.current.push({
+            commandId: command.id,
+            status: "Executed",
+            message: "Player refresh accepted.",
+          });
           processed.current.add(command.id);
-          localStorage.setItem(PROCESSED_KEY, JSON.stringify([...processed.current].slice(-100)));
+          localStorage.setItem(
+            PROCESSED_KEY,
+            JSON.stringify([...processed.current].slice(-100)),
+          );
           window.setTimeout(() => window.location.reload(), 400);
           continue;
         } else if (command.type === "REQUEST_SCREENSHOT") {
-          throw new Error("Unattended screenshot is unavailable in the browser player; use the native/Android player capability.");
+          throw new Error(
+            "Unattended screenshot is unavailable in the browser player; use the native/Android player capability.",
+          );
         }
         processed.current.add(command.id);
-        acks.current.push({ commandId: command.id, status: "Executed", message: "Command executed by web player." });
+        acks.current.push({
+          commandId: command.id,
+          status: "Executed",
+          message: "Command executed by web player.",
+        });
       } catch (error) {
-        acks.current.push({ commandId: command.id, status: "Failed", message: error instanceof Error ? error.message : "Command failed." });
+        acks.current.push({
+          commandId: command.id,
+          status: "Failed",
+          message: error instanceof Error ? error.message : "Command failed.",
+        });
       }
     }
-    localStorage.setItem(PROCESSED_KEY, JSON.stringify([...processed.current].slice(-100)));
+    localStorage.setItem(
+      PROCESSED_KEY,
+      JSON.stringify([...processed.current].slice(-100)),
+    );
   }, []);
 
   const heartbeat = useCallback(async () => {
@@ -118,7 +255,12 @@ export default function DisplayPlayerPage() {
         action: "heartbeat",
         ...credential,
         playerVersion: VERSION,
-        capabilities: { browserPlayer: true, screenshot: false, offlinePlanCache: true, runningText: true },
+        capabilities: {
+          browserPlayer: true,
+          screenshot: false,
+          offlinePlanCache: true,
+          runningText: true,
+        },
         acknowledgments: sentAcks,
         state: {
           status: lastError ? "Degraded" : "Online",
@@ -133,22 +275,69 @@ export default function DisplayPlayerPage() {
       setLastError("");
       executeCommands(result.commands || []);
       const override = manualOverride.current;
-      if (override && Date.parse(override.until) <= Date.now()) manualOverride.current = null;
-      const next = manualOverride.current?.playback || result.schedule || null;
+      if (override && Date.parse(override.until) <= Date.now())
+        manualOverride.current = null;
+      if (
+        stoppedUntil.current &&
+        Date.parse(stoppedUntil.current) <= Date.now()
+      )
+        stoppedUntil.current = "";
+      if (
+        manualOverlay.current &&
+        Date.parse(manualOverlay.current.until) <= Date.now()
+      )
+        manualOverlay.current = null;
+      const next = stoppedUntil.current
+        ? null
+        : manualOverride.current?.playback || result.schedule || null;
+      if (!next && playback) {
+        setPlayback(null);
+        setItemIndex(0);
+      }
       if (next && next.channelId !== playback?.channelId) {
         setPlayback(next);
         setItemIndex(0);
       }
-      const nextOverlay = manualOverlay.current !== null
-        ? manualOverlay.current
-        : next?.overlayEnabled ? next.overlayText || "" : "";
+      const nextAnnouncements = (result.announcements || []).filter(
+        (row) => row.message && Date.parse(row.expiresAt) > Date.now(),
+      );
+      announcementQueue.current = nextAnnouncements;
+      if (announcementIndex.current >= nextAnnouncements.length)
+        announcementIndex.current = 0;
+      scheduledOverlay.current = next?.overlayEnabled
+        ? next.overlayText || ""
+        : "";
+      const nextOverlay = manualOverlay.current
+        ? manualOverlay.current.text
+        : nextAnnouncements[announcementIndex.current]?.message ||
+          scheduledOverlay.current;
       if (overlayText !== nextOverlay) setOverlayText(nextOverlay);
       cacheState(next, nextOverlay);
     } catch (error) {
+      if (
+        error instanceof PlayerRequestError &&
+        [401, 403].includes(error.status)
+      ) {
+        clearEnrollment(
+          "Enrollment device telah dicabut. Masukkan kode enrollment baru.",
+        );
+        return;
+      }
       setOnline(false);
-      setLastError(error instanceof Error ? error.message : "Heartbeat failed.");
+      setLastError(
+        error instanceof Error ? error.message : "Heartbeat failed.",
+      );
     }
-  }, [cacheState, credential, executeCommands, itemIndex, lastError, overlayText, playback]);
+  }, [
+    cacheState,
+    clearEnrollment,
+    credential,
+    executeCommands,
+    itemIndex,
+    lastError,
+    overlayText,
+    playback,
+  ]);
 
   useEffect(() => {
     if (!credential) return;
@@ -160,12 +349,35 @@ export default function DisplayPlayerPage() {
     };
   }, [credential, heartbeat]);
 
+  useEffect(() => {
+    if (!credential) return;
+    const timer = window.setInterval(() => {
+      if (manualOverlay.current || !announcementQueue.current.length) return;
+      announcementIndex.current =
+        (announcementIndex.current + 1) % announcementQueue.current.length;
+      setOverlayText(
+        announcementQueue.current[announcementIndex.current]?.message ||
+          scheduledOverlay.current,
+      );
+    }, 12_000);
+    return () => window.clearInterval(timer);
+  }, [credential]);
+
   const current = playback?.items[itemIndex];
   useEffect(() => {
     if (!current || paused || !playback || playback.items.length < 2) return;
-    const seconds = current.durationSeconds || (current.contentType === "Image" ? 15 : current.contentType === "Web URL" ? 60 : 0);
+    const seconds =
+      current.durationSeconds ||
+      (current.contentType === "Image"
+        ? 15
+        : current.contentType === "Web URL"
+          ? 60
+          : 0);
     if (!seconds) return;
-    const timer = window.setTimeout(() => setItemIndex((value) => (value + 1) % playback.items.length), seconds * 1000);
+    const timer = window.setTimeout(
+      () => setItemIndex((value) => (value + 1) % playback.items.length),
+      seconds * 1000,
+    );
     return () => window.clearTimeout(timer);
   }, [current, paused, playback]);
 
@@ -174,8 +386,18 @@ export default function DisplayPlayerPage() {
     setEnrolling(true);
     setMessage("");
     try {
-      const result = await playerCall<Credential & { status: string }>({ action: "claim", code, playerVersion: VERSION });
-      const next = { deviceId: result.deviceId, deviceSecret: result.deviceSecret, name: result.name, station: result.station, roomId: result.roomId };
+      const result = await playerCall<Credential & { status: string }>({
+        action: "claim",
+        code,
+        playerVersion: VERSION,
+      });
+      const next = {
+        deviceId: result.deviceId,
+        deviceSecret: result.deviceSecret,
+        name: result.name,
+        station: result.station,
+        roomId: result.roomId,
+      };
       localStorage.setItem(CREDENTIAL_KEY, JSON.stringify(next));
       setCredential(next);
     } catch (error) {
@@ -186,25 +408,123 @@ export default function DisplayPlayerPage() {
   }
 
   function resetPlayer() {
-    if (!window.confirm("Hapus enrollment dari browser ini? Device perlu kode baru untuk terhubung kembali.")) return;
-    localStorage.removeItem(CREDENTIAL_KEY);
-    localStorage.removeItem(CACHE_KEY);
-    localStorage.removeItem(PROCESSED_KEY);
-    setCredential(null);
-    setPlayback(null);
+    if (
+      !window.confirm(
+        "Hapus enrollment dari browser ini? Device perlu kode baru untuk terhubung kembali.",
+      )
+    )
+      return;
+    clearEnrollment();
   }
 
-  if (!credential) return <main className="playerEnroll"><form onSubmit={(event) => void enroll(event)}><img src="/garuda-wing.svg" alt="Garuda Indonesia" /><small>GAES DISPLAY PLAYER</small><h1>Connect this screen</h1><p>Masukkan kode enrollment 8 karakter yang dibuat dari Device Control Center.</p><label><span>Enrollment Code</span><input value={code} onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8))} maxLength={8} autoFocus required /></label>{message && <div className="playerError">{message}</div>}<button className="primary" type="submit" disabled={enrolling || code.length !== 8}>{enrolling ? "Connecting..." : "Connect Device"}</button></form></main>;
+  if (!credential)
+    return (
+      <main className="playerEnroll">
+        <form onSubmit={(event) => void enroll(event)}>
+          <img src="/garuda-wing.svg" alt="Garuda Indonesia" />
+          <small>GAES DISPLAY PLAYER</small>
+          <h1>Connect this screen</h1>
+          <p>
+            Masukkan kode enrollment 8 karakter yang dibuat dari Device Control
+            Center.
+          </p>
+          <label>
+            <span>Enrollment Code</span>
+            <input
+              value={code}
+              onChange={(event) =>
+                setCode(
+                  event.target.value
+                    .toUpperCase()
+                    .replace(/[^A-Z0-9]/g, "")
+                    .slice(0, 8),
+                )
+              }
+              maxLength={8}
+              autoFocus
+              required
+            />
+          </label>
+          {message && <div className="playerError">{message}</div>}
+          <button
+            className="primary"
+            type="submit"
+            disabled={enrolling || code.length !== 8}
+          >
+            {enrolling ? "Connecting..." : "Connect Device"}
+          </button>
+        </form>
+      </main>
+    );
 
-  return <main className={`displayPlayer ${paused ? "paused" : ""}`}>
-    <div className="playerCanvas">
-      {!current && <div className="playerStandby"><img src="/garuda-wing.svg" alt="Garuda Indonesia" /><h1>Screen Ready</h1><p>Waiting for an active schedule or Play Now command.</p></div>}
-      {current?.contentType === "Image" && <img className="playerMedia" src={current.sourceUrl} alt={current.title} />}
-      {current?.contentType === "Video" && <video className="playerMedia" src={current.sourceUrl} autoPlay muted={false} playsInline onEnded={() => playback && setItemIndex((value) => (value + 1) % playback.items.length)} />}
-      {(current?.contentType === "Live TV" || current?.contentType === "Web URL") && <iframe className="playerMedia" src={current.sourceUrl} title={current.title} allow="autoplay; fullscreen" referrerPolicy="strict-origin-when-cross-origin" />}
-      {paused && <div className="playerPaused">PAUSED</div>}
-      {overlayText && <div className="playerTicker"><div>{overlayText}</div></div>}
-    </div>
-    <div className="playerStatus"><span className={online ? "online" : "offline"}>{online ? "Online" : "Offline cache"}</span><b>{credential.name}</b><span>{current?.title || "Standby"}</span><small>{lastHeartbeat ? new Date(lastHeartbeat).toLocaleTimeString("id-ID") : "—"}</small><button type="button" onClick={() => void document.documentElement.requestFullscreen?.()}>Fullscreen</button><button type="button" onClick={resetPlayer}>Reset</button></div>
-  </main>;
+  return (
+    <main className={`displayPlayer ${paused ? "paused" : ""}`}>
+      <div className="playerCanvas">
+        {!current && (
+          <div className="playerStandby">
+            <img src="/garuda-wing.svg" alt="Garuda Indonesia" />
+            <h1>Screen Ready</h1>
+            <p>Waiting for an active schedule or Play Now command.</p>
+          </div>
+        )}
+        {current?.contentType === "Image" && (
+          <img
+            className="playerMedia"
+            src={current.sourceUrl}
+            alt={current.title}
+          />
+        )}
+        {current?.contentType === "Video" && (
+          <video
+            className="playerMedia"
+            src={current.sourceUrl}
+            autoPlay
+            muted={false}
+            playsInline
+            onEnded={() =>
+              playback &&
+              setItemIndex((value) => (value + 1) % playback.items.length)
+            }
+          />
+        )}
+        {(current?.contentType === "Live TV" ||
+          current?.contentType === "Web URL") && (
+          <iframe
+            className="playerMedia"
+            src={current.sourceUrl}
+            title={current.title}
+            allow="autoplay; fullscreen"
+            referrerPolicy="strict-origin-when-cross-origin"
+          />
+        )}
+        {paused && <div className="playerPaused">PAUSED</div>}
+        {overlayText && (
+          <div className="playerTicker">
+            <div>{overlayText}</div>
+          </div>
+        )}
+      </div>
+      <div className="playerStatus">
+        <span className={online ? "online" : "offline"}>
+          {online ? "Online" : "Offline cache"}
+        </span>
+        <b>{credential.name}</b>
+        <span>{current?.title || "Standby"}</span>
+        <small>
+          {lastHeartbeat
+            ? new Date(lastHeartbeat).toLocaleTimeString("id-ID")
+            : "—"}
+        </small>
+        <button
+          type="button"
+          onClick={() => void document.documentElement.requestFullscreen?.()}
+        >
+          Fullscreen
+        </button>
+        <button type="button" onClick={resetPlayer}>
+          Reset
+        </button>
+      </div>
+    </main>
+  );
 }

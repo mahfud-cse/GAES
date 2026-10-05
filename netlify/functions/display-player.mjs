@@ -128,16 +128,14 @@ async function claim(db, request, input) {
     });
     return { id: deviceSnapshot.id, ...deviceSnapshot.data() };
   });
-  await db
-    .collection("displayActivityLogs")
-    .add({
-      action: "DISPLAY_PLAYER_ENROLLED",
-      station: result.station,
-      deviceId: result.id,
-      actorId: result.id,
-      actorName: result.name,
-      createdAt: new Date(),
-    });
+  await db.collection("displayActivityLogs").add({
+    action: "DISPLAY_PLAYER_ENROLLED",
+    station: result.station,
+    deviceId: result.id,
+    actorId: result.id,
+    actorName: result.name,
+    createdAt: new Date(),
+  });
   return {
     deviceId: result.id,
     deviceSecret: secret,
@@ -236,6 +234,49 @@ async function schedulePlan(db, device) {
         ...channel,
       }
     : null;
+}
+
+async function announcementPlan(db, device) {
+  const snapshot = await db
+    .collection("displayAnnouncements")
+    .where("station", "==", device.station)
+    .get();
+  const now = Date.now();
+  const active = snapshot.docs
+    .map((row) => ({ id: row.id, ...row.data() }))
+    .filter(
+      (row) =>
+        row.status === "Active" &&
+        row.deviceIds?.includes(device.id) &&
+        row.startsAt?.toDate?.().getTime() <= now &&
+        row.expiresAt?.toDate?.().getTime() > now,
+    )
+    .sort((a, b) => {
+      const priority = Number(b.priority || 0) - Number(a.priority || 0);
+      if (priority) return priority;
+      return (
+        (a.createdAt?.toDate?.().getTime() || 0) -
+        (b.createdAt?.toDate?.().getTime() || 0)
+      );
+    });
+  const selected =
+    active[0]?.priority >= 100
+      ? active.filter((row) => row.priority >= 100)
+      : active;
+  return selected.flatMap((row) =>
+    Array.from(
+      { length: Math.max(1, Math.min(5, Number(row.repeatCount) || 1)) },
+      (_, index) => ({
+        id: `${row.id}-${index + 1}`,
+        announcementId: row.id,
+        message: text(row.message, 500),
+        priority: Number(row.priority) || 0,
+        templateName: text(row.templateName, 80),
+        flightNumber: text(row.flightNumber, 24),
+        expiresAt: row.expiresAt?.toDate?.().toISOString() || "",
+      }),
+    ),
+  );
 }
 
 async function acknowledge(db, device, acknowledgments) {
@@ -341,6 +382,7 @@ async function heartbeat(db, input) {
       roomId: device.roomId,
     },
     schedule: await schedulePlan(db, device),
+    announcements: await announcementPlan(db, device),
     commands,
   };
 }
