@@ -402,6 +402,24 @@ test("normalizes translated approval values and exposes enroll and delete in edi
   );
 });
 
+test("renders Firestore display timestamps and legacy display arrays safely", async () => {
+  const module = await read("../app/facility-operations.tsx");
+  assert.match(
+    module,
+    /function readableHeartbeat\(value: unknown\): string[\s\S]*?activityMillis\(value\)/,
+  );
+  assert.match(
+    module,
+    /const heartbeat = activityMillis\(device\.lastHeartbeat\)/,
+  );
+  assert.match(module, /function stringArray\(value: unknown\): string\[\]/);
+  assert.match(module, /function numberArray\(value: unknown\): number\[\]/);
+  assert.doesNotMatch(module, /return value;[\s\S]{0,120}toLocaleString/);
+  assert.doesNotMatch(module, /row\.deviceIds\.length/);
+  assert.doesNotMatch(module, /row\.contentIds\.map/);
+  assert.doesNotMatch(module, /row\.daysOfWeek\.map/);
+});
+
 test("implements phase 6 endpoint hardening, health sweep, and rollout gates", async () => {
   const [
     module,

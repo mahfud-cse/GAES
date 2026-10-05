@@ -442,8 +442,8 @@ function recordId(prefix: string) {
 function isOnline(device: DeviceRecord) {
   if (device.status === "Disabled" || !isDeviceApproved(device)) return false;
   if (!device.lastHeartbeat) return device.status === "Online";
-  const heartbeat = Date.parse(device.lastHeartbeat);
-  return Number.isFinite(heartbeat) && Date.now() - heartbeat < 120_000;
+  const heartbeat = activityMillis(device.lastHeartbeat);
+  return heartbeat > 0 && Date.now() - heartbeat < 120_000;
 }
 
 function canonicalApprovalStatus(
@@ -469,14 +469,26 @@ function isDeviceEnrolled(device: DeviceRecord) {
   );
 }
 
-function readableHeartbeat(value: string) {
+function readableHeartbeat(value: unknown): string {
   if (!value) return "Belum pernah terhubung";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("id-ID", {
+  const millis = activityMillis(value);
+  if (!millis) return "Format waktu tidak dikenali";
+  return new Date(millis).toLocaleString("id-ID", {
     dateStyle: "medium",
     timeStyle: "short",
   });
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+}
+
+function numberArray(value: unknown): number[] {
+  return Array.isArray(value)
+    ? value.map(Number).filter((item) => Number.isFinite(item))
+    : [];
 }
 
 function localDateTimeToIso(
@@ -2582,10 +2594,12 @@ export default function FacilityOperations({
                             {row.startDate} — {row.endDate}
                             <small>
                               {row.startTime}–{row.endTime} ·{" "}
-                              {row.daysOfWeek.map(dayLabel).join(", ")}
+                              {numberArray(row.daysOfWeek)
+                                .map(dayLabel)
+                                .join(", ") || "—"}
                             </small>
                           </td>
-                          <td>{row.deviceIds.length} device</td>
+                          <td>{stringArray(row.deviceIds).length} device</td>
                           <td>
                             {row.overlayEnabled
                               ? row.overlayText || "Enabled"
@@ -2597,7 +2611,11 @@ export default function FacilityOperations({
                                 type="button"
                                 onClick={() => {
                                   setEditingSchedule(row.id);
-                                  setScheduleDraft(row);
+                                  setScheduleDraft({
+                                    ...row,
+                                    deviceIds: stringArray(row.deviceIds),
+                                    daysOfWeek: numberArray(row.daysOfWeek),
+                                  });
                                   setDisplayDialog("schedule");
                                 }}
                               >
@@ -2651,12 +2669,14 @@ export default function FacilityOperations({
                     <div className="contentCard" key={row.id}>
                       <div>
                         <span className="bookingStatus">{row.status}</span>
-                        <small>{row.contentIds.length} content</small>
+                        <small>
+                          {stringArray(row.contentIds).length} content
+                        </small>
                       </div>
                       <h3>{row.name}</h3>
                       <p>{row.description || "No description"}</p>
                       <ol>
-                        {row.contentIds.map((id) => (
+                        {stringArray(row.contentIds).map((id) => (
                           <li key={id}>
                             {displayContents.find(
                               (content) => content.id === id,
@@ -2670,7 +2690,10 @@ export default function FacilityOperations({
                             type="button"
                             onClick={() => {
                               setEditingChannel(row.id);
-                              setChannelDraft(row);
+                              setChannelDraft({
+                                ...row,
+                                contentIds: stringArray(row.contentIds),
+                              });
                               setDisplayDialog("channel");
                             }}
                           >
