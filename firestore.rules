@@ -132,6 +132,19 @@ service cloud.firestore {
     match /displayDeviceCredentials/{id} {
       allow read, write: if false;
     }
+    match /displayRateLimits/{id} {
+      allow read, write: if false;
+    }
+    match /displayPilotTests/{id} {
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow write: if false;
+    }
+    match /displayRolloutApprovals/{id} {
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow write: if false;
+    }
     match /displayActivityLogs/{id} {
       allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
         && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));

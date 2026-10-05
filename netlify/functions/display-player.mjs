@@ -8,6 +8,32 @@ const noStoreJson = (status, value) => new Response(JSON.stringify(value), {
   headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
 });
 
+function requestFingerprint(request) {
+  const forwarded = request.headers.get("x-nf-client-connection-ip")
+    || request.headers.get("x-forwarded-for")?.split(",")[0]
+    || "unknown";
+  const agent = request.headers.get("user-agent") || "unknown";
+  return sha(`${forwarded.trim()}|${agent.slice(0, 160)}|display-player`);
+}
+
+async function enforceRateLimit(db, request, bucket, maximum, windowMs) {
+  const ref = db.collection("displayRateLimits").doc(sha(`${bucket}|${requestFingerprint(request)}`));
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    const now = Date.now();
+    const current = snapshot.data();
+    const resetAt = current?.resetAt?.toDate?.().getTime() || 0;
+    const count = resetAt > now ? Number(current.count || 0) : 0;
+    if (count >= maximum) throw httpError(429, "Terlalu banyak percobaan. Tunggu sebelum mencoba kembali.", "rate-limit");
+    transaction.set(ref, {
+      bucket,
+      count: count + 1,
+      resetAt: new Date(resetAt > now ? resetAt : now + windowMs),
+      updatedAt: new Date(),
+    }, { merge: true });
+  });
+}
+
 function secretMatches(secret, expectedHash) {
   const actual = Buffer.from(sha(secret));
   const expected = Buffer.from(String(expectedHash || ""));
@@ -30,17 +56,18 @@ async function authenticateDevice(db, input) {
   return device;
 }
 
-async function claim(db, input) {
+async function claim(db, request, input) {
+  await enforceRateLimit(db, request, "enrollment-claim", 8, 10 * 60 * 1000);
   const code = text(input.code, 16).toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (code.length !== 8) throw httpError(400, "Kode enrollment harus 8 karakter.");
   const enrollmentRef = db.collection("displayEnrollments").doc(sha(code));
   const secret = randomBytes(32).toString("base64url");
   const result = await db.runTransaction(async (transaction) => {
     const enrollment = await transaction.get(enrollmentRef);
-    if (!enrollment.exists) throw httpError(404, "Kode enrollment tidak ditemukan.");
+    if (!enrollment.exists) throw httpError(404, "Kode enrollment tidak valid atau kedaluwarsa.");
     const data = enrollment.data();
     if (data.status !== "Pending" || data.expiresAt.toDate().getTime() < Date.now())
-      throw httpError(409, "Kode enrollment sudah digunakan atau kedaluwarsa.");
+      throw httpError(409, "Kode enrollment tidak valid atau kedaluwarsa.");
     const deviceRef = db.collection("displayDevices").doc(data.deviceId);
     const credentialRef = db.collection("displayDeviceCredentials").doc(data.deviceId);
     const deviceSnapshot = await transaction.get(deviceRef);
@@ -165,10 +192,12 @@ async function heartbeat(db, input) {
 const handler = async (request) => {
   try {
     if (request.method !== "POST") return noStoreJson(405, { error: "Method not allowed." });
+    const contentLength = Number(request.headers.get("content-length") || 0);
+    if (contentLength > 64 * 1024) throw httpError(413, "Player request terlalu besar.");
     const input = await request.json();
     const action = text(input.action, 30).toLowerCase();
     const db = targetDb();
-    if (action === "claim") return noStoreJson(200, await claim(db, input));
+    if (action === "claim") return noStoreJson(200, await claim(db, request, input));
     if (action === "heartbeat") return noStoreJson(200, await heartbeat(db, input));
     throw httpError(400, "Player action tidak valid.");
   } catch (error) {

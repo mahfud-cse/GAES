@@ -21,6 +21,7 @@ import {
   localTimeInZone,
   parseRange,
 } from "../netlify/functions/manage-room-booking.mjs";
+import { healthFor } from "../netlify/functions/sweep-display-health.mjs";
 
 test("normalizes spreadsheet dates, times, and Indonesian currency", () => {
   assert.equal(isoDate("20/09/2026"), "2026-09-20");
@@ -196,5 +197,21 @@ test("keeps recurrence and station-local booking time consistent", () => {
       startAt: "2026-10-05T02:00:00.000Z",
       endAt: "2026-10-05T12:00:00.000Z",
     }),
+  );
+});
+
+test("classifies display heartbeat health without trusting stale device status", () => {
+  const now = Date.parse("2026-10-05T00:10:00.000Z");
+  assert.deepEqual(
+    healthFor({ lastHeartbeat: "2026-10-05T00:09:30.000Z", lastError: "" }, now),
+    { status: "Online", healthStatus: "Healthy" },
+  );
+  assert.deepEqual(
+    healthFor({ lastHeartbeat: "2026-10-05T00:07:30.000Z", lastError: "" }, now),
+    { status: "Degraded", healthStatus: "Degraded" },
+  );
+  assert.deepEqual(
+    healthFor({ lastHeartbeat: "2026-10-05T00:00:00.000Z", lastError: "" }, now),
+    { status: "Offline", healthStatus: "Offline" },
   );
 });

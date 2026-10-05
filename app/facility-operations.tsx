@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
-import { manageDisplayContent, manageDisplayDevice, manageRoomBooking, manageRoomOperation } from "../lib/firebase/api";
+import { manageDisplayContent, manageDisplayDevice, manageDisplayPilot, manageRoomBooking, manageRoomOperation } from "../lib/firebase/api";
 import { uploadDisplayMedia } from "../lib/firebase/evidence";
 import {
   removeRecord,
@@ -65,6 +65,9 @@ type DeviceRecord = {
   enrollmentStatus?: "Pending" | "Enrolled" | "Revoked";
   capabilities?: { screenshot?: boolean; browserPlayer?: boolean; runningText?: boolean; offlinePlanCache?: boolean };
   lastError?: string;
+  healthStatus?: "Healthy" | "Degraded" | "Offline";
+  rolloutStatus?: "Testing" | "Ready for Operations";
+  rolloutCertifiedAt?: unknown;
 };
 
 type DisplayContent = {
@@ -110,6 +113,27 @@ type DisplayCommand = {
   status: "Pending" | "Executed" | "Failed" | "Expired";
   message?: string;
   createdAt?: unknown;
+};
+type DisplayPilotTest = {
+  id: string;
+  deviceId: string;
+  deviceName: string;
+  station: string;
+  checkId: string;
+  required: boolean;
+  status: "Not Tested" | "Pass" | "Fail" | "Blocked" | "N/A";
+  note?: string;
+  testedByName?: string;
+  testedAt?: unknown;
+};
+type DisplayRolloutApproval = {
+  id: string;
+  deviceId: string;
+  station: string;
+  status: "Ready for Operations";
+  note?: string;
+  certifiedByName?: string;
+  certifiedAt?: unknown;
 };
 
 type BookingStatus =
@@ -267,6 +291,22 @@ const APPROVER_ROLES: FacilityRole[] = [
   "BO Admin",
   "Lounge Manager",
 ];
+
+const DISPLAY_UAT_CHECKS = [
+  { id: "enrollment", label: "Secure enrollment", required: true },
+  { id: "heartbeat", label: "Heartbeat & health state", required: true },
+  { id: "schedule", label: "Scheduled playback", required: true },
+  { id: "sequence", label: "Channel playback order", required: true },
+  { id: "offline-cache", label: "Offline plan fallback", required: true },
+  { id: "play-now", label: "Play Channel Now", required: true },
+  { id: "running-text", label: "Running text overlay", required: true },
+  { id: "pause-resume", label: "Pause & resume", required: true },
+  { id: "refresh", label: "Remote refresh", required: true },
+  { id: "revoke-reenroll", label: "Revoke & re-enroll", required: true },
+  { id: "autoplay-audio", label: "Autoplay & audio policy", required: true },
+  { id: "source-compatibility", label: "Live TV / source compatibility", required: true },
+  { id: "native-screenshot", label: "Native screenshot capability", required: false },
+] as const;
 
 const EMPTY_ROOM: Omit<RoomRecord, "id"> = {
   station: "CGK",
@@ -434,6 +474,8 @@ export default function FacilityOperations({
   const [displayChannels, setDisplayChannels] = useState<DisplayChannel[]>([]);
   const [displaySchedules, setDisplaySchedules] = useState<DisplaySchedule[]>([]);
   const [displayCommands, setDisplayCommands] = useState<DisplayCommand[]>([]);
+  const [displayPilotTests, setDisplayPilotTests] = useState<DisplayPilotTest[]>([]);
+  const [displayRollouts, setDisplayRollouts] = useState<DisplayRolloutApproval[]>([]);
   const [bookings, setBookings] = useState<RoomBooking[]>([]);
   const [operations, setOperations] = useState<RoomOperation[]>([]);
   const [maintenanceRows, setMaintenanceRows] = useState<RoomMaintenance[]>([]);
@@ -463,7 +505,7 @@ export default function FacilityOperations({
   const [operationRequestId, setOperationRequestId] = useState("");
   const [savingOperation, setSavingOperation] = useState(false);
   const [activityQuery, setActivityQuery] = useState("");
-  const [displaySection, setDisplaySection] = useState<"Monitor" | "Schedules" | "Channels" | "Content Library">("Monitor");
+  const [displaySection, setDisplaySection] = useState<"Monitor" | "Schedules" | "Channels" | "Content Library" | "Pilot & Rollout">("Monitor");
   const [contentDraft, setContentDraft] = useState(EMPTY_CONTENT);
   const [channelDraft, setChannelDraft] = useState(EMPTY_CHANNEL);
   const [scheduleDraft, setScheduleDraft] = useState(EMPTY_SCHEDULE);
@@ -481,6 +523,10 @@ export default function FacilityOperations({
   const [remoteDuration, setRemoteDuration] = useState(60);
   const [enrollmentCode, setEnrollmentCode] = useState<{ code: string; expiresAt: string } | null>(null);
   const [savingRemote, setSavingRemote] = useState(false);
+  const [pilotDialog, setPilotDialog] = useState<{ device: DeviceRecord; checkId: string } | null>(null);
+  const [pilotStatus, setPilotStatus] = useState<DisplayPilotTest["status"]>("Pass");
+  const [pilotNote, setPilotNote] = useState("");
+  const [savingPilot, setSavingPilot] = useState(false);
 
   const globalScope = GLOBAL_ROLES.includes(account.role);
   const canConfigure = CONFIG_ROLES.includes(account.role);
@@ -518,6 +564,18 @@ export default function FacilityOperations({
         "displayCommands",
         globalScope ? "ALL" : account.station,
         setDisplayCommands,
+        onError,
+      ),
+      subscribeStationCollection<DisplayPilotTest>(
+        "displayPilotTests",
+        globalScope ? "ALL" : account.station,
+        setDisplayPilotTests,
+        onError,
+      ),
+      subscribeStationCollection<DisplayRolloutApproval>(
+        "displayRolloutApprovals",
+        globalScope ? "ALL" : account.station,
+        setDisplayRollouts,
         onError,
       ),
       subscribeStationCollection<RoomBooking>(
@@ -617,6 +675,11 @@ export default function FacilityOperations({
   const latestDisplayCommand = (deviceId: string) => displayCommands
     .filter((row) => row.deviceId === deviceId)
     .sort((a, b) => activityMillis(b.createdAt) - activityMillis(a.createdAt))[0];
+  const pilotResult = (deviceId: string, checkId: string) => displayPilotTests
+    .find((row) => row.deviceId === deviceId && row.checkId === checkId);
+  const pilotRequiredPassed = (deviceId: string) => DISPLAY_UAT_CHECKS
+    .filter((check) => check.required)
+    .filter((check) => pilotResult(deviceId, check.id)?.status === "Pass").length;
   const canApproveBooking = APPROVER_ROLES.includes(account.role);
   const canSuperviseOperations = APPROVER_ROLES.includes(account.role);
 
@@ -779,6 +842,47 @@ export default function FacilityOperations({
       setNotice({ kind: "ok", text: `Enrollment ${device.name} berhasil dicabut.` });
     } catch (error) {
       setNotice({ kind: "error", text: error instanceof Error ? error.message : "Enrollment tidak dapat dicabut." });
+    }
+  }
+
+  function openPilotTest(device: DeviceRecord, checkId: string) {
+    const existing = displayPilotTests.find((row) => row.deviceId === device.id && row.checkId === checkId);
+    setPilotDialog({ device, checkId });
+    setPilotStatus(existing?.status || (checkId === "native-screenshot" && device.capabilities?.browserPlayer ? "N/A" : "Pass"));
+    setPilotNote(existing?.note || "");
+  }
+
+  async function savePilotTest(event: FormEvent) {
+    event.preventDefault();
+    if (!pilotDialog) return;
+    setSavingPilot(true);
+    try {
+      await manageDisplayPilot(user, {
+        action: "savetest",
+        deviceId: pilotDialog.device.id,
+        checkId: pilotDialog.checkId,
+        status: pilotStatus,
+        note: pilotNote,
+      });
+      setNotice({ kind: "ok", text: "Hasil Pilot UAT berhasil disimpan." });
+      setPilotDialog(null);
+    } catch (error) {
+      setNotice({ kind: "error", text: error instanceof Error ? error.message : "Hasil Pilot UAT tidak dapat disimpan." });
+    } finally {
+      setSavingPilot(false);
+    }
+  }
+
+  async function certifyRollout(device: DeviceRecord) {
+    const note = window.prompt("Catatan rollout certification (opsional):") ?? "";
+    setSavingPilot(true);
+    try {
+      const result = await manageDisplayPilot(user, { action: "certify", deviceId: device.id, note });
+      setNotice({ kind: "ok", text: `${device.name}: ${result.status}.` });
+    } catch (error) {
+      setNotice({ kind: "error", text: error instanceof Error ? error.message : "Rollout certification gagal." });
+    } finally {
+      setSavingPilot(false);
     }
   }
 
@@ -1220,12 +1324,13 @@ export default function FacilityOperations({
               </div>
             </div>
             <div className="displaySubTabs" role="tablist" aria-label="TV content management">
-              {(["Monitor", "Schedules", "Channels", "Content Library"] as const).map((item) => <button key={item} type="button" className={displaySection === item ? "active" : ""} onClick={() => setDisplaySection(item)}>{item}</button>)}
+              {(["Monitor", "Schedules", "Channels", "Content Library", "Pilot & Rollout"] as const).map((item) => <button key={item} type="button" className={displaySection === item ? "active" : ""} onClick={() => setDisplaySection(item)}>{item}</button>)}
             </div>
           </article>
 
           {displaySection === "Monitor" && <article className="card facilitySectionCard">
             <div className="facilitySectionHeader compact"><div><small>DEVICE CONTROL CENTER</small><h2>Display Monitoring</h2></div><span className="scopeBadge">{scopedDevices.filter(isOnline).length}/{scopedDevices.length} online</span></div>
+            <div className="deviceHealthKpis"><div><span>Healthy</span><strong>{scopedDevices.filter((row) => row.healthStatus === "Healthy" || isOnline(row)).length}</strong></div><div><span>Degraded</span><strong>{scopedDevices.filter((row) => row.healthStatus === "Degraded").length}</strong></div><div><span>Offline</span><strong>{scopedDevices.filter((row) => row.enrollmentStatus === "Enrolled" && !isOnline(row)).length}</strong></div><div><span>Not Enrolled</span><strong>{scopedDevices.filter((row) => row.enrollmentStatus !== "Enrolled").length}</strong></div><div><span>Ready for Operations</span><strong>{scopedDevices.filter((row) => row.rolloutStatus === "Ready for Operations").length}</strong></div></div>
             {!scopedDevices.length ? <EmptyState text="Belum ada device. Tambahkan inventory device lalu buat kode enrollment untuk menghubungkan player." /> : <div className="tableWrap"><table className="facilityTable"><thead><tr><th>Device</th><th>Location</th><th>Status</th><th>Now Playing</th><th>Running Text</th><th>Last Heartbeat</th><th>Last Command</th><th>Action</th></tr></thead><tbody>{scopedDevices.map((device) => { const lastCommand = latestDisplayCommand(device.id); return <tr key={device.id}><td><b>{device.name}</b><small>{device.platform} · {device.connectionType}</small></td><td>{device.station}<small>{roomName(device.roomId)}</small></td><td><span className={`deviceStatus ${isOnline(device) ? "online" : "offline"}`}>{device.approvalStatus === "Pending" ? "Pending Approval" : isOnline(device) ? "Online" : device.status}</span><small>{device.enrollmentStatus || "Not Enrolled"}{device.lastError ? ` · ${device.lastError}` : ""}</small></td><td>{device.nowPlaying || "—"}</td><td>{device.overlayText || "—"}</td><td>{readableHeartbeat(device.lastHeartbeat)}</td><td>{lastCommand ? <><b>{lastCommand.type}</b><small>{lastCommand.status}{lastCommand.message ? ` · ${lastCommand.message}` : ""}</small></> : "—"}</td><td><div className="tableActions">{canConfigure && device.approvalStatus === "Pending" && <button type="button" onClick={() => void approveDevice(device)}>Approve</button>}{canConfigure && <button type="button" onClick={() => { setEditingDevice(device.id); setDeviceDraft(device); setShowDeviceForm(true); }}>Edit</button>}{canControl && device.approvalStatus === "Approved" && device.enrollmentStatus !== "Enrolled" && <button type="button" onClick={() => openRemoteControl(device, "enroll")}>Enroll Player</button>}{canControl && device.enrollmentStatus === "Enrolled" && <button className="primary" type="button" onClick={() => openRemoteControl(device, "command")}>Remote Control</button>}{canControl && device.enrollmentStatus === "Enrolled" && <button type="button" disabled={!device.capabilities?.screenshot} title={device.capabilities?.screenshot ? "Request player screenshot" : "Browser player tidak mendukung unattended screenshot"} onClick={() => { setRemoteDevice(device); setRemoteMode("command"); setRemoteType("REQUEST_SCREENSHOT"); }}>Screenshot</button>}{canControl && device.enrollmentStatus === "Enrolled" && <button type="button" onClick={() => void revokeDevice(device)}>Revoke</button>}</div></td></tr>; })}</tbody></table></div>}
           </article>}
 
@@ -1242,6 +1347,11 @@ export default function FacilityOperations({
           {displaySection === "Content Library" && <article className="card facilitySectionCard">
             <div className="facilitySectionHeader compact"><div><small>MEDIA SOURCE</small><h2>Content Library</h2></div><span className="scopeBadge">{scopedDisplayContents.length} content</span></div>
             <div className="contentCardGrid">{scopedDisplayContents.length ? scopedDisplayContents.map((row) => <div className="contentCard" key={row.id}><div><span className="bookingStatus">{row.contentType}</span><small>{row.station === "ALL" ? "All Stations" : row.station}</small></div><h3>{row.title}</h3><p>{row.description || row.sourceUrl}</p><small>{row.durationSeconds ? `${row.durationSeconds} seconds` : "Continuous source"} · {row.status}</small>{canConfigure && <div className="contentCardActions"><button type="button" onClick={() => { setEditingContent(row.id); setContentDraft(row); setDisplayMediaFile(null); setDisplayDialog("content"); }}>Edit</button><button type="button" onClick={() => void deleteDisplayItem("content", row.id, row.title)}>Delete</button></div>}</div>) : <EmptyState text="Belum ada content. Tambahkan Live TV, video, image, atau web URL." />}</div>
+          </article>}
+
+          {displaySection === "Pilot & Rollout" && <article className="card facilitySectionCard">
+            <div className="facilitySectionHeader"><div><small>CGK &amp; DPS PILOT</small><h2>Pilot UAT &amp; Rollout Readiness</h2><p>Each device must complete every required check before it can be certified Ready for Operations.</p></div><span className="scopeBadge">{scopedDevices.filter((row) => row.rolloutStatus === "Ready for Operations").length}/{scopedDevices.length} ready</span></div>
+            <div className="pilotDeviceList">{scopedDevices.length ? scopedDevices.map((device) => { const passed = pilotRequiredPassed(device.id); const approval = displayRollouts.find((row) => row.deviceId === device.id); return <section className="pilotDeviceCard" key={device.id}><header><div><span className={`statusDot state-${isOnline(device) ? "available" : "maintenance"}`} /><div><h3>{device.name}</h3><small>{device.station} · {roomName(device.roomId)} · {device.platform}</small></div></div><span className={`rolloutBadge ${device.rolloutStatus === "Ready for Operations" ? "ready" : "testing"}`}>{device.rolloutStatus || "Testing"}</span></header><div className="pilotProgress"><progress value={passed} max={12}>{passed}/12</progress><b>{passed}/12 required checks passed</b></div><div className="pilotChecklist">{DISPLAY_UAT_CHECKS.map((check) => { const result = pilotResult(device.id, check.id); return <button type="button" key={check.id} onClick={() => openPilotTest(device, check.id)}><span className={`pilotStatus status-${(result?.status || "Not Tested").toLowerCase().replaceAll(" ", "-").replace("/", "")}`}>{result?.status || "Not Tested"}</span><b>{check.label}</b><small>{check.required ? "Required" : "Optional"}{result?.testedByName ? ` · ${result.testedByName}` : ""}</small></button>; })}</div><footer><small>{approval ? `Certified by ${approval.certifiedByName || "Approver"} · ${formatActivityTime(approval.certifiedAt)}` : "Rollout certification has not been granted."}</small>{canSuperviseOperations && <button className="primary" type="button" disabled={savingPilot || passed < 12 || device.enrollmentStatus !== "Enrolled"} onClick={() => void certifyRollout(device)}>Certify Rollout</button>}</footer></section>; }) : <EmptyState text="Belum ada display device pada scope pilot." />}</div>
           </article>}
         </div>
       )}
@@ -1268,6 +1378,21 @@ export default function FacilityOperations({
           </div>
           <div className="tableWrap"><table className="facilityTable"><thead><tr><th>Time</th><th>Action</th><th>Station / Room</th><th>Booking</th><th>Operator</th><th>Detail</th></tr></thead><tbody>{scopedActivities.length ? scopedActivities.map((row) => <tr key={row.id}><td>{formatActivityTime(row.createdAt)}</td><td><b>{activityLabel(row.action)}</b></td><td>{row.station}<small>{roomName(row.roomId)}</small></td><td>{row.bookingId || "—"}</td><td>{row.actorName || "System"}</td><td>{row.reason || "—"}</td></tr>) : <tr><td colSpan={6}><div className="tableEmpty">Belum ada activity log pada scope ini.</div></td></tr>}</tbody></table></div>
         </article>
+      )}
+
+      {pilotDialog && (
+        <div className="back" onMouseDown={(event) => event.target === event.currentTarget && setPilotDialog(null)}>
+          <div className="modal pilotTestModal">
+            <div className="modalHead"><div><small>PILOT UAT</small><h2>Record Test Result</h2></div><button type="button" onClick={() => setPilotDialog(null)}>×</button></div>
+            <form className="form" onSubmit={(event) => void savePilotTest(event)}>
+              <div className="operationContext full"><div><span>Device</span><b>{pilotDialog.device.name}</b></div><div><span>Station</span><b>{pilotDialog.device.station}</b></div><div><span>UAT Check</span><b>{DISPLAY_UAT_CHECKS.find((row) => row.id === pilotDialog.checkId)?.label}</b></div></div>
+              <label><span>Result</span><select value={pilotStatus} onChange={(event) => setPilotStatus(event.target.value as DisplayPilotTest["status"])}><option>Not Tested</option><option>Pass</option><option>Fail</option><option>Blocked</option>{!DISPLAY_UAT_CHECKS.find((row) => row.id === pilotDialog.checkId)?.required && <option>N/A</option>}</select></label>
+              <label className="full"><span>Evidence / Test Note</span><textarea value={pilotNote} onChange={(event) => setPilotNote(event.target.value)} placeholder="Skenario yang diuji, hasil aktual, kendala, dan tindak lanjut" required={pilotStatus !== "Pass" && pilotStatus !== "N/A"} /></label>
+              <div className="notice warn full"><span>Changing a UAT result returns rollout status to Testing until all required checks pass again and are recertified.</span></div>
+              <div className="modalActions full"><button type="button" onClick={() => setPilotDialog(null)}>Cancel</button><button className="primary" type="submit" disabled={savingPilot}>{savingPilot ? "Saving..." : "Save Test Result"}</button></div>
+            </form>
+          </div>
+        </div>
       )}
 
       {remoteDevice && (

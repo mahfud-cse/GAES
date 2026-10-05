@@ -400,7 +400,7 @@
   border-radius: var(--radius-md);
   display: grid;
   gap: 4px;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
   padding: 4px;
 }
 
@@ -512,6 +512,144 @@
 
 .playerCapabilityNote span {
   color: var(--color-text-muted);
+}
+
+.deviceHealthKpis {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  margin-bottom: 16px;
+}
+
+.deviceHealthKpis > div {
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.deviceHealthKpis span {
+  color: var(--color-text-muted);
+}
+
+.deviceHealthKpis strong {
+  color: var(--color-navy-900);
+  font-size: 22px;
+}
+
+.pilotDeviceList {
+  display: grid;
+  gap: 16px;
+}
+
+.pilotDeviceCard {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.pilotDeviceCard > header,
+.pilotDeviceCard > footer,
+.pilotDeviceCard > header > div {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.pilotDeviceCard > header > div {
+  justify-content: flex-start;
+}
+
+.pilotDeviceCard h3,
+.pilotDeviceCard small {
+  margin: 0;
+}
+
+.pilotDeviceCard header small,
+.pilotDeviceCard footer small {
+  color: var(--color-text-muted);
+}
+
+.rolloutBadge,
+.pilotStatus {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 5px 8px;
+  width: fit-content;
+}
+
+.rolloutBadge.testing,
+.pilotStatus.status-not-tested {
+  background: #eef1f5;
+  color: #475467;
+}
+
+.rolloutBadge.ready,
+.pilotStatus.status-pass,
+.pilotStatus.status-na {
+  background: #e9f6ec;
+  color: #216e39;
+}
+
+.pilotStatus.status-fail {
+  background: var(--color-danger-soft);
+  color: var(--color-danger-700);
+}
+
+.pilotStatus.status-blocked {
+  background: var(--color-warning-soft);
+  color: var(--color-warning-700);
+}
+
+.pilotProgress {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(180px, 1fr) auto;
+}
+
+.pilotProgress progress {
+  accent-color: var(--color-navy-900);
+  height: 12px;
+  width: 100%;
+}
+
+.pilotChecklist {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.pilotChecklist > button {
+  align-items: flex-start;
+  background: #fff;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-height: 96px;
+  text-align: left;
+}
+
+.pilotChecklist > button:hover {
+  background: var(--color-navy-900);
+  color: #fff;
+}
+
+.pilotChecklist > button:hover small,
+.pilotChecklist > button:hover .pilotStatus {
+  color: inherit;
+}
+
+.pilotTestModal {
+  width: min(680px, calc(100vw - 24px));
 }
 
 .channelSequence {
@@ -917,6 +1055,7 @@
   .bookingToolbar { grid-template-columns: minmax(300px, .9fr) minmax(390px, 1.1fr); }
   .bookingToolbar > label { grid-row: 2; }
   .operationsKpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .deviceHealthKpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 760px) {
@@ -946,6 +1085,10 @@
   .activitySearch { flex-basis: auto; width: 100%; }
   .displaySubTabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .compactChecklist > div { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .deviceHealthKpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pilotDeviceCard > header,
+  .pilotDeviceCard > footer { align-items: stretch; flex-direction: column; }
+  .pilotProgress { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 480px) {
@@ -958,6 +1101,7 @@
   .bookingPeriodNav button:last-child { grid-column: 1 / -1; }
   .displaySubTabs { grid-template-columns: 1fr; }
   .compactChecklist > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .deviceHealthKpis { grid-template-columns: 1fr; }
 }
 
 * {

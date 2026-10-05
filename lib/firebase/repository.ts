@@ -37,6 +37,8 @@ export type GaesCollection =
   | "displaySchedules"
   | "displayCommands"
   | "displayActivityLogs"
+  | "displayPilotTests"
+  | "displayRolloutApprovals"
   | "roomBookings"
   | "roomOperations"
   | "roomMaintenance"
@@ -157,7 +159,7 @@ export function subscribeVisitors<T>(
 }
 
 export function subscribeStationCollection<T>(
-  name: "rooms" | "roomFacilities" | "roomBookings" | "roomOperations" | "roomMaintenance" | "roomIncidents" | "roomActivityLogs" | "displayDevices" | "displayContents" | "displayChannels" | "displaySchedules" | "displayCommands" | "displayActivityLogs",
+  name: "rooms" | "roomFacilities" | "roomBookings" | "roomOperations" | "roomMaintenance" | "roomIncidents" | "roomActivityLogs" | "displayDevices" | "displayContents" | "displayChannels" | "displaySchedules" | "displayCommands" | "displayActivityLogs" | "displayPilotTests" | "displayRolloutApprovals",
   station: string,
   callback: (rows: T[]) => void,
   onError?: (error: Error) => void,

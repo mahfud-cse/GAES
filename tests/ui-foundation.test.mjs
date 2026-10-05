@@ -262,3 +262,33 @@ test("implements phase 5 secure browser player and acknowledged remote commands"
   assert.match(rules, /match \/displayDeviceCredentials\/\{id\}[\s\S]*?allow read, write: if false;/);
   assert.match(css, /\.displayPlayer\s*\{/);
 });
+
+test("implements phase 6 endpoint hardening, health sweep, and rollout gates", async () => {
+  const [module, playerBackend, sweep, pilotBackend, rules, netlify, repository, css] = await Promise.all([
+    read("../app/facility-operations.tsx"),
+    read("../netlify/functions/display-player.mjs"),
+    read("../netlify/functions/sweep-display-health.mjs"),
+    read("../netlify/functions/manage-display-pilot.mjs"),
+    read("../firestore.rules"),
+    read("../netlify.toml"),
+    read("../lib/firebase/repository.ts"),
+    read("../app/globals.css"),
+  ]);
+  assert.match(playerBackend, /enforceRateLimit/);
+  assert.match(playerBackend, /64 \* 1024/);
+  assert.match(playerBackend, /Kode enrollment tidak valid atau kedaluwarsa/);
+  assert.match(sweep, /schedule: "\* \* \* \* \*"/);
+  assert.match(sweep, /DISPLAY_HEALTH_/);
+  assert.match(pilotBackend, /REQUIRED_CHECKS/);
+  assert.match(pilotBackend, /DISPLAY_UAT_INCOMPLETE/);
+  assert.match(pilotBackend, /Ready for Operations/);
+  assert.match(module, /Pilot UAT &amp; Rollout Readiness/);
+  assert.match(module, /Certify Rollout/);
+  assert.match(repository, /\| "displayPilotTests"/);
+  for (const collection of ["displayRateLimits", "displayPilotTests", "displayRolloutApprovals"])
+    assert.match(rules, new RegExp(`match /${collection}/\\{id\\}`));
+  assert.match(netlify, /for = "\/player"[\s\S]*?Content-Security-Policy/);
+  assert.match(netlify, /Permissions-Policy/);
+  assert.match(css, /\.deviceHealthKpis\s*\{/);
+  assert.match(css, /\.pilotChecklist\s*\{/);
+});
