@@ -544,6 +544,123 @@ async function deleteDevice(db, actor, input) {
   return { id: deviceId, status: "Deleted" };
 }
 
+async function saveOutputGroup(db, actor, input) {
+  requireConfigurator(actor);
+  const id = text(input.id, 160) || randomUUID();
+  const station = text(input.station, 12).toUpperCase();
+  const name = text(input.name, 120);
+  const deviceIds = [
+    ...new Set(
+      (Array.isArray(input.deviceIds) ? input.deviceIds : [])
+        .map((value) => text(value, 160))
+        .filter(Boolean),
+    ),
+  ].slice(0, 50);
+  if (!station || !name || !deviceIds.length)
+    throw httpError(
+      400,
+      "Station, nama Output Group, dan minimal satu device wajib tersedia.",
+    );
+  requireStation(actor, station);
+  const deviceSnapshots = await Promise.all(
+    deviceIds.map((deviceId) =>
+      db.collection("displayDevices").doc(deviceId).get(),
+    ),
+  );
+  if (
+    deviceSnapshots.some(
+      (snapshot) =>
+        !snapshot.exists ||
+        snapshot.data()?.station !== station ||
+        !isApprovedStatus(snapshot.data()?.approvalStatus),
+    )
+  )
+    throw httpError(
+      409,
+      "Seluruh device harus Approved dan berasal dari station yang sama.",
+    );
+  const groups = await db
+    .collection("displayOutputGroups")
+    .where("station", "==", station)
+    .get();
+  const duplicate = groups.docs.find(
+    (snapshot) =>
+      snapshot.id !== id &&
+      snapshot.data()?.status === "Active" &&
+      (snapshot.data()?.deviceIds || []).some((deviceId) =>
+        deviceIds.includes(deviceId),
+      ),
+  );
+  if (duplicate)
+    throw httpError(
+      409,
+      `Device sudah digunakan oleh Output Group ${text(duplicate.data()?.name, 120)}.`,
+    );
+  const ref = db.collection("displayOutputGroups").doc(id);
+  const existing = await ref.get();
+  const now = new Date();
+  const batch = db.batch();
+  batch.set(
+    ref,
+    {
+      id,
+      station,
+      name,
+      description: text(input.description, 500),
+      deviceIds,
+      status: input.status === "Inactive" ? "Inactive" : "Active",
+      sessionStatus: existing.data()?.sessionStatus || "Idle",
+      activeSourceName: existing.data()?.activeSourceName || "",
+      updatedAt: now,
+      updatedBy: actor.decoded.uid,
+      ...(existing.exists
+        ? {}
+        : { createdAt: now, createdBy: actor.decoded.uid }),
+    },
+    { merge: true },
+  );
+  batch.create(db.collection("displayActivityLogs").doc(), {
+    action: existing.exists
+      ? "DISPLAY_OUTPUT_GROUP_UPDATED"
+      : "DISPLAY_OUTPUT_GROUP_CREATED",
+    station,
+    outputGroupId: id,
+    deviceIds,
+    actorId: actor.decoded.uid,
+    actorName: text(actor.profile.name, 120),
+    createdAt: now,
+  });
+  await batch.commit();
+  return { id, status: "Saved" };
+}
+
+async function deleteOutputGroup(db, actor, input) {
+  requireConfigurator(actor);
+  const id = text(input.id, 160);
+  const ref = db.collection("displayOutputGroups").doc(id);
+  const snapshot = await ref.get();
+  if (!snapshot.exists) throw httpError(404, "Output Group tidak ditemukan.");
+  const group = snapshot.data();
+  requireStation(actor, group.station);
+  if (group.sessionStatus === "Sharing")
+    throw httpError(
+      409,
+      "Hentikan screen share sebelum menghapus Output Group.",
+    );
+  const batch = db.batch();
+  batch.delete(ref);
+  batch.create(db.collection("displayActivityLogs").doc(), {
+    action: "DISPLAY_OUTPUT_GROUP_DELETED",
+    station: group.station,
+    outputGroupId: id,
+    actorId: actor.decoded.uid,
+    actorName: text(actor.profile.name, 120),
+    createdAt: new Date(),
+  });
+  await batch.commit();
+  return { id, status: "Deleted" };
+}
+
 const handler = async (request) => {
   try {
     if (request.method !== "POST")
@@ -568,6 +685,10 @@ const handler = async (request) => {
       return json(200, await stopAnnouncement(db, actor, input));
     if (action === "updateannouncementduration")
       return json(200, await updateAnnouncementDuration(db, actor, input));
+    if (action === "saveoutputgroup")
+      return json(200, await saveOutputGroup(db, actor, input));
+    if (action === "deleteoutputgroup")
+      return json(200, await deleteOutputGroup(db, actor, input));
     if (action === "savetemplate")
       return json(200, await saveAnnouncementTemplate(db, actor, input));
     throw httpError(400, "Device management action tidak valid.");

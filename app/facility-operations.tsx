@@ -107,6 +107,17 @@ type DisplayChannel = {
   contentIds: string[];
   status: "Active" | "Inactive";
 };
+type DisplayOutputGroup = {
+  id: string;
+  station: string;
+  name: string;
+  description: string;
+  deviceIds: string[];
+  status: "Active" | "Inactive";
+  sessionStatus?: "Idle" | "Ready" | "Sharing" | "Error";
+  activeSourceName?: string;
+  updatedAt?: unknown;
+};
 type DisplaySchedule = {
   id: string;
   station: string;
@@ -169,6 +180,7 @@ type DisplayAnnouncement = {
 };
 type QuickAnnouncementDraft = {
   station: string;
+  outputGroupId: string;
   templateId: string;
   flightId: string;
   flightNumber: string;
@@ -520,6 +532,15 @@ const EMPTY_CHANNEL: Omit<DisplayChannel, "id"> = {
   status: "Active",
 };
 
+const EMPTY_OUTPUT_GROUP: Omit<DisplayOutputGroup, "id"> = {
+  station: "CGK",
+  name: "",
+  description: "",
+  deviceIds: [],
+  status: "Active",
+  sessionStatus: "Idle",
+};
+
 const EMPTY_SCHEDULE: Omit<DisplaySchedule, "id" | "channelName"> = {
   station: "CGK",
   title: "",
@@ -699,6 +720,9 @@ export default function FacilityOperations({
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const [displayContents, setDisplayContents] = useState<DisplayContent[]>([]);
   const [displayChannels, setDisplayChannels] = useState<DisplayChannel[]>([]);
+  const [displayOutputGroups, setDisplayOutputGroups] = useState<
+    DisplayOutputGroup[]
+  >([]);
   const [displaySchedules, setDisplaySchedules] = useState<DisplaySchedule[]>(
     [],
   );
@@ -752,7 +776,12 @@ export default function FacilityOperations({
   const [savingOperation, setSavingOperation] = useState(false);
   const [activityQuery, setActivityQuery] = useState("");
   const [displaySection, setDisplaySection] = useState<
-    "Monitor" | "Schedules" | "Channels" | "Content Library" | "Pilot & Rollout"
+    | "Monitor"
+    | "Output Groups"
+    | "Schedules"
+    | "Channels"
+    | "Content Library"
+    | "Pilot & Rollout"
   >("Monitor");
   const [contentDraft, setContentDraft] = useState(EMPTY_CONTENT);
   const [channelDraft, setChannelDraft] = useState(EMPTY_CHANNEL);
@@ -760,6 +789,12 @@ export default function FacilityOperations({
   const [editingContent, setEditingContent] = useState<string | null>(null);
   const [editingChannel, setEditingChannel] = useState<string | null>(null);
   const [editingSchedule, setEditingSchedule] = useState<string | null>(null);
+  const [outputGroupDraft, setOutputGroupDraft] = useState(EMPTY_OUTPUT_GROUP);
+  const [editingOutputGroup, setEditingOutputGroup] = useState<string | null>(
+    null,
+  );
+  const [showOutputGroupForm, setShowOutputGroupForm] = useState(false);
+  const [savingOutputGroup, setSavingOutputGroup] = useState(false);
   const [displayDialog, setDisplayDialog] = useState<
     "content" | "channel" | "schedule" | null
   >(null);
@@ -782,6 +817,7 @@ export default function FacilityOperations({
   const [quickAnnouncement, setQuickAnnouncement] =
     useState<QuickAnnouncementDraft>({
       station: account.station === "ALL" ? "CGK" : account.station,
+      outputGroupId: "",
       templateId: "boarding",
       flightId: "",
       flightNumber: "",
@@ -850,6 +886,12 @@ export default function FacilityOperations({
         "displayChannels",
         setDisplayChannels,
         undefined,
+        onError,
+      ),
+      subscribeStationCollection<DisplayOutputGroup>(
+        "displayOutputGroups",
+        globalScope ? "ALL" : account.station,
+        setDisplayOutputGroups,
         onError,
       ),
       subscribeStationCollection<DisplaySchedule>(
@@ -966,6 +1008,15 @@ export default function FacilityOperations({
           (stationFilter === "ALL" || row.station === stationFilter),
       ),
     [displaySchedules, permittedStation, stationFilter],
+  );
+  const scopedOutputGroups = useMemo(
+    () =>
+      displayOutputGroups.filter(
+        (row) =>
+          permittedStation(row.station) &&
+          (stationFilter === "ALL" || row.station === stationFilter),
+      ),
+    [displayOutputGroups, permittedStation, stationFilter],
   );
   const scopedBookings = useMemo(
     () =>
@@ -1286,6 +1337,83 @@ export default function FacilityOperations({
     }
   }
 
+  function openOutputGroup(group?: DisplayOutputGroup) {
+    if (group) {
+      setEditingOutputGroup(group.id);
+      setOutputGroupDraft({
+        station: group.station,
+        name: group.name,
+        description: group.description || "",
+        deviceIds: stringArray(group.deviceIds),
+        status: group.status,
+        sessionStatus: group.sessionStatus || "Idle",
+        activeSourceName: group.activeSourceName || "",
+        updatedAt: group.updatedAt,
+      });
+    } else {
+      setEditingOutputGroup(null);
+      setOutputGroupDraft({
+        ...EMPTY_OUTPUT_GROUP,
+        station:
+          stationFilter !== "ALL"
+            ? stationFilter
+            : activeStations[0]?.code || account.station,
+      });
+    }
+    setShowOutputGroupForm(true);
+  }
+
+  async function saveOutputGroup(event: FormEvent) {
+    event.preventDefault();
+    setSavingOutputGroup(true);
+    try {
+      await manageDisplayDevice(user, {
+        action: "saveoutputgroup",
+        id: editingOutputGroup || undefined,
+        ...outputGroupDraft,
+      });
+      setNotice({
+        kind: "ok",
+        text: `Output Group ${outputGroupDraft.name} berhasil disimpan.`,
+      });
+      setShowOutputGroupForm(false);
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Output Group tidak dapat disimpan.",
+      });
+    } finally {
+      setSavingOutputGroup(false);
+    }
+  }
+
+  async function deleteOutputGroup(group: DisplayOutputGroup) {
+    if (
+      !window.confirm(
+        `Hapus ${group.name}? Device tidak akan dihapus dari inventory.`,
+      )
+    )
+      return;
+    try {
+      await manageDisplayDevice(user, {
+        action: "deleteoutputgroup",
+        id: group.id,
+      });
+      setNotice({ kind: "ok", text: `${group.name} berhasil dihapus.` });
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Output Group tidak dapat dihapus.",
+      });
+    }
+  }
+
   function openRemoteControl(device: DeviceRecord, mode: "enroll" | "command") {
     setRemoteDevice(device);
     setRemoteMode(mode);
@@ -1308,6 +1436,7 @@ export default function FacilityOperations({
       DEFAULT_ANNOUNCEMENT_TEMPLATES[0];
     setQuickAnnouncement({
       station,
+      outputGroupId: "",
       templateId: template.id,
       flightId: "",
       flightNumber: "",
@@ -1976,6 +2105,8 @@ export default function FacilityOperations({
           <button
             key={item}
             type="button"
+            role="tab"
+            aria-selected={activeTab === item}
             className={activeTab === item ? "active" : ""}
             onClick={() => setActiveTab(item)}
           >
@@ -2157,11 +2288,17 @@ export default function FacilityOperations({
           </div>
 
           <div className="bookingToolbar">
-            <div className="bookingViewSwitch" aria-label="Calendar view">
+            <div
+              className="bookingViewSwitch"
+              role="tablist"
+              aria-label="Calendar view"
+            >
               {(["Day", "Week", "Month", "List"] as const).map((view) => (
                 <button
                   key={view}
                   type="button"
+                  role="tab"
+                  aria-selected={bookingView === view}
                   className={bookingView === view ? "active" : ""}
                   onClick={() => setBookingView(view)}
                 >
@@ -2655,6 +2792,15 @@ export default function FacilityOperations({
                     + Add Device
                   </button>
                 )}
+                {displaySection === "Output Groups" && canConfigure && (
+                  <button
+                    className="primary"
+                    type="button"
+                    onClick={() => openOutputGroup()}
+                  >
+                    + New Output Group
+                  </button>
+                )}
                 {displaySection === "Schedules" && canControl && (
                   <button
                     className="primary"
@@ -2692,6 +2838,7 @@ export default function FacilityOperations({
               {(
                 [
                   { key: "Monitor", label: "Monitor" },
+                  { key: "Output Groups", label: "Output Groups" },
                   { key: "Schedules", label: "Jadwal" },
                   { key: "Channels", label: "Channels" },
                   { key: "Content Library", label: "Content Library" },
@@ -2704,6 +2851,8 @@ export default function FacilityOperations({
                 <button
                   key={item.key}
                   type="button"
+                  role="tab"
+                  aria-selected={displaySection === item.key}
                   className={displaySection === item.key ? "active" : ""}
                   onClick={() => setDisplaySection(item.key)}
                 >
@@ -2823,6 +2972,37 @@ export default function FacilityOperations({
                   </strong>
                 </div>
               </div>
+              {scopedOutputGroups.length > 0 && (
+                <section className="outputGroupMonitor">
+                  <div>
+                    <small>OUTPUT ROUTING</small>
+                    <b>Configured Output Groups</b>
+                  </div>
+                  <div>
+                    {scopedOutputGroups.map((group) => {
+                      const groupDeviceIds = stringArray(group.deviceIds);
+                      const online = devices.filter(
+                        (device) =>
+                          groupDeviceIds.includes(device.id) &&
+                          isOnline(device),
+                      ).length;
+                      return (
+                        <button
+                          key={group.id}
+                          type="button"
+                          onClick={() => setDisplaySection("Output Groups")}
+                        >
+                          <b>{group.name}</b>
+                          <span>
+                            {online}/{groupDeviceIds.length} online ·{" "}
+                            {group.sessionStatus || "Idle"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
               <section className="announcementQueue" aria-live="polite">
                 <div className="announcementQueueHeading">
                   <div>
@@ -3071,6 +3251,114 @@ export default function FacilityOperations({
                     </tbody>
                   </table>
                 </div>
+              )}
+            </article>
+          )}
+
+          {displaySection === "Output Groups" && (
+            <article className="card facilitySectionCard">
+              <div className="facilitySectionHeader">
+                <div>
+                  <small>SCREEN OUTPUT ROUTING</small>
+                  <h2>Output Groups</h2>
+                  <p>
+                    Kelompokkan beberapa display menjadi satu tujuan output.
+                    Tahap berikutnya, satu screen share dapat dikirim ke seluruh
+                    device di dalam group tanpa menghilangkan running text.
+                  </p>
+                </div>
+                <span className="scopeBadge">
+                  {scopedOutputGroups.length} group
+                </span>
+              </div>
+              {scopedOutputGroups.length ? (
+                <div className="outputGroupGrid">
+                  {scopedOutputGroups.map((group) => {
+                    const groupDevices = stringArray(group.deviceIds)
+                      .map((id) => devices.find((device) => device.id === id))
+                      .filter((device): device is DeviceRecord =>
+                        Boolean(device),
+                      );
+                    const onlineCount = groupDevices.filter(isOnline).length;
+                    return (
+                      <section className="outputGroupCard" key={group.id}>
+                        <header>
+                          <div>
+                            <span
+                              className={`statusDot state-${group.sessionStatus === "Sharing" ? "available" : "reserved"}`}
+                            />
+                            <div>
+                              <h3>{group.name}</h3>
+                              <small>
+                                {group.station} · {group.status}
+                              </small>
+                            </div>
+                          </div>
+                          <span className="scopeBadge">
+                            {group.sessionStatus || "Idle"}
+                          </span>
+                        </header>
+                        <p>{group.description || "No description."}</p>
+                        <div className="outputGroupSummary">
+                          <div>
+                            <span>Devices</span>
+                            <b>{groupDevices.length}</b>
+                          </div>
+                          <div>
+                            <span>Online</span>
+                            <b>{onlineCount}</b>
+                          </div>
+                          <div>
+                            <span>Source</span>
+                            <b>{group.activeSourceName || "Not sharing"}</b>
+                          </div>
+                        </div>
+                        <div className="outputGroupDevices">
+                          {groupDevices.length ? (
+                            groupDevices.map((device) => (
+                              <span key={device.id}>
+                                <i
+                                  className={`deviceStatusDot ${isOnline(device) ? "online" : "offline"}`}
+                                />
+                                {device.name} · {roomName(device.roomId)}
+                              </span>
+                            ))
+                          ) : (
+                            <small>No device assigned.</small>
+                          )}
+                        </div>
+                        <footer>
+                          <button
+                            type="button"
+                            disabled
+                            title="Live screen share tersedia pada tahap berikutnya"
+                          >
+                            Start Share — Next Stage
+                          </button>
+                          {canConfigure && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => openOutputGroup(group)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                className="danger"
+                                type="button"
+                                onClick={() => void deleteOutputGroup(group)}
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </footer>
+                      </section>
+                    );
+                  })}
+                </div>
+              ) : (
+                <EmptyState text="Belum ada Output Group. Buat Output A, B, atau C lalu pilih device yang akan menerima sumber layar yang sama." />
               )}
             </article>
           )}
@@ -3938,6 +4226,170 @@ export default function FacilityOperations({
         </div>
       )}
 
+      {showOutputGroupForm && (
+        <div
+          className="back"
+          onMouseDown={(event) =>
+            event.target === event.currentTarget &&
+            setShowOutputGroupForm(false)
+          }
+        >
+          <div className="modal outputGroupModal">
+            <div className="modalHead">
+              <div>
+                <small>SCREEN OUTPUT ROUTING</small>
+                <h2>
+                  {editingOutputGroup
+                    ? "Edit Output Group"
+                    : "New Output Group"}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowOutputGroupForm(false)}
+              >
+                ×
+              </button>
+            </div>
+            <form
+              className="form"
+              onSubmit={(event) => void saveOutputGroup(event)}
+            >
+              <label>
+                <span>Station</span>
+                <select
+                  value={outputGroupDraft.station}
+                  disabled={Boolean(editingOutputGroup) || !globalScope}
+                  onChange={(event) =>
+                    setOutputGroupDraft({
+                      ...outputGroupDraft,
+                      station: event.target.value,
+                      deviceIds: [],
+                    })
+                  }
+                >
+                  {activeStations.map((station) => (
+                    <option key={station.code} value={station.code}>
+                      {station.code} — {station.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Status</span>
+                <select
+                  value={outputGroupDraft.status}
+                  onChange={(event) =>
+                    setOutputGroupDraft({
+                      ...outputGroupDraft,
+                      status: event.target.value as "Active" | "Inactive",
+                    })
+                  }
+                >
+                  <option>Active</option>
+                  <option>Inactive</option>
+                </select>
+              </label>
+              <label className="full">
+                <span>Output Group Name</span>
+                <input
+                  value={outputGroupDraft.name}
+                  onChange={(event) =>
+                    setOutputGroupDraft({
+                      ...outputGroupDraft,
+                      name: event.target.value,
+                    })
+                  }
+                  placeholder="Output A — Main Lounge"
+                  required
+                />
+              </label>
+              <label className="full">
+                <span>Description</span>
+                <textarea
+                  value={outputGroupDraft.description}
+                  onChange={(event) =>
+                    setOutputGroupDraft({
+                      ...outputGroupDraft,
+                      description: event.target.value,
+                    })
+                  }
+                  placeholder="Layar utama area lounge dan gate information wall"
+                />
+              </label>
+              <fieldset className="full quickDevicePicker outputGroupPicker">
+                <legend>Assigned Devices</legend>
+                {devices.filter(
+                  (device) =>
+                    device.station === outputGroupDraft.station &&
+                    isDeviceApproved(device),
+                ).length ? (
+                  devices
+                    .filter(
+                      (device) =>
+                        device.station === outputGroupDraft.station &&
+                        isDeviceApproved(device),
+                    )
+                    .map((device) => (
+                      <label key={device.id}>
+                        <input
+                          type="checkbox"
+                          checked={outputGroupDraft.deviceIds.includes(
+                            device.id,
+                          )}
+                          onChange={(event) =>
+                            setOutputGroupDraft({
+                              ...outputGroupDraft,
+                              deviceIds: event.target.checked
+                                ? [...outputGroupDraft.deviceIds, device.id]
+                                : outputGroupDraft.deviceIds.filter(
+                                    (id) => id !== device.id,
+                                  ),
+                            })
+                          }
+                        />
+                        <span>
+                          <b>{device.name}</b>
+                          <small>
+                            {roomName(device.roomId)} ·{" "}
+                            {device.enrollmentStatus || "Not Enrolled"}
+                          </small>
+                        </span>
+                      </label>
+                    ))
+                ) : (
+                  <p>No approved device is available at this station.</p>
+                )}
+              </fieldset>
+              <div className="notice warn full">
+                <span>
+                  Satu device hanya dapat menerima satu live output pada waktu
+                  yang sama. Running text tetap dikelola sebagai overlay
+                  terpisah.
+                </span>
+              </div>
+              <div className="modalActions full">
+                <button
+                  type="button"
+                  onClick={() => setShowOutputGroupForm(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="primary"
+                  type="submit"
+                  disabled={
+                    savingOutputGroup || outputGroupDraft.deviceIds.length === 0
+                  }
+                >
+                  {savingOutputGroup ? "Saving..." : "Save Output Group"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {showQuickAnnouncement && (
         <div
           className="back"
@@ -3973,6 +4425,7 @@ export default function FacilityOperations({
                     setQuickAnnouncement({
                       ...quickAnnouncement,
                       station,
+                      outputGroupId: "",
                       flightId: "",
                       flightNumber: "",
                       route: "",
@@ -4163,6 +4616,44 @@ export default function FacilityOperations({
                   />
                 </label>
               )}
+              <label className="full">
+                <span>Output Group (optional)</span>
+                <select
+                  value={quickAnnouncement.outputGroupId}
+                  onChange={(event) => {
+                    const outputGroupId = event.target.value;
+                    const group = displayOutputGroups.find(
+                      (row) => row.id === outputGroupId,
+                    );
+                    setQuickAnnouncement({
+                      ...quickAnnouncement,
+                      outputGroupId,
+                      deviceIds: group
+                        ? stringArray(group.deviceIds).filter((id) =>
+                            devices.some(
+                              (device) =>
+                                device.id === id && isDeviceEnrolled(device),
+                            ),
+                          )
+                        : quickAnnouncement.deviceIds,
+                    });
+                  }}
+                >
+                  <option value="">Custom screen selection</option>
+                  {displayOutputGroups
+                    .filter(
+                      (group) =>
+                        group.station === quickAnnouncement.station &&
+                        group.status === "Active",
+                    )
+                    .map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name} · {stringArray(group.deviceIds).length}{" "}
+                        device
+                      </option>
+                    ))}
+                </select>
+              </label>
               <fieldset className="full quickDevicePicker">
                 <legend>Target Screens</legend>
                 {devices.filter(
@@ -4186,6 +4677,7 @@ export default function FacilityOperations({
                           onChange={(event) =>
                             setQuickAnnouncement({
                               ...quickAnnouncement,
+                              outputGroupId: "",
                               deviceIds: event.target.checked
                                 ? [...quickAnnouncement.deviceIds, device.id]
                                 : quickAnnouncement.deviceIds.filter(

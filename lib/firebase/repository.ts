@@ -38,6 +38,7 @@ export type GaesCollection =
   | "displayCommands"
   | "displayAnnouncementTemplates"
   | "displayAnnouncements"
+  | "displayOutputGroups"
   | "displayActivityLogs"
   | "displayPilotTests"
   | "displayRolloutApprovals"
@@ -188,6 +189,7 @@ export function subscribeStationCollection<T>(
     | "displayCommands"
     | "displayAnnouncementTemplates"
     | "displayAnnouncements"
+    | "displayOutputGroups"
     | "displayActivityLogs"
     | "displayPilotTests"
     | "displayRolloutApprovals",

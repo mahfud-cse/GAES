@@ -538,3 +538,28 @@ test("accepts safe local demo media and preserves tab contrast", async () => {
     /button\s+:where\(span, b, strong, small, em, svg\)\s*\{\s*color: inherit;/,
   );
 });
+
+test("standardizes semantic tabs and creates output group routing", async () => {
+  const [module, page, css, backend, repository, rules] = await Promise.all([
+    read("../app/facility-operations.tsx"),
+    read("../app/page.tsx"),
+    read("../app/globals.css"),
+    read("../netlify/functions/manage-display-device.mjs"),
+    read("../lib/firebase/repository.ts"),
+    read("../firestore.rules"),
+  ]);
+  assert.match(module, /role="tablist"/);
+  assert.match(module, /role="tab"/);
+  assert.match(page, /aria-selected=\{value === item\}/);
+  assert.match(css, /Canonical tabs: every page/);
+  assert.match(css, /\[aria-selected="true"\]/);
+  assert.match(css, /fill: currentColor/);
+  assert.match(module, /type DisplayOutputGroup/);
+  assert.match(module, /Output Groups/);
+  assert.match(module, /Output Group \(optional\)/);
+  assert.match(backend, /async function saveOutputGroup/);
+  assert.match(backend, /async function deleteOutputGroup/);
+  assert.match(backend, /Device sudah digunakan oleh Output Group/);
+  assert.match(repository, /displayOutputGroups/);
+  assert.match(rules, /match \/displayOutputGroups\/\{id\}/);
+});

@@ -9574,7 +9574,11 @@ export default function Home() {
                   operational relationships, formulas, API mapping, reports, and
                   audit data remain available.
                 </div>
-                <div className="subTabs portalTabs">
+                <div
+                  className="subTabs portalTabs"
+                  role="tablist"
+                  aria-label="Portal management sections"
+                >
                   {[
                     "Dashboard Manager",
                     "Menu & Table Manager",
@@ -9583,6 +9587,8 @@ export default function Home() {
                   ].map((section) => (
                     <button
                       key={section}
+                      role="tab"
+                      aria-selected={portalSection === section}
                       className={portalSection === section ? "selected" : ""}
                       onClick={() => setPortalSection(section)}
                     >
@@ -13655,10 +13661,12 @@ function SubTabs({
   setValue: (v: string) => void;
 }) {
   return (
-    <div className="subTabs">
+    <div className="subTabs" role="tablist">
       {items.map((item) => (
         <button
           key={item}
+          role="tab"
+          aria-selected={value === item}
           className={value === item ? "selected" : ""}
           onClick={() => setValue(item)}
         >

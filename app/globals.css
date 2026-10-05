@@ -446,7 +446,7 @@
   border-radius: var(--radius-md);
   display: grid;
   gap: 4px;
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   padding: 4px;
 }
 
@@ -676,6 +676,46 @@
   font-size: 22px;
 }
 
+.outputGroupMonitor {
+  align-items: center;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(170px, 0.35fr) minmax(0, 1.65fr);
+  margin-bottom: 16px;
+  padding: 12px;
+}
+
+.outputGroupMonitor > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.outputGroupMonitor > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.outputGroupMonitor button {
+  align-items: flex-start;
+  background: #fff;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+}
+
+.outputGroupMonitor button span {
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.outputGroupMonitor button:hover span {
+  color: inherit;
+}
+
 .announcementQueue {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -764,6 +804,102 @@
 
 .quickAnnouncementModal {
   width: min(820px, calc(100vw - 24px));
+}
+
+.outputGroupModal {
+  width: min(780px, calc(100vw - 24px));
+}
+
+.outputGroupGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.outputGroupCard {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: 12px;
+  padding: 15px;
+}
+
+.outputGroupCard > header,
+.outputGroupCard > header > div,
+.outputGroupCard > footer {
+  align-items: center;
+  display: flex;
+  gap: 9px;
+  justify-content: space-between;
+}
+
+.outputGroupCard > header > div {
+  justify-content: flex-start;
+}
+
+.outputGroupCard h3,
+.outputGroupCard p {
+  margin: 0;
+}
+
+.outputGroupCard p,
+.outputGroupCard small {
+  color: var(--color-text-muted);
+}
+
+.outputGroupSummary {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.outputGroupSummary > div {
+  background: var(--color-surface-soft);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 3px;
+  padding: 9px;
+}
+
+.outputGroupSummary span {
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.outputGroupSummary b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.outputGroupDevices {
+  display: grid;
+  gap: 6px;
+}
+
+.outputGroupDevices > span {
+  align-items: center;
+  display: flex;
+  font-size: 11px;
+  gap: 7px;
+}
+
+.deviceStatusDot {
+  background: var(--color-danger-700);
+  border-radius: 50%;
+  flex: 0 0 8px;
+  height: 8px;
+  width: 8px;
+}
+
+.deviceStatusDot.online {
+  background: #216e39;
+}
+
+.outputGroupCard > footer {
+  border-top: 1px solid var(--color-border);
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  padding-top: 11px;
 }
 
 .quickDevicePicker {
@@ -1522,6 +1658,9 @@
   .announcementQueueItem {
     align-items: flex-start;
     flex-direction: column;
+  }
+  .outputGroupMonitor {
+    grid-template-columns: 1fr;
   }
   .announcementQueueMeta {
     justify-items: start;
@@ -5536,4 +5675,54 @@ td small {
   .subTabs {
     margin-right: -13px;
   }
+}
+
+/* Canonical tabs: every page uses the same readable hover and active state. */
+:where(
+    [role="tablist"],
+    .subTabs,
+    .facilityTabs,
+    .displaySubTabs,
+    .bookingViewSwitch
+  )
+  > :where(button, [role="tab"]):not(:disabled):is(:hover, :focus-visible) {
+  background: var(--color-navy-800);
+  border-color: var(--color-navy-800);
+  color: #fff;
+  transform: none;
+}
+
+:where(
+    [role="tablist"],
+    .subTabs,
+    .facilityTabs,
+    .displaySubTabs,
+    .bookingViewSwitch
+  )
+  > :where(button, [role="tab"])[aria-selected="true"]:not(:disabled),
+:where(
+    [role="tablist"],
+    .subTabs,
+    .facilityTabs,
+    .displaySubTabs,
+    .bookingViewSwitch
+  )
+  > :where(button, [role="tab"]):is(.active, .selected):not(:disabled) {
+  background: var(--color-navy-900);
+  border-color: var(--color-navy-900);
+  color: #fff;
+}
+
+:where(
+    [role="tablist"],
+    .subTabs,
+    .facilityTabs,
+    .displaySubTabs,
+    .bookingViewSwitch
+  )
+  > :where(button, [role="tab"])
+  :where(span, b, strong, small, em, i, svg) {
+  color: inherit;
+  fill: currentColor;
+  stroke: currentColor;
 }
