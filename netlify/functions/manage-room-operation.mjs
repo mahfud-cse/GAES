@@ -5,7 +5,6 @@ import { buildSlots } from "./manage-room-booking.mjs";
 const USER_ROLES = new Set([
   "Super Admin",
   "Admin",
-  "HO Admin",
   "BO Admin",
   "Lounge Officer",
   "Lounge Manager",
@@ -14,7 +13,6 @@ const GLOBAL_ROLES = new Set(["Super Admin", "Admin", "HO Admin"]);
 const SUPERVISOR_ROLES = new Set([
   "Super Admin",
   "Admin",
-  "HO Admin",
   "BO Admin",
   "Lounge Manager",
 ]);
@@ -27,7 +25,7 @@ function requireOperator(actor) {
 
 function requireSupervisor(actor) {
   if (!SUPERVISOR_ROLES.has(actor.profile.role))
-    throw httpError(403, "Action memerlukan Lounge Manager, BO Admin, atau Admin HO.");
+    throw httpError(403, "Action memerlukan Lounge Manager, BO Admin, atau Admin.");
 }
 
 function requireStation(actor, station) {

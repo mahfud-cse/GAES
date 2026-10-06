@@ -636,3 +636,69 @@ test("caches compatible player media and reports offline readiness", async () =>
   assert.match(module, /Offline Cache/);
   assert.match(netlify, /worker-src 'self'/);
 });
+
+test("keeps interactive hover readable and Pilot feedback inside its modal", async () => {
+  const [module, css] = await Promise.all([
+    read("../app/facility-operations.tsx"),
+    read("../app/globals.css"),
+  ]);
+  assert.match(css, /\.notificationList button:not\(:disabled\):is\(:hover, :focus-visible\)/);
+  assert.match(css, /\.pilotChecklist > button:not\(:disabled\):is\(:hover, :focus-visible\)/);
+  assert.match(css, /:where\(i, b, span, small, strong, \.pilotStatus\)/);
+  assert.match(module, /pilotFeedback/);
+  assert.match(module, /role="alert"/);
+  assert.match(module, /Save Check Result/);
+});
+
+test("targets notifications, routes tasks, and records read audit", async () => {
+  const [page, api, notificationBackend, bookingBackend, visitorBackend] =
+    await Promise.all([
+      read("../app/page.tsx"),
+      read("../lib/firebase/api.ts"),
+      read("../netlify/functions/manage-notification.mjs"),
+      read("../netlify/functions/manage-room-booking.mjs"),
+      read("../netlify/functions/create-visitor.mjs"),
+    ]);
+  assert.match(api, /manageNotification/);
+  assert.match(notificationBackend, /notification\.userId !== actor\.decoded\.uid/);
+  assert.match(notificationBackend, /NOTIFICATION_OPENED/);
+  assert.match(page, /ROOM_BOOKING_APPROVAL/);
+  assert.match(page, /VISITOR_VERIFICATION/);
+  assert.match(page, /portalNotifications\.length/);
+  assert.match(bookingBackend, /\["BO Admin", "Lounge Manager"\]/);
+  assert.match(visitorBackend, /targetRoles/);
+});
+
+test("enforces scoped booking privacy and exports facility analytics", async () => {
+  const [module, backend, operationBackend, rules, visitorBackend, css] =
+    await Promise.all([
+      read("../app/facility-operations.tsx"),
+      read("../netlify/functions/manage-room-booking.mjs"),
+      read("../netlify/functions/manage-room-operation.mjs"),
+      read("../firestore.rules"),
+      read("../netlify/functions/manage-visitor.mjs"),
+      read("../app/globals.css"),
+    ]);
+  assert.match(backend, /function sanitizedBooking/);
+  assert.match(backend, /privacy: "Masked"/);
+  assert.match(backend, /UPDATE_SUBMITTED_ROOM_BOOKING/);
+  assert.match(backend, /Perubahan berbenturan dengan booking lain/);
+  const approverRoles = backend.match(
+    /const APPROVER_ROLES = new Set\(\[[\s\S]*?\]\);/,
+  )?.[0];
+  const supervisorRoles = operationBackend.match(
+    /const SUPERVISOR_ROLES = new Set\(\[[\s\S]*?\]\);/,
+  )?.[0];
+  assert.ok(approverRoles);
+  assert.ok(supervisorRoles);
+  assert.doesNotMatch(approverRoles, /HO Admin/);
+  assert.doesNotMatch(supervisorRoles, /HO Admin/);
+  assert.match(rules, /match \/roomBookings\/\{id\}[\s\S]*?Super Admin','Admin','BO Admin','Lounge Manager/);
+  assert.match(visitorBackend, /UPDATE_VISITOR/);
+  assert.match(visitorBackend, /DELETE_VISITOR/);
+  assert.match(module, /Planned vs Actual Usage/);
+  assert.match(module, /downloadFacilityReport/);
+  assert.match(module, /Room Usage XLSX/);
+  assert.match(module, /TV &amp; Signage XLSX/);
+  assert.match(css, /\.facilityUsageChart/);
+});

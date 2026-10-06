@@ -117,11 +117,19 @@ export const syncSourceLounges = (user: User) =>
 export const createVisitor = (user: User, visitor: unknown) =>
   call<{ id: string; lateScan: boolean }>("create-visitor", user, { visitor });
 
+export const manageVisitor = (user: User, payload: Record<string, unknown>) =>
+  call<{ id: string; status: string }>("manage-visitor", user, payload);
+
 export const manageRoomBooking = (
   user: User,
   payload: Record<string, unknown>,
 ) =>
-  call<{ id?: string; ids?: string[]; status: string }>(
+  call<{
+    id?: string;
+    ids?: string[];
+    status?: string;
+    bookings?: Array<Record<string, unknown>>;
+  }>(
     "manage-room-booking",
     user,
     payload,
@@ -170,3 +178,8 @@ export const manageDisplayPilot = (
   payload: Record<string, unknown>,
 ) =>
   call<{ id: string; status: string }>("manage-display-pilot", user, payload);
+
+export const manageNotification = (
+  user: User,
+  payload: Record<string, unknown>,
+) => call<{ id: string; status: string }>("manage-notification", user, payload);

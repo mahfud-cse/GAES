@@ -13,7 +13,12 @@ const GLOBAL_ROLES = new Set(["Super Admin", "Admin", "HO Admin"]);
 const APPROVER_ROLES = new Set([
   "Super Admin",
   "Admin",
-  "HO Admin",
+  "BO Admin",
+  "Lounge Manager",
+]);
+const DETAIL_ROLES = new Set([
+  "Super Admin",
+  "Admin",
   "BO Admin",
   "Lounge Manager",
 ]);
@@ -36,6 +41,56 @@ function requireFacilityUser(actor) {
 function requireStation(actor, station) {
   if (!GLOBAL_ROLES.has(actor.profile.role) && actor.profile.station !== station)
     throw httpError(403, "Station booking berada di luar scope akun.");
+}
+
+function sanitizedBooking(id, booking, actor) {
+  const canSeeDetail =
+    DETAIL_ROLES.has(actor.profile.role) ||
+    booking.createdBy === actor.decoded.uid;
+  if (canSeeDetail) return { id, ...booking, privacy: "Detail" };
+  return {
+    id,
+    station: booking.station,
+    roomId: booking.roomId,
+    roomName: booking.roomName,
+    title: "Room in use",
+    purpose: "Operational room usage",
+    organizer: "Restricted",
+    contact: "",
+    attendees: Number(booking.attendees) || 0,
+    startAt: booking.startAt,
+    endAt: booking.endAt,
+    localDate: booking.localDate,
+    startTime: booking.startTime,
+    endTime: booking.endTime,
+    stationTimeZone: booking.stationTimeZone,
+    bufferBeforeMinutes: Number(booking.bufferBeforeMinutes) || 0,
+    bufferAfterMinutes: Number(booking.bufferAfterMinutes) || 0,
+    notes: "",
+    visitorReference: "",
+    status: booking.status,
+    recurrenceGroupId: booking.recurrenceGroupId || "",
+    createdBy: "",
+    createdByName: "Restricted",
+    checkedInAt: booking.checkedInAt || null,
+    checkedOutAt: booking.checkedOutAt || null,
+    privacy: "Masked",
+  };
+}
+
+async function listBookings(db, actor, input) {
+  const requestedStation = text(input.station, 12).toUpperCase();
+  let query = db.collection("roomBookings");
+  if (!GLOBAL_ROLES.has(actor.profile.role))
+    query = query.where("station", "==", actor.profile.station);
+  else if (requestedStation && requestedStation !== "ALL")
+    query = query.where("station", "==", requestedStation);
+  const snapshot = await query.limit(1000).get();
+  return {
+    bookings: snapshot.docs.map((row) =>
+      sanitizedBooking(row.id, row.data(), actor),
+    ),
+  };
 }
 
 export function parseRange(input) {
@@ -135,10 +190,12 @@ async function notifyApprovers(db, booking, bookingId, actorId) {
     const profile = user.data();
     if (
       user.id !== actorId &&
-      APPROVER_ROLES.has(profile.role) &&
-      (GLOBAL_ROLES.has(profile.role) || profile.station === booking.station)
+      ["BO Admin", "Lounge Manager"].includes(profile.role) &&
+      profile.station === booking.station
     ) {
-      batch.set(db.collection("notifications").doc(), {
+      const notification = db.collection("notifications").doc();
+      batch.set(notification, {
+        id: notification.id,
         userId: user.id,
         type: "ROOM_BOOKING_APPROVAL",
         title: "Room Booking Approval",
@@ -150,12 +207,26 @@ async function notifyApprovers(db, booking, bookingId, actorId) {
       notificationCount += 1;
     }
   });
-  if (notificationCount) await batch.commit();
+  if (notificationCount) {
+    const activity = db.collection("roomActivityLogs").doc();
+    batch.set(activity, {
+      id: activity.id,
+      action: "ROOM_BOOKING_NOTIFICATIONS_CREATED",
+      station: booking.station,
+      bookingId,
+      actorId,
+      recipientCount: notificationCount,
+      createdAt: new Date(),
+    });
+    await batch.commit();
+  }
 }
 
 async function notifyRequester(db, booking, bookingId, status) {
   if (!booking.createdBy) return;
-  await db.collection("notifications").add({
+  const notification = db.collection("notifications").doc();
+  await notification.set({
+    id: notification.id,
     userId: booking.createdBy,
     type: "ROOM_BOOKING_STATUS",
     title: `Room Booking ${status}`,
@@ -288,9 +359,15 @@ async function createBookings(db, actor, input) {
 }
 
 async function updateDraft(db, actor, input, current, reference) {
-  if (current.status !== "Draft") throw httpError(409, "Hanya Draft yang dapat diubah.");
-  if (current.createdBy !== actor.decoded.uid && !GLOBAL_ROLES.has(actor.profile.role))
-    throw httpError(403, "Draft hanya dapat diubah oleh pembuat atau Admin HO.");
+  if (!["Draft", "Requested", "Approved"].includes(current.status))
+    throw httpError(409, `Booking berstatus ${current.status} tidak dapat diubah.`);
+  const isManager = DETAIL_ROLES.has(actor.profile.role);
+  if (current.status === "Draft") {
+    if (current.createdBy !== actor.decoded.uid && !isManager)
+      throw httpError(403, "Draft hanya dapat diubah oleh pembuat, Lounge Manager, BO Admin, atau Admin.");
+  } else if (!isManager) {
+    throw httpError(403, "Booking submitted hanya dapat diubah Lounge Manager, BO Admin, atau Admin.");
+  }
   const roomSnapshot = await db.collection("rooms").doc(text(input.roomId || current.roomId)).get();
   if (!roomSnapshot.exists) throw httpError(404, "Room tidak ditemukan.");
   const room = { id: roomSnapshot.id, ...roomSnapshot.data() };
@@ -307,15 +384,78 @@ async function updateDraft(db, actor, input, current, reference) {
       room,
       range.startAt,
       range.endAt,
-      "Draft",
+      current.status,
       current.recurrenceGroupId || "",
     ),
     createdBy: current.createdBy,
     createdByName: current.createdByName,
   };
-  await reference.set({ ...booking, updatedAt: new Date(), updatedBy: actor.decoded.uid }, { merge: true });
-  await db.collection("auditLogs").add({ action: "UPDATE_ROOM_BOOKING_DRAFT", targetId: reference.id, actorId: actor.decoded.uid, createdAt: new Date() });
-  return { id: reference.id, status: "Draft" };
+  if (current.status === "Draft") {
+    await reference.set(
+      { ...booking, updatedAt: new Date(), updatedBy: actor.decoded.uid },
+      { merge: true },
+    );
+  } else {
+    const slots = buildSlots(
+      room.id,
+      range.startAt,
+      range.endAt,
+      integer(input.bufferBeforeMinutes, 0, 240, 0),
+      integer(input.bufferAfterMinutes, 0, 240, 0),
+    );
+    await db.runTransaction(async (transaction) => {
+      const slotRefs = slots.map((slot) =>
+        db.collection("roomBookingSlots").doc(slot.id),
+      );
+      const [latest, ...slotSnapshots] = await Promise.all([
+        transaction.get(reference),
+        ...slotRefs.map((ref) => transaction.get(ref)),
+      ]);
+      if (!latest.exists || latest.data()?.status !== current.status)
+        throw httpError(409, "Status booking berubah. Muat ulang sebelum mengedit.");
+      if (
+        slotSnapshots.some(
+          (snapshot) =>
+            snapshot.exists && snapshot.data()?.bookingId !== reference.id,
+        )
+      )
+        throw httpError(409, "Perubahan berbenturan dengan booking lain.", "ROOM_BOOKING_CONFLICT");
+      const nextSlotIds = new Set(slots.map((slot) => slot.id));
+      (latest.data()?.slotIds || [])
+        .filter((id) => !nextSlotIds.has(id))
+        .forEach((id) =>
+          transaction.delete(db.collection("roomBookingSlots").doc(id)),
+        );
+      slots.forEach((slot, index) => {
+        if (!slotSnapshots[index].exists)
+          transaction.create(slotRefs[index], {
+            bookingId: reference.id,
+            roomId: room.id,
+            station: room.station,
+            startsAt: slot.startsAt,
+            createdAt: new Date(),
+          });
+      });
+      transaction.set(
+        reference,
+        {
+          ...booking,
+          slotIds: slots.map((slot) => slot.id),
+          updatedAt: new Date(),
+          updatedBy: actor.decoded.uid,
+        },
+        { merge: true },
+      );
+    });
+  }
+  await db.collection("auditLogs").add({
+    action: current.status === "Draft" ? "UPDATE_ROOM_BOOKING_DRAFT" : "UPDATE_SUBMITTED_ROOM_BOOKING",
+    targetId: reference.id,
+    actorId: actor.decoded.uid,
+    fromStatus: current.status,
+    createdAt: new Date(),
+  });
+  return { id: reference.id, status: current.status };
 }
 
 async function changeStatus(db, actor, action, current, reference) {
@@ -334,8 +474,12 @@ async function changeStatus(db, actor, action, current, reference) {
     throw httpError(409, `Booking berstatus ${current.status} tidak dapat diproses dengan action ${action}.`);
   if (["approve", "reject"].includes(action) && !isApprover)
     throw httpError(403, "Role tidak memiliki kewenangan approval.");
-  if (action === "cancel" && !isOwner && !isApprover)
-    throw httpError(403, "Booking hanya dapat dibatalkan pembuat atau approver.");
+  if (
+    action === "cancel" &&
+    !isApprover &&
+    !(isOwner && actor.profile.role !== "Lounge Officer")
+  )
+    throw httpError(403, "Booking yang sudah disubmit hanya dapat dibatalkan Lounge Manager, BO Admin, atau Admin.");
   if (["reject", "cancel"].includes(action) && !text(current.closeReason, 500))
     throw httpError(400, "Alasan penolakan atau pembatalan wajib diisi.");
 
@@ -412,6 +556,7 @@ const handler = async (request) => {
     const input = await request.json();
     const action = text(input.action || "create", 20).toLowerCase();
     const db = targetDb();
+    if (action === "list") return json(200, await listBookings(db, actor, input));
     if (action === "create") return json(201, await createBookings(db, actor, input.booking || {}));
 
     const id = text(input.id, 160);
