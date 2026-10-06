@@ -8,6 +8,8 @@ const text = (value, max = 500) =>
 const isApprovedStatus = (value) =>
   ["approved", "disetujui"].includes(text(value, 40).toLowerCase());
 const sha = (value) => createHash("sha256").update(value).digest("hex");
+const shareSignalId = (sessionId, deviceId) =>
+  sha(`${sessionId}|${deviceId}`).slice(0, 48);
 const noStoreJson = (status, value) =>
   new Response(JSON.stringify(value), {
     status,
@@ -279,6 +281,58 @@ async function announcementPlan(db, device) {
   );
 }
 
+async function sharePlan(db, device) {
+  const sessionId = text(device.activeShareSessionId, 160);
+  if (!sessionId) return null;
+  const [session, signal] = await Promise.all([
+    db.collection("displayShareSessions").doc(sessionId).get(),
+    db
+      .collection("displayShareSignals")
+      .doc(shareSignalId(sessionId, device.id))
+      .get(),
+  ]);
+  if (
+    !session.exists ||
+    session.data()?.status !== "Sharing" ||
+    !session.data()?.deviceIds?.includes(device.id)
+  )
+    return null;
+  return {
+    sessionId,
+    outputGroupId: text(session.data()?.outputGroupId, 160),
+    outputGroupName: text(session.data()?.outputGroupName, 120),
+    sourceName: text(session.data()?.sourceName, 160),
+    offerSdp: text(signal.data()?.offerSdp, 120_000),
+    signalStatus: text(signal.data()?.status, 40) || "Waiting",
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  };
+}
+
+async function submitShareAnswer(db, input) {
+  const device = await authenticateDevice(db, input);
+  const sessionId = text(input.sessionId, 160);
+  const answerSdp = text(input.answerSdp, 120_000);
+  if (!sessionId || !answerSdp || device.activeShareSessionId !== sessionId)
+    throw httpError(409, "Screen share session tidak sesuai dengan Player.");
+  const signalRef = db
+    .collection("displayShareSignals")
+    .doc(shareSignalId(sessionId, device.id));
+  const signal = await signalRef.get();
+  if (
+    !signal.exists ||
+    signal.data()?.deviceId !== device.id ||
+    !signal.data()?.offerSdp
+  )
+    throw httpError(409, "WebRTC offer untuk Player belum tersedia.");
+  await signalRef.update({
+    answerSdp,
+    status: "Answer",
+    answeredAt: new Date(),
+    updatedAt: new Date(),
+  });
+  return { sessionId, status: "Answer" };
+}
+
 async function acknowledge(db, device, acknowledgments) {
   const rows = Array.isArray(acknowledgments)
     ? acknowledgments.slice(0, 20)
@@ -417,6 +471,7 @@ async function heartbeat(db, input) {
     },
     schedule: await schedulePlan(db, device),
     announcements: await announcementPlan(db, device),
+    share: await sharePlan(db, device),
     commands,
   };
 }
@@ -435,6 +490,8 @@ const handler = async (request) => {
       return noStoreJson(200, await claim(db, request, input));
     if (action === "heartbeat")
       return noStoreJson(200, await heartbeat(db, input));
+    if (action === "shareanswer")
+      return noStoreJson(200, await submitShareAnswer(db, input));
     throw httpError(400, "Player action tidak valid.");
   } catch (error) {
     const response = failure(error);

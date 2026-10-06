@@ -41,9 +41,19 @@ type Announcement = {
   flightNumber: string;
   expiresAt: string;
 };
+type SharePlan = {
+  sessionId: string;
+  outputGroupId: string;
+  outputGroupName: string;
+  sourceName: string;
+  offerSdp: string;
+  signalStatus: string;
+  iceServers: RTCIceServer[];
+};
 type HeartbeatResponse = {
   schedule?: Playback | null;
   announcements?: Announcement[];
+  share?: SharePlan | null;
   commands?: Command[];
   device?: { name: string; station: string };
 };
@@ -56,7 +66,21 @@ type Ack = {
 const CREDENTIAL_KEY = "gaes-display-player-credential-v1";
 const CACHE_KEY = "gaes-display-player-cache-v1";
 const PROCESSED_KEY = "gaes-display-player-processed-v1";
-const VERSION = "web-player-1.0.0";
+const VERSION = "web-player-1.1.0";
+
+function waitForIceGathering(peer: RTCPeerConnection) {
+  if (peer.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const timeout = window.setTimeout(resolve, 5000);
+    const onChange = () => {
+      if (peer.iceGatheringState !== "complete") return;
+      window.clearTimeout(timeout);
+      peer.removeEventListener("icegatheringstatechange", onChange);
+      resolve();
+    };
+    peer.addEventListener("icegatheringstatechange", onChange);
+  });
+}
 
 class PlayerRequestError extends Error {
   status: number;
@@ -100,6 +124,9 @@ export default function DisplayPlayerPage() {
   const [overlayText, setOverlayText] = useState("");
   const [tickerCycle, setTickerCycle] = useState(0);
   const [fullscreenActive, setFullscreenActive] = useState(false);
+  const [shareStream, setShareStream] = useState<MediaStream | null>(null);
+  const [shareSourceName, setShareSourceName] = useState("");
+  const [shareConnection, setShareConnection] = useState("Idle");
   const [paused, setPaused] = useState(false);
   const [online, setOnline] = useState(true);
   const [lastError, setLastError] = useState("");
@@ -114,6 +141,8 @@ export default function DisplayPlayerPage() {
   const announcementQueue = useRef<Announcement[]>([]);
   const announcementIndex = useRef(0);
   const scheduledOverlay = useRef("");
+  const sharePeer = useRef<RTCPeerConnection | null>(null);
+  const shareSessionId = useRef("");
 
   const clearEnrollment = useCallback((reason = "") => {
     localStorage.removeItem(CREDENTIAL_KEY);
@@ -128,6 +157,12 @@ export default function DisplayPlayerPage() {
     manualOverlay.current = null;
     announcementQueue.current = [];
     stoppedUntil.current = "";
+    sharePeer.current?.close();
+    sharePeer.current = null;
+    shareSessionId.current = "";
+    setShareStream(null);
+    setShareSourceName("");
+    setShareConnection("Idle");
   }, []);
 
   useEffect(() => {
@@ -251,6 +286,70 @@ export default function DisplayPlayerPage() {
     );
   }, []);
 
+  const closeShare = useCallback(() => {
+    sharePeer.current?.close();
+    sharePeer.current = null;
+    shareSessionId.current = "";
+    setShareStream(null);
+    setShareSourceName("");
+    setShareConnection("Idle");
+  }, []);
+
+  const handleShare = useCallback(
+    async (share: SharePlan | null | undefined) => {
+      if (!share) {
+        if (shareSessionId.current) closeShare();
+        return;
+      }
+      if (!share.offerSdp) {
+        setShareSourceName(share.sourceName);
+        setShareConnection("Waiting for operator");
+        return;
+      }
+      if (shareSessionId.current === share.sessionId && sharePeer.current)
+        return;
+      closeShare();
+      const peer = new RTCPeerConnection({ iceServers: share.iceServers });
+      sharePeer.current = peer;
+      shareSessionId.current = share.sessionId;
+      setShareSourceName(share.sourceName);
+      setShareConnection("Connecting");
+      peer.ontrack = (event) => {
+        const stream = event.streams[0];
+        if (stream) setShareStream(stream);
+      };
+      peer.onconnectionstatechange = () => {
+        setShareConnection(peer.connectionState);
+        if (["failed", "closed"].includes(peer.connectionState))
+          setShareStream(null);
+      };
+      try {
+        await peer.setRemoteDescription(
+          JSON.parse(share.offerSdp) as RTCSessionDescriptionInit,
+        );
+        const answer = await peer.createAnswer();
+        await peer.setLocalDescription(answer);
+        await waitForIceGathering(peer);
+        if (!peer.localDescription)
+          throw new Error("WebRTC answer unavailable.");
+        await playerCall({
+          action: "shareanswer",
+          ...credential,
+          sessionId: share.sessionId,
+          answerSdp: JSON.stringify(peer.localDescription),
+        });
+      } catch (error) {
+        setShareConnection("Error");
+        setLastError(
+          error instanceof Error ? error.message : "Screen share failed.",
+        );
+      }
+    },
+    [closeShare, credential],
+  );
+
+  useEffect(() => () => closeShare(), [closeShare]);
+
   const heartbeat = useCallback(async () => {
     if (!credential) return;
     const sentAcks = [...acks.current];
@@ -273,15 +372,17 @@ export default function DisplayPlayerPage() {
           lastError,
           visibilityState: document.visibilityState,
           fullscreen: Boolean(document.fullscreenElement),
-          playbackMode: stoppedUntil.current
-            ? "Standby Override"
-            : manualOverride.current
-              ? "Manual Override"
-              : playback?.source === "Schedule"
-                ? "Schedule"
-                : playback
-                  ? "Channel"
-                  : "Standby",
+          playbackMode: shareStream
+            ? "Screen Share"
+            : stoppedUntil.current
+              ? "Standby Override"
+              : manualOverride.current
+                ? "Manual Override"
+                : playback?.source === "Schedule"
+                  ? "Schedule"
+                  : playback
+                    ? "Channel"
+                    : "Standby",
           overrideUntil:
             stoppedUntil.current || manualOverride.current?.until || "",
           activeAnnouncementId:
@@ -299,6 +400,7 @@ export default function DisplayPlayerPage() {
       setLastHeartbeat(new Date().toISOString());
       setLastError("");
       executeCommands(result.commands || []);
+      await handleShare(result.share);
       const override = manualOverride.current;
       if (override && Date.parse(override.until) <= Date.now())
         manualOverride.current = null;
@@ -367,10 +469,12 @@ export default function DisplayPlayerPage() {
     clearEnrollment,
     credential,
     executeCommands,
+    handleShare,
     itemIndex,
     lastError,
     overlayText,
     playback,
+    shareStream,
   ]);
 
   useEffect(() => {
@@ -547,6 +651,17 @@ export default function DisplayPlayerPage() {
             alt={current.title}
           />
         )}
+        {shareStream && (
+          <video
+            className="playerMedia playerShareMedia"
+            ref={(node) => {
+              if (node && node.srcObject !== shareStream)
+                node.srcObject = shareStream;
+            }}
+            autoPlay
+            playsInline
+          />
+        )}
         {current?.contentType === "Video" && (
           <video
             className="playerMedia"
@@ -590,7 +705,10 @@ export default function DisplayPlayerPage() {
           {online ? "Online" : "Offline cache"}
         </span>
         <b>{credential.name}</b>
-        <span>{current?.title || "Standby"}</span>
+        <span>
+          {shareStream ? shareSourceName : current?.title || "Standby"}
+        </span>
+        {shareConnection !== "Idle" && <small>Share: {shareConnection}</small>}
         <small>{fullscreenActive ? "Fullscreen" : "Windowed"}</small>
         <small>
           {lastHeartbeat

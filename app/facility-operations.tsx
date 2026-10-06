@@ -1,6 +1,13 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { User } from "firebase/auth";
 import {
   manageDisplayContent,
@@ -83,7 +90,12 @@ type DeviceRecord = {
   visibilityState?: "Visible" | "Hidden";
   fullscreen?: boolean;
   playbackMode?:
-    "Schedule" | "Manual Override" | "Standby Override" | "Channel" | "Standby";
+    | "Schedule"
+    | "Manual Override"
+    | "Standby Override"
+    | "Screen Share"
+    | "Channel"
+    | "Standby";
   overrideUntil?: string;
   activeAnnouncementId?: string;
   viewport?: { width?: number; height?: number; pixelRatio?: number };
@@ -116,6 +128,7 @@ type DisplayOutputGroup = {
   status: "Active" | "Inactive";
   sessionStatus?: "Idle" | "Ready" | "Sharing" | "Error";
   activeSourceName?: string;
+  activeShareSessionId?: string;
   updatedAt?: unknown;
 };
 type DisplaySchedule = {
@@ -514,6 +527,20 @@ function localToday() {
   return local.toISOString().slice(0, 10);
 }
 
+function waitForPeerIce(peer: RTCPeerConnection) {
+  if (peer.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const timeout = window.setTimeout(resolve, 5000);
+    const onChange = () => {
+      if (peer.iceGatheringState !== "complete") return;
+      window.clearTimeout(timeout);
+      peer.removeEventListener("icegatheringstatechange", onChange);
+      resolve();
+    };
+    peer.addEventListener("icegatheringstatechange", onChange);
+  });
+}
+
 const EMPTY_CONTENT: Omit<DisplayContent, "id"> = {
   title: "",
   contentType: "Live TV",
@@ -795,6 +822,15 @@ export default function FacilityOperations({
   );
   const [showOutputGroupForm, setShowOutputGroupForm] = useState(false);
   const [savingOutputGroup, setSavingOutputGroup] = useState(false);
+  const [shareGroup, setShareGroup] = useState<DisplayOutputGroup | null>(null);
+  const [shareSourceName, setShareSourceName] = useState("Operator Screen");
+  const [shareStream, setShareStream] = useState<MediaStream | null>(null);
+  const [shareSessionId, setShareSessionId] = useState("");
+  const [shareStarting, setShareStarting] = useState(false);
+  const [shareDeviceStates, setShareDeviceStates] = useState<
+    Record<string, string>
+  >({});
+  const sharePeers = useRef<Map<string, RTCPeerConnection>>(new Map());
   const [displayDialog, setDisplayDialog] = useState<
     "content" | "channel" | "schedule" | null
   >(null);
@@ -969,6 +1005,72 @@ export default function FacilityOperations({
     ];
     return () => stops.forEach((stop) => stop());
   }, [account.station, globalScope]);
+
+  useEffect(() => {
+    if (!shareSessionId) return;
+    let polling = false;
+    let disposed = false;
+
+    const pollShareStatus = async () => {
+      if (polling || disposed) return;
+      polling = true;
+      try {
+        const result = await manageDisplayDevice(user, {
+          action: "sharestatus",
+          sessionId: shareSessionId,
+        });
+        if (result.status !== "Sharing") {
+          sharePeers.current.forEach((peer) => peer.close());
+          sharePeers.current.clear();
+          setShareStream((stream) => {
+            stream?.getTracks().forEach((track) => {
+              track.onended = null;
+              track.stop();
+            });
+            return null;
+          });
+          setShareSessionId("");
+          setShareDeviceStates({});
+          return;
+        }
+        await Promise.all(
+          (result.devices || []).map(async (row) => {
+            const peer = sharePeers.current.get(row.deviceId);
+            if (peer && row.answerSdp && !peer.currentRemoteDescription) {
+              await peer.setRemoteDescription(
+                JSON.parse(row.answerSdp) as RTCSessionDescriptionInit,
+              );
+            }
+            setShareDeviceStates((current) => ({
+              ...current,
+              [row.deviceId]:
+                peer?.connectionState === "connected"
+                  ? "connected"
+                  : row.answerSdp
+                    ? "connecting"
+                    : row.status || "Waiting for Player",
+            }));
+          }),
+        );
+      } catch {
+        setShareDeviceStates((current) =>
+          Object.fromEntries(
+            Object.keys(current).map((deviceId) => [deviceId, "Status retry"]),
+          ),
+        );
+      } finally {
+        polling = false;
+      }
+    };
+
+    const initial = window.setTimeout(() => void pollShareStatus(), 300);
+    const timer = window.setInterval(() => void pollShareStatus(), 2000);
+    return () => {
+      disposed = true;
+      window.clearTimeout(initial);
+      window.clearInterval(timer);
+    };
+  }, [shareSessionId, user]);
 
   const scopedRooms = useMemo(
     () =>
@@ -1411,6 +1513,139 @@ export default function FacilityOperations({
             ? error.message
             : "Output Group tidak dapat dihapus.",
       });
+    }
+  }
+
+  function closeLocalShare(stream = shareStream) {
+    stream?.getTracks().forEach((track) => {
+      track.onended = null;
+      track.stop();
+    });
+    sharePeers.current.forEach((peer) => peer.close());
+    sharePeers.current.clear();
+    setShareStream(null);
+    setShareSessionId("");
+    setShareDeviceStates({});
+  }
+
+  async function stopOutputShare(
+    sessionId = shareSessionId,
+    stream = shareStream,
+  ) {
+    if (!sessionId) {
+      closeLocalShare(stream);
+      return;
+    }
+    try {
+      await manageDisplayDevice(user, {
+        action: "stopsharesession",
+        sessionId,
+      });
+      setNotice({ kind: "ok", text: "Live screen share berhasil dihentikan." });
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Screen share tidak dapat dihentikan.",
+      });
+    } finally {
+      closeLocalShare(stream);
+    }
+  }
+
+  async function startOutputShare(event: FormEvent) {
+    event.preventDefault();
+    if (!shareGroup) return;
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setNotice({
+        kind: "error",
+        text: "Browser ini tidak mendukung screen capture. Gunakan Chrome atau Edge melalui HTTPS.",
+      });
+      return;
+    }
+    setShareStarting(true);
+    let capturedStream: MediaStream | null = null;
+    let sessionId = "";
+    try {
+      capturedStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: 24, max: 30 } },
+        audio: true,
+      });
+      const result = await manageDisplayDevice(user, {
+        action: "startsharesession",
+        outputGroupId: shareGroup.id,
+        sourceName: shareSourceName,
+      });
+      sessionId = result.sessionId || result.id || "";
+      if (!sessionId || !result.deviceIds?.length)
+        throw new Error("Target Player untuk screen share tidak tersedia.");
+      setShareStream(capturedStream);
+      setShareSessionId(sessionId);
+      setShareDeviceStates(
+        Object.fromEntries(
+          result.deviceIds.map((id) => [id, "Creating offer"]),
+        ),
+      );
+      await Promise.all(
+        result.deviceIds.map(async (deviceId) => {
+          const peer = new RTCPeerConnection({
+            iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+          });
+          sharePeers.current.set(deviceId, peer);
+          capturedStream
+            ?.getTracks()
+            .forEach((track) =>
+              peer.addTrack(track, capturedStream as MediaStream),
+            );
+          peer.onconnectionstatechange = () =>
+            setShareDeviceStates((current) => ({
+              ...current,
+              [deviceId]: peer.connectionState,
+            }));
+          const offer = await peer.createOffer();
+          await peer.setLocalDescription(offer);
+          await waitForPeerIce(peer);
+          if (!peer.localDescription)
+            throw new Error(`WebRTC offer gagal untuk ${deviceId}.`);
+          await manageDisplayDevice(user, {
+            action: "shareoffer",
+            sessionId,
+            deviceId,
+            offerSdp: JSON.stringify(peer.localDescription),
+          });
+          setShareDeviceStates((current) => ({
+            ...current,
+            [deviceId]: "Waiting for Player",
+          }));
+        }),
+      );
+      const videoTrack = capturedStream.getVideoTracks()[0];
+      if (videoTrack)
+        videoTrack.onended = () =>
+          void stopOutputShare(sessionId, capturedStream);
+      setNotice({
+        kind: "ok",
+        text: `Screen share ${shareSourceName} dikirim ke ${result.deviceIds.length} Player.`,
+      });
+    } catch (error) {
+      if (sessionId) {
+        await manageDisplayDevice(user, {
+          action: "stopsharesession",
+          sessionId,
+        }).catch(() => undefined);
+      }
+      closeLocalShare(capturedStream);
+      setNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Live screen share tidak dapat dimulai.",
+      });
+    } finally {
+      setShareStarting(false);
     }
   }
 
@@ -3329,11 +3564,31 @@ export default function FacilityOperations({
                         </div>
                         <footer>
                           <button
+                            className="primary"
                             type="button"
-                            disabled
-                            title="Live screen share tersedia pada tahap berikutnya"
+                            disabled={
+                              !canControl ||
+                              group.status !== "Active" ||
+                              groupDevices.length === 0
+                            }
+                            title={
+                              group.sessionStatus === "Sharing" &&
+                              group.activeShareSessionId !== shareSessionId
+                                ? "Buka kontrol; sesi tanpa heartbeat dapat diambil alih setelah 30 detik"
+                                : "Bagikan tab, jendela, atau layar ke semua Player di group"
+                            }
+                            onClick={() => {
+                              setShareGroup(group);
+                              setShareSourceName(
+                                group.activeSourceName || "Operator Screen",
+                              );
+                            }}
                           >
-                            Start Share — Next Stage
+                            {group.activeShareSessionId === shareSessionId
+                              ? "Open Share Control"
+                              : group.sessionStatus === "Sharing"
+                                ? "View / Recover Share"
+                                : "Start Screen Share"}
                           </button>
                           {canConfigure && (
                             <>
@@ -4384,6 +4639,141 @@ export default function FacilityOperations({
                 >
                   {savingOutputGroup ? "Saving..." : "Save Output Group"}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {shareGroup && (
+        <div
+          className="back"
+          onMouseDown={(event) => {
+            if (event.target !== event.currentTarget || shareSessionId) return;
+            setShareGroup(null);
+          }}
+        >
+          <div className="modal shareControlModal">
+            <div className="modalHead">
+              <div>
+                <small>LIVE OUTPUT CONTROL</small>
+                <h2>{shareGroup.name}</h2>
+              </div>
+              <button
+                type="button"
+                disabled={Boolean(shareSessionId)}
+                title={
+                  shareSessionId ? "Stop share sebelum menutup panel" : "Close"
+                }
+                onClick={() => setShareGroup(null)}
+              >
+                ×
+              </button>
+            </div>
+            <form
+              className="form shareControlForm"
+              onSubmit={(event) => void startOutputShare(event)}
+            >
+              <div className="shareControlSummary full">
+                <div>
+                  <span>Station</span>
+                  <b>{shareGroup.station}</b>
+                </div>
+                <div>
+                  <span>Target Players</span>
+                  <b>{stringArray(shareGroup.deviceIds).length}</b>
+                </div>
+                <div>
+                  <span>Status</span>
+                  <b>{shareSessionId ? "Sharing" : "Ready"}</b>
+                </div>
+              </div>
+
+              {!shareSessionId ? (
+                <>
+                  <label className="full">
+                    <span>Source Name</span>
+                    <input
+                      value={shareSourceName}
+                      maxLength={160}
+                      required
+                      onChange={(event) =>
+                        setShareSourceName(event.target.value)
+                      }
+                      placeholder="Operator Screen"
+                    />
+                  </label>
+                  <div className="notice warn full">
+                    <span>
+                      Browser akan meminta Anda memilih tab, jendela, atau
+                      layar. Media dikirim langsung melalui WebRTC dan tidak
+                      diunggah ke Firebase Storage. Running text tetap tampil
+                      sebagai overlay.
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="sharePreview full">
+                    <video
+                      ref={(node) => {
+                        if (node && node.srcObject !== shareStream)
+                          node.srcObject = shareStream;
+                      }}
+                      autoPlay
+                      muted
+                      playsInline
+                    />
+                    <span>LIVE PREVIEW · {shareSourceName}</span>
+                  </div>
+                  <div className="shareTargetList full">
+                    {stringArray(shareGroup.deviceIds).map((deviceId) => {
+                      const device = devices.find((row) => row.id === deviceId);
+                      const state = shareDeviceStates[deviceId] || "Waiting";
+                      return (
+                        <div key={deviceId}>
+                          <span
+                            className={`deviceStatusDot ${state === "connected" ? "online" : "offline"}`}
+                          />
+                          <div>
+                            <b>{device?.name || deviceId}</b>
+                            <small>
+                              {device
+                                ? roomName(device.roomId)
+                                : "Unknown device"}
+                            </small>
+                          </div>
+                          <strong>{state}</strong>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              <div className="modalActions full">
+                {!shareSessionId ? (
+                  <>
+                    <button type="button" onClick={() => setShareGroup(null)}>
+                      Cancel
+                    </button>
+                    <button
+                      className="primary"
+                      type="submit"
+                      disabled={shareStarting}
+                    >
+                      {shareStarting ? "Starting..." : "Choose Screen & Start"}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="danger"
+                    type="button"
+                    onClick={() => void stopOutputShare()}
+                  >
+                    Stop Screen Share
+                  </button>
+                )}
               </div>
             </form>
           </div>

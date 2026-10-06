@@ -32,6 +32,10 @@ const text = (value, max = 500) =>
     .trim()
     .slice(0, max);
 const sha = (value) => createHash("sha256").update(value).digest("hex");
+const shareSignalId = (sessionId, deviceId) =>
+  sha(`${sessionId}|${deviceId}`).slice(0, 48);
+const timestampMillis = (value) => value?.toDate?.().getTime?.() || 0;
+const SHARE_CONTROLLER_LEASE_MS = 30_000;
 
 const DEFAULT_ANNOUNCEMENT_TEMPLATES = {
   boarding: {
@@ -661,6 +665,224 @@ async function deleteOutputGroup(db, actor, input) {
   return { id, status: "Deleted" };
 }
 
+async function startShareSession(db, actor, input) {
+  const outputGroupId = text(input.outputGroupId, 160);
+  const sourceName = text(input.sourceName, 160) || "Operator Screen";
+  const groupSnapshot = await db
+    .collection("displayOutputGroups")
+    .doc(outputGroupId)
+    .get();
+  if (!groupSnapshot.exists)
+    throw httpError(404, "Output Group tidak ditemukan.");
+  const group = { id: groupSnapshot.id, ...groupSnapshot.data() };
+  requireStation(actor, group.station);
+  if (group.status !== "Active")
+    throw httpError(409, "Output Group sedang tidak aktif.");
+  let expiredSession = null;
+  if (group.sessionStatus === "Sharing" && group.activeShareSessionId) {
+    const activeSession = await db
+      .collection("displayShareSessions")
+      .doc(group.activeShareSessionId)
+      .get();
+    const activeData = activeSession.data();
+    const lastControllerActivity = timestampMillis(
+      activeData?.controllerHeartbeatAt || activeData?.createdAt,
+    );
+    if (
+      activeSession.exists &&
+      activeData?.status === "Sharing" &&
+      Date.now() - lastControllerActivity <= SHARE_CONTROLLER_LEASE_MS
+    )
+      throw httpError(409, "Output Group sedang digunakan untuk screen share.");
+    if (activeSession.exists) expiredSession = activeSession.ref;
+  }
+  const deviceIds = [...new Set(group.deviceIds || [])].slice(0, 20);
+  const deviceSnapshots = await Promise.all(
+    deviceIds.map((id) => db.collection("displayDevices").doc(id).get()),
+  );
+  const availableDevices = deviceSnapshots.filter(
+    (snapshot) =>
+      snapshot.exists &&
+      snapshot.data()?.station === group.station &&
+      snapshot.data()?.enrollmentStatus === "Enrolled",
+  );
+  if (!availableDevices.length)
+    throw httpError(409, "Tidak ada Player Enrolled di dalam Output Group.");
+  const sessionId = randomUUID();
+  const now = new Date();
+  const batch = db.batch();
+  batch.create(db.collection("displayShareSessions").doc(sessionId), {
+    id: sessionId,
+    outputGroupId,
+    outputGroupName: group.name,
+    station: group.station,
+    sourceName,
+    deviceIds: availableDevices.map((snapshot) => snapshot.id),
+    status: "Sharing",
+    createdAt: now,
+    controllerHeartbeatAt: now,
+    createdBy: actor.decoded.uid,
+    createdByName: text(actor.profile.name, 120),
+  });
+  if (expiredSession)
+    batch.set(
+      expiredSession,
+      { status: "Expired", stoppedAt: now, updatedAt: now },
+      { merge: true },
+    );
+  availableDevices.forEach((snapshot) =>
+    batch.update(snapshot.ref, {
+      activeShareSessionId: sessionId,
+      updatedAt: now,
+    }),
+  );
+  batch.update(groupSnapshot.ref, {
+    sessionStatus: "Sharing",
+    activeShareSessionId: sessionId,
+    activeSourceName: sourceName,
+    updatedAt: now,
+  });
+  batch.create(db.collection("displayActivityLogs").doc(), {
+    action: "DISPLAY_SHARE_STARTED",
+    station: group.station,
+    outputGroupId,
+    sessionId,
+    actorId: actor.decoded.uid,
+    actorName: text(actor.profile.name, 120),
+    detail: sourceName,
+    createdAt: now,
+  });
+  await batch.commit();
+  return {
+    id: sessionId,
+    sessionId,
+    status: "Sharing",
+    deviceIds: availableDevices.map((snapshot) => snapshot.id),
+  };
+}
+
+async function submitShareOffer(db, actor, input) {
+  const sessionId = text(input.sessionId, 160);
+  const deviceId = text(input.deviceId, 160);
+  const offerSdp = text(input.offerSdp, 120_000);
+  const session = await db
+    .collection("displayShareSessions")
+    .doc(sessionId)
+    .get();
+  if (!session.exists || session.data()?.status !== "Sharing")
+    throw httpError(409, "Screen share session tidak aktif.");
+  const data = session.data();
+  requireStation(actor, data.station);
+  if (
+    data.createdBy !== actor.decoded.uid &&
+    !CONFIG_ROLES.has(actor.profile.role)
+  )
+    throw httpError(403, "Screen share dikendalikan operator lain.");
+  if (!data.deviceIds?.includes(deviceId) || !offerSdp)
+    throw httpError(400, "Target device atau WebRTC offer tidak valid.");
+  await db
+    .collection("displayShareSignals")
+    .doc(shareSignalId(sessionId, deviceId))
+    .set({
+      sessionId,
+      deviceId,
+      station: data.station,
+      offerSdp,
+      answerSdp: "",
+      status: "Offer",
+      updatedAt: new Date(),
+    });
+  return { id: deviceId, status: "Offer" };
+}
+
+async function shareSessionStatus(db, actor, input) {
+  const sessionId = text(input.sessionId, 160);
+  const session = await db
+    .collection("displayShareSessions")
+    .doc(sessionId)
+    .get();
+  if (!session.exists)
+    throw httpError(404, "Screen share session tidak ditemukan.");
+  const data = session.data();
+  requireStation(actor, data.station);
+  if (
+    data.createdBy !== actor.decoded.uid &&
+    !CONFIG_ROLES.has(actor.profile.role)
+  )
+    throw httpError(403, "Screen share dikendalikan operator lain.");
+  await session.ref.update({ controllerHeartbeatAt: new Date() });
+  const signals = await Promise.all(
+    (data.deviceIds || []).map((deviceId) =>
+      db
+        .collection("displayShareSignals")
+        .doc(shareSignalId(sessionId, deviceId))
+        .get(),
+    ),
+  );
+  return {
+    id: sessionId,
+    sessionId,
+    status: data.status,
+    devices: (data.deviceIds || []).map((deviceId, index) => ({
+      deviceId,
+      status: signals[index].data()?.status || "Waiting",
+      answerSdp: text(signals[index].data()?.answerSdp, 120_000),
+    })),
+  };
+}
+
+async function stopShareSession(db, actor, input) {
+  const sessionId = text(input.sessionId, 160);
+  const sessionRef = db.collection("displayShareSessions").doc(sessionId);
+  const session = await sessionRef.get();
+  if (!session.exists)
+    throw httpError(404, "Screen share session tidak ditemukan.");
+  const data = session.data();
+  requireStation(actor, data.station);
+  if (
+    data.createdBy !== actor.decoded.uid &&
+    !CONFIG_ROLES.has(actor.profile.role)
+  )
+    throw httpError(403, "Screen share dikendalikan operator lain.");
+  const now = new Date();
+  const batch = db.batch();
+  batch.update(sessionRef, {
+    status: "Stopped",
+    stoppedAt: now,
+    updatedAt: now,
+  });
+  (data.deviceIds || []).forEach((deviceId) => {
+    batch.update(db.collection("displayDevices").doc(deviceId), {
+      activeShareSessionId: "",
+      updatedAt: now,
+    });
+    batch.set(
+      db
+        .collection("displayShareSignals")
+        .doc(shareSignalId(sessionId, deviceId)),
+      { status: "Stopped", updatedAt: now },
+      { merge: true },
+    );
+  });
+  batch.update(db.collection("displayOutputGroups").doc(data.outputGroupId), {
+    sessionStatus: "Idle",
+    activeShareSessionId: "",
+    activeSourceName: "",
+    updatedAt: now,
+  });
+  batch.create(db.collection("displayActivityLogs").doc(), {
+    action: "DISPLAY_SHARE_STOPPED",
+    station: data.station,
+    outputGroupId: data.outputGroupId,
+    sessionId,
+    actorId: actor.decoded.uid,
+    actorName: text(actor.profile.name, 120),
+    createdAt: now,
+  });
+  await batch.commit();
+  return { id: sessionId, status: "Stopped" };
+}
+
 const handler = async (request) => {
   try {
     if (request.method !== "POST")
@@ -689,6 +911,14 @@ const handler = async (request) => {
       return json(200, await saveOutputGroup(db, actor, input));
     if (action === "deleteoutputgroup")
       return json(200, await deleteOutputGroup(db, actor, input));
+    if (action === "startsharesession")
+      return json(200, await startShareSession(db, actor, input));
+    if (action === "shareoffer")
+      return json(200, await submitShareOffer(db, actor, input));
+    if (action === "sharestatus")
+      return json(200, await shareSessionStatus(db, actor, input));
+    if (action === "stopsharesession")
+      return json(200, await stopShareSession(db, actor, input));
     if (action === "savetemplate")
       return json(200, await saveAnnouncementTemplate(db, actor, input));
     throw httpError(400, "Device management action tidak valid.");

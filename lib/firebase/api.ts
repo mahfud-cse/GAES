@@ -141,22 +141,26 @@ export const manageDisplayContent = (
   user: User,
   payload: Record<string, unknown>,
 ) =>
-  call<{ id: string; status: string }>(
-    "manage-display-content",
-    user,
-    payload,
-  );
+  call<{ id: string; status: string }>("manage-display-content", user, payload);
 
 export const manageDisplayDevice = (
   user: User,
   payload: Record<string, unknown>,
-) => call<{
-  id?: string;
-  deviceId?: string;
-  code?: string;
-  status: string;
-  expiresAt?: string;
-}>("manage-display-device", user, payload);
+) =>
+  call<{
+    id?: string;
+    deviceId?: string;
+    code?: string;
+    status: string;
+    expiresAt?: string;
+    sessionId?: string;
+    deviceIds?: string[];
+    devices?: Array<{
+      deviceId: string;
+      status: string;
+      answerSdp?: string;
+    }>;
+  }>("manage-display-device", user, payload);
 
 export const displayPlayerRequest = (payload: Record<string, unknown>) =>
   call<Record<string, unknown>>("display-player", null, payload);
@@ -164,4 +168,5 @@ export const displayPlayerRequest = (payload: Record<string, unknown>) =>
 export const manageDisplayPilot = (
   user: User,
   payload: Record<string, unknown>,
-) => call<{ id: string; status: string }>("manage-display-pilot", user, payload);
+) =>
+  call<{ id: string; status: string }>("manage-display-pilot", user, payload);

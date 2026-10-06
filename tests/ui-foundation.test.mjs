@@ -563,3 +563,37 @@ test("standardizes semantic tabs and creates output group routing", async () => 
   assert.match(repository, /displayOutputGroups/);
   assert.match(rules, /match \/displayOutputGroups\/\{id\}/);
 });
+
+test("streams an operator screen to output groups without media storage", async () => {
+  const [module, player, deviceBackend, playerBackend, css, api, rules] =
+    await Promise.all([
+      read("../app/facility-operations.tsx"),
+      read("../app/player/page.tsx"),
+      read("../netlify/functions/manage-display-device.mjs"),
+      read("../netlify/functions/display-player.mjs"),
+      read("../app/globals.css"),
+      read("../lib/firebase/api.ts"),
+      read("../firestore.rules"),
+    ]);
+
+  assert.match(module, /navigator\.mediaDevices\.getDisplayMedia/);
+  assert.match(module, /new RTCPeerConnection/);
+  assert.match(module, /Choose Screen & Start/);
+  assert.match(module, /Running text tetap tampil\s+sebagai overlay/);
+  assert.match(module, /Stop Screen Share/);
+  assert.match(player, /action: "shareanswer"/);
+  assert.match(player, /playerShareMedia/);
+  assert.match(player, /shareStream\s*\?\s*"Screen Share"/);
+  assert.match(deviceBackend, /async function startShareSession/);
+  assert.match(deviceBackend, /controllerHeartbeatAt/);
+  assert.match(deviceBackend, /SHARE_CONTROLLER_LEASE_MS/);
+  assert.match(deviceBackend, /async function stopShareSession/);
+  assert.match(playerBackend, /async function sharePlan/);
+  assert.match(playerBackend, /async function submitShareAnswer/);
+  assert.match(css, /\.playerShareMedia\s*\{[\s\S]*?z-index: 2/);
+  assert.match(css, /\.playerTicker\s*\{[\s\S]*?z-index: 4/);
+  assert.match(api, /answerSdp\?: string/);
+  assert.match(rules, /match \/displayShareSessions\/\{id\}/);
+  assert.match(rules, /match \/displayShareSignals\/\{id\}/);
+  assert.doesNotMatch(module, /uploadDisplayMedia\([^)]*share/i);
+});

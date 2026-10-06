@@ -140,6 +140,12 @@ service cloud.firestore {
         && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
       allow write: if false;
     }
+    match /displayShareSessions/{id} {
+      allow read, write: if false;
+    }
+    match /displayShareSignals/{id} {
+      allow read, write: if false;
+    }
     match /displayEnrollments/{id} {
       allow read, write: if false;
     }
