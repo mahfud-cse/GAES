@@ -1,6 +1,6 @@
 {
   "name": "lounge-tenant-test",
-  "version": "0.22.4",
+  "version": "0.23.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
