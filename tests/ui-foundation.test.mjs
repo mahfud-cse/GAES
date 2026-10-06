@@ -597,3 +597,42 @@ test("streams an operator screen to output groups without media storage", async 
   assert.match(rules, /match \/displayShareSignals\/\{id\}/);
   assert.doesNotMatch(module, /uploadDisplayMedia\([^)]*share/i);
 });
+
+test("supports concurrent output sessions and non-blocking share control", async () => {
+  const [module, backend, css] = await Promise.all([
+    read("../app/facility-operations.tsx"),
+    read("../netlify/functions/manage-display-device.mjs"),
+    read("../app/globals.css"),
+  ]);
+  assert.match(module, /shareRuntimes/);
+  assert.match(module, /activeShares/);
+  assert.match(module, /Add Group to Existing Share/);
+  assert.match(module, /Stop All/);
+  assert.match(module, /Minimize; session tetap berjalan/);
+  assert.match(module, /Cached Playlist/);
+  assert.match(module, /External TV\/IPTV/);
+  assert.match(module, /Emergency Override/);
+  assert.match(backend, /sourceModes/);
+  assert.match(css, /\.activeShareDock/);
+});
+
+test("caches compatible player media and reports offline readiness", async () => {
+  const [player, worker, backend, module, netlify] = await Promise.all([
+    read("../app/player/page.tsx"),
+    read("../public/player-sw.js"),
+    read("../netlify/functions/display-player.mjs"),
+    read("../app/facility-operations.tsx"),
+    read("../netlify.toml"),
+  ]);
+  assert.match(player, /web-player-1\.2\.0/);
+  assert.match(player, /serviceWorker\.register\("\/player-sw\.js"\)/);
+  assert.match(player, /navigator\.storage\?\.persist/);
+  assert.match(player, /Streaming Only/);
+  assert.match(worker, /gaes-display-media-v1/);
+  assert.match(worker, /CACHE_MEDIA/);
+  assert.match(worker, /Ready Offline/);
+  assert.match(backend, /cacheStatus/);
+  assert.match(backend, /storageQuotaBytes/);
+  assert.match(module, /Offline Cache/);
+  assert.match(netlify, /worker-src 'self'/);
+});
