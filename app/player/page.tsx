@@ -62,11 +62,28 @@ type Ack = {
   status: "Executed" | "Failed";
   message: string;
 };
+type CacheStatus =
+  | "Pending Download"
+  | "Downloading"
+  | "Ready Offline"
+  | "Update Available"
+  | "Streaming Only"
+  | "Storage Insufficient"
+  | "Cache Unsupported"
+  | "Download Failed";
+type CacheTelemetry = {
+  status: CacheStatus;
+  progress: number;
+  cachedContentCount: number;
+  storageUsageBytes: number;
+  storageQuotaBytes: number;
+  persistentStorage: boolean;
+};
 
 const CREDENTIAL_KEY = "gaes-display-player-credential-v1";
 const CACHE_KEY = "gaes-display-player-cache-v1";
 const PROCESSED_KEY = "gaes-display-player-processed-v1";
-const VERSION = "web-player-1.1.0";
+const VERSION = "web-player-1.2.0";
 
 function waitForIceGathering(peer: RTCPeerConnection) {
   if (peer.iceGatheringState === "complete") return Promise.resolve();
@@ -131,6 +148,15 @@ export default function DisplayPlayerPage() {
   const [online, setOnline] = useState(true);
   const [lastError, setLastError] = useState("");
   const [lastHeartbeat, setLastHeartbeat] = useState("");
+  const [cacheTelemetry, setCacheTelemetry] = useState<CacheTelemetry>({
+    status: "Pending Download",
+    progress: 0,
+    cachedContentCount: 0,
+    storageUsageBytes: 0,
+    storageQuotaBytes: 0,
+    persistentStorage: false,
+  });
+  const cacheTelemetryRef = useRef(cacheTelemetry);
   const acks = useRef<Ack[]>([]);
   const processed = useRef<Set<string>>(new Set());
   const manualOverride = useRef<{ playback: Playback; until: string } | null>(
@@ -186,7 +212,7 @@ export default function DisplayPlayerPage() {
     return () => window.clearTimeout(initialize);
   }, []);
 
-  const cacheState = useCallback(
+  const persistPlaybackState = useCallback(
     (nextPlayback: Playback | null, nextOverlay: string) => {
       if (!nextPlayback) return;
       localStorage.setItem(
@@ -200,6 +226,95 @@ export default function DisplayPlayerPage() {
     },
     [],
   );
+
+  useEffect(() => {
+    cacheTelemetryRef.current = cacheTelemetry;
+  }, [cacheTelemetry]);
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator) || !("caches" in window)) {
+      const unsupported = window.setTimeout(
+        () =>
+          setCacheTelemetry((value) => ({
+            ...value,
+            status: "Cache Unsupported",
+          })),
+        0,
+      );
+      return () => window.clearTimeout(unsupported);
+    }
+    const onMessage = async (event: MessageEvent) => {
+      if (event.data?.type !== "CACHE_STATUS") return;
+      const estimate = await navigator.storage?.estimate?.();
+      setCacheTelemetry((value) => ({
+        ...value,
+        status: event.data.status as CacheStatus,
+        progress: Number(event.data.progress) || 0,
+        cachedContentCount: Number(event.data.cachedContentCount) || 0,
+        storageUsageBytes: Number(estimate?.usage) || value.storageUsageBytes,
+        storageQuotaBytes: Number(estimate?.quota) || value.storageQuotaBytes,
+      }));
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    void navigator.serviceWorker.register("/player-sw.js").then(async () => {
+      const estimate = await navigator.storage?.estimate?.();
+      const persisted = await navigator.storage?.persist?.().catch(() => false);
+      setCacheTelemetry((value) => ({
+        ...value,
+        storageUsageBytes: Number(estimate?.usage) || 0,
+        storageQuotaBytes: Number(estimate?.quota) || 0,
+        persistentStorage: Boolean(persisted),
+      }));
+    }).catch(() =>
+      setCacheTelemetry((value) => ({ ...value, status: "Cache Unsupported" })),
+    );
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, []);
+
+  useEffect(() => {
+    if (!playback || !("serviceWorker" in navigator)) return;
+    const urls = playback.items
+      .filter((item) => ["Video", "Image"].includes(item.contentType))
+      .map((item) => new URL(item.sourceUrl, window.location.href).href);
+    const send = (worker?: ServiceWorker | null) => {
+      setCacheTelemetry((value) => ({
+        ...value,
+        status: urls.length
+          ? value.cachedContentCount
+            ? "Update Available"
+            : "Pending Download"
+          : "Streaming Only",
+        progress: 0,
+      }));
+      worker?.postMessage({
+        type: "CACHE_MEDIA",
+        urls,
+      });
+    };
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        const estimate = await navigator.storage?.estimate?.();
+        const available =
+          Number(estimate?.quota || 0) - Number(estimate?.usage || 0);
+        if (urls.length && estimate?.quota && available < 25 * 1024 * 1024) {
+          setCacheTelemetry((value) => ({
+            ...value,
+            status: "Storage Insufficient",
+            storageUsageBytes: Number(estimate.usage) || 0,
+            storageQuotaBytes: Number(estimate.quota) || 0,
+          }));
+          return;
+        }
+        if (navigator.serviceWorker.controller)
+          send(navigator.serviceWorker.controller);
+        else
+          void navigator.serviceWorker.ready.then((registration) =>
+            send(registration.active),
+          );
+      })();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [playback]);
 
   const executeCommands = useCallback((commands: Command[]) => {
     for (const command of commands) {
@@ -363,6 +478,8 @@ export default function DisplayPlayerPage() {
           screenshot: false,
           offlinePlanCache: true,
           runningText: true,
+          cacheStorage: "caches" in window,
+          persistentStorage: cacheTelemetryRef.current.persistentStorage,
         },
         acknowledgments: sentAcks,
         state: {
@@ -393,6 +510,12 @@ export default function DisplayPlayerPage() {
             height: window.innerHeight,
             pixelRatio: window.devicePixelRatio,
           },
+          cacheStatus: cacheTelemetryRef.current.status,
+          cacheProgress: cacheTelemetryRef.current.progress,
+          cachedContentCount: cacheTelemetryRef.current.cachedContentCount,
+          storageUsageBytes: cacheTelemetryRef.current.storageUsageBytes,
+          storageQuotaBytes: cacheTelemetryRef.current.storageQuotaBytes,
+          persistentStorage: cacheTelemetryRef.current.persistentStorage,
         },
       });
       acks.current = acks.current.slice(sentAcks.length);
@@ -421,7 +544,29 @@ export default function DisplayPlayerPage() {
         setPlayback(null);
         setItemIndex(0);
       }
-      if (next && next.channelId !== playback?.channelId) {
+      const nextSignature = next
+        ? JSON.stringify(
+            next.items.map((item) => [
+              item.id,
+              item.sourceUrl,
+              item.durationSeconds,
+            ]),
+          )
+        : "";
+      const currentSignature = playback
+        ? JSON.stringify(
+            playback.items.map((item) => [
+              item.id,
+              item.sourceUrl,
+              item.durationSeconds,
+            ]),
+          )
+        : "";
+      if (
+        next &&
+        (next.channelId !== playback?.channelId ||
+          nextSignature !== currentSignature)
+      ) {
         setPlayback(next);
         setItemIndex(0);
       }
@@ -448,7 +593,7 @@ export default function DisplayPlayerPage() {
         setOverlayText(nextOverlay);
         setTickerCycle((value) => value + 1);
       }
-      cacheState(next, nextOverlay);
+      persistPlaybackState(next, nextOverlay);
     } catch (error) {
       if (
         error instanceof PlayerRequestError &&
@@ -465,7 +610,7 @@ export default function DisplayPlayerPage() {
       );
     }
   }, [
-    cacheState,
+    persistPlaybackState,
     clearEnrollment,
     credential,
     executeCommands,
@@ -709,6 +854,16 @@ export default function DisplayPlayerPage() {
           {shareStream ? shareSourceName : current?.title || "Standby"}
         </span>
         {shareConnection !== "Idle" && <small>Share: {shareConnection}</small>}
+        <small>
+          Cache: {cacheTelemetry.status}
+          {cacheTelemetry.status === "Downloading"
+            ? ` ${cacheTelemetry.progress}%`
+            : ""}
+        </small>
+        <small>
+          {cacheTelemetry.cachedContentCount} local ·{" "}
+          {cacheTelemetry.persistentStorage ? "Persistent" : "Best effort"}
+        </small>
         <small>{fullscreenActive ? "Fullscreen" : "Windowed"}</small>
         <small>
           {lastHeartbeat

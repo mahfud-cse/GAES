@@ -376,6 +376,16 @@ async function heartbeat(db, input) {
   const device = await authenticateDevice(db, input);
   await acknowledge(db, device, input.acknowledgments);
   const state = input.state || {};
+  const cacheStates = new Set([
+    "Pending Download",
+    "Downloading",
+    "Ready Offline",
+    "Update Available",
+    "Streaming Only",
+    "Storage Insufficient",
+    "Cache Unsupported",
+    "Download Failed",
+  ]);
   const capabilities = input.capabilities || {};
   const telemetry = {
     visibilityState: state.visibilityState === "hidden" ? "Hidden" : "Visible",
@@ -391,6 +401,17 @@ async function heartbeat(db, input) {
         Math.min(10, Number(state.viewport?.pixelRatio) || 0),
       ),
     },
+    cacheStatus: cacheStates.has(state.cacheStatus)
+      ? state.cacheStatus
+      : "Cache Unsupported",
+    cacheProgress: Math.max(0, Math.min(100, Number(state.cacheProgress) || 0)),
+    cachedContentCount: Math.max(
+      0,
+      Math.min(1000, Number(state.cachedContentCount) || 0),
+    ),
+    storageUsageBytes: Math.max(0, Number(state.storageUsageBytes) || 0),
+    storageQuotaBytes: Math.max(0, Number(state.storageQuotaBytes) || 0),
+    persistentStorage: state.persistentStorage === true,
   };
   const now = new Date();
   const deviceRef = db.collection("displayDevices").doc(device.id);

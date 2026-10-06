@@ -603,6 +603,16 @@ async function saveOutputGroup(db, actor, input) {
   const ref = db.collection("displayOutputGroups").doc(id);
   const existing = await ref.get();
   const now = new Date();
+  const sourceModes = new Set([
+    "Cached Playlist",
+    "Managed Channel",
+    "Live Screen Share",
+    "External TV/IPTV",
+    "Emergency Override",
+  ]);
+  const sourceMode = sourceModes.has(input.sourceMode)
+    ? input.sourceMode
+    : "Managed Channel";
   const batch = db.batch();
   batch.set(
     ref,
@@ -613,6 +623,7 @@ async function saveOutputGroup(db, actor, input) {
       description: text(input.description, 500),
       deviceIds,
       status: input.status === "Inactive" ? "Inactive" : "Active",
+      sourceMode,
       sessionStatus: existing.data()?.sessionStatus || "Idle",
       activeSourceName: existing.data()?.activeSourceName || "",
       updatedAt: now,

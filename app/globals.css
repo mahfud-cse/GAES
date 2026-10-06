@@ -891,6 +891,58 @@
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 }
 
+.activeShareDock {
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+.activeShareDockHead,
+.activeShareDockList > div {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.activeShareDockHead > div,
+.activeShareDockList > div > button:nth-child(2) {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+}
+
+.activeShareDockHead small,
+.activeShareDockList small {
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.activeShareDockList {
+  display: grid;
+  gap: 7px;
+}
+
+.activeShareDockList > div {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 7px 9px;
+}
+
+.activeShareDockList > div > button:nth-child(2) {
+  background: transparent;
+  border: 0;
+  color: var(--color-text);
+  padding: 2px;
+}
+
 .outputGroupCard {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -925,7 +977,7 @@
 .outputGroupSummary {
   display: grid;
   gap: 7px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .outputGroupSummary > div {

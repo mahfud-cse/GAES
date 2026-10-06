@@ -82,6 +82,8 @@ type DeviceRecord = {
     browserPlayer?: boolean;
     runningText?: boolean;
     offlinePlanCache?: boolean;
+    cacheStorage?: boolean;
+    persistentStorage?: boolean;
   };
   lastError?: string;
   healthStatus?: "Healthy" | "Degraded" | "Offline";
@@ -99,6 +101,20 @@ type DeviceRecord = {
   overrideUntil?: string;
   activeAnnouncementId?: string;
   viewport?: { width?: number; height?: number; pixelRatio?: number };
+  cacheStatus?:
+    | "Pending Download"
+    | "Downloading"
+    | "Ready Offline"
+    | "Update Available"
+    | "Streaming Only"
+    | "Storage Insufficient"
+    | "Cache Unsupported"
+    | "Download Failed";
+  cachedContentCount?: number;
+  cacheProgress?: number;
+  storageUsageBytes?: number;
+  storageQuotaBytes?: number;
+  persistentStorage?: boolean;
 };
 
 type DisplayContent = {
@@ -119,6 +135,12 @@ type DisplayChannel = {
   contentIds: string[];
   status: "Active" | "Inactive";
 };
+type OutputSourceMode =
+  | "Cached Playlist"
+  | "Managed Channel"
+  | "Live Screen Share"
+  | "External TV/IPTV"
+  | "Emergency Override";
 type DisplayOutputGroup = {
   id: string;
   station: string;
@@ -129,7 +151,24 @@ type DisplayOutputGroup = {
   sessionStatus?: "Idle" | "Ready" | "Sharing" | "Error";
   activeSourceName?: string;
   activeShareSessionId?: string;
+  sourceMode?: OutputSourceMode;
   updatedAt?: unknown;
+};
+
+type ShareRuntime = {
+  group: DisplayOutputGroup;
+  sessionId: string;
+  sourceName: string;
+  stream: MediaStream;
+  peers: Map<string, RTCPeerConnection>;
+};
+
+type ActiveShareState = {
+  groupId: string;
+  groupName: string;
+  sessionId: string;
+  sourceName: string;
+  deviceStates: Record<string, string>;
 };
 type DisplaySchedule = {
   id: string;
@@ -566,6 +605,7 @@ const EMPTY_OUTPUT_GROUP: Omit<DisplayOutputGroup, "id"> = {
   deviceIds: [],
   status: "Active",
   sessionStatus: "Idle",
+  sourceMode: "Managed Channel",
 };
 
 const EMPTY_SCHEDULE: Omit<DisplaySchedule, "id" | "channelName"> = {
@@ -824,13 +864,12 @@ export default function FacilityOperations({
   const [savingOutputGroup, setSavingOutputGroup] = useState(false);
   const [shareGroup, setShareGroup] = useState<DisplayOutputGroup | null>(null);
   const [shareSourceName, setShareSourceName] = useState("Operator Screen");
-  const [shareStream, setShareStream] = useState<MediaStream | null>(null);
-  const [shareSessionId, setShareSessionId] = useState("");
+  const [shareSourceSelection, setShareSourceSelection] = useState("NEW");
   const [shareStarting, setShareStarting] = useState(false);
-  const [shareDeviceStates, setShareDeviceStates] = useState<
-    Record<string, string>
+  const [activeShares, setActiveShares] = useState<
+    Record<string, ActiveShareState>
   >({});
-  const sharePeers = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const shareRuntimes = useRef<Map<string, ShareRuntime>>(new Map());
   const [displayDialog, setDisplayDialog] = useState<
     "content" | "channel" | "schedule" | null
   >(null);
@@ -878,6 +917,7 @@ export default function FacilityOperations({
   const globalScope = GLOBAL_ROLES.includes(account.role);
   const canConfigure = CONFIG_ROLES.includes(account.role);
   const canControl = CONTROL_ROLES.includes(account.role);
+  const activeShareKey = Object.keys(activeShares).sort().join("|");
   const permittedStation = useCallback(
     (value: string) => globalScope || value === account.station,
     [account.station, globalScope],
@@ -1007,60 +1047,53 @@ export default function FacilityOperations({
   }, [account.station, globalScope]);
 
   useEffect(() => {
-    if (!shareSessionId) return;
+    if (!activeShareKey) return;
     let polling = false;
     let disposed = false;
 
     const pollShareStatus = async () => {
       if (polling || disposed) return;
       polling = true;
-      try {
-        const result = await manageDisplayDevice(user, {
-          action: "sharestatus",
-          sessionId: shareSessionId,
-        });
-        if (result.status !== "Sharing") {
-          sharePeers.current.forEach((peer) => peer.close());
-          sharePeers.current.clear();
-          setShareStream((stream) => {
-            stream?.getTracks().forEach((track) => {
-              track.onended = null;
-              track.stop();
-            });
-            return null;
-          });
-          setShareSessionId("");
-          setShareDeviceStates({});
-          return;
-        }
-        await Promise.all(
-          (result.devices || []).map(async (row) => {
-            const peer = sharePeers.current.get(row.deviceId);
-            if (peer && row.answerSdp && !peer.currentRemoteDescription) {
-              await peer.setRemoteDescription(
-                JSON.parse(row.answerSdp) as RTCSessionDescriptionInit,
+      await Promise.all(
+        [...shareRuntimes.current.entries()].map(
+          async ([groupId, runtime]) => {
+            try {
+              const result = await manageDisplayDevice(user, {
+                action: "sharestatus",
+                sessionId: runtime.sessionId,
+              });
+              if (result.status !== "Sharing") {
+                releaseShareRuntime(groupId);
+                return;
+              }
+              await Promise.all(
+                (result.devices || []).map(async (row) => {
+                  const peer = runtime.peers.get(row.deviceId);
+                  if (peer && row.answerSdp && !peer.currentRemoteDescription) {
+                    await peer.setRemoteDescription(
+                      JSON.parse(row.answerSdp) as RTCSessionDescriptionInit,
+                    );
+                  }
+                  updateShareDeviceState(
+                    groupId,
+                    row.deviceId,
+                    peer?.connectionState === "connected"
+                      ? "connected"
+                      : row.answerSdp
+                        ? "connecting"
+                        : row.status || "Waiting for Player",
+                  );
+                }),
+              );
+            } catch {
+              [...runtime.peers.keys()].forEach((deviceId) =>
+                updateShareDeviceState(groupId, deviceId, "Status retry"),
               );
             }
-            setShareDeviceStates((current) => ({
-              ...current,
-              [row.deviceId]:
-                peer?.connectionState === "connected"
-                  ? "connected"
-                  : row.answerSdp
-                    ? "connecting"
-                    : row.status || "Waiting for Player",
-            }));
-          }),
-        );
-      } catch {
-        setShareDeviceStates((current) =>
-          Object.fromEntries(
-            Object.keys(current).map((deviceId) => [deviceId, "Status retry"]),
-          ),
-        );
-      } finally {
-        polling = false;
-      }
+          },
+        ),
+      );
+      polling = false;
     };
 
     const initial = window.setTimeout(() => void pollShareStatus(), 300);
@@ -1070,7 +1103,7 @@ export default function FacilityOperations({
       window.clearTimeout(initial);
       window.clearInterval(timer);
     };
-  }, [shareSessionId, user]);
+  }, [activeShareKey, user]);
 
   const scopedRooms = useMemo(
     () =>
@@ -1448,6 +1481,7 @@ export default function FacilityOperations({
         description: group.description || "",
         deviceIds: stringArray(group.deviceIds),
         status: group.status,
+        sourceMode: group.sourceMode || "Managed Channel",
         sessionStatus: group.sessionStatus || "Idle",
         activeSourceName: group.activeSourceName || "",
         updatedAt: group.updatedAt,
@@ -1516,49 +1550,92 @@ export default function FacilityOperations({
     }
   }
 
-  function closeLocalShare(stream = shareStream) {
-    stream?.getTracks().forEach((track) => {
-      track.onended = null;
-      track.stop();
+  function updateShareDeviceState(
+    groupId: string,
+    deviceId: string,
+    status: string,
+  ) {
+    setActiveShares((current) => {
+      const share = current[groupId];
+      if (!share) return current;
+      return {
+        ...current,
+        [groupId]: {
+          ...share,
+          deviceStates: { ...share.deviceStates, [deviceId]: status },
+        },
+      };
     });
-    sharePeers.current.forEach((peer) => peer.close());
-    sharePeers.current.clear();
-    setShareStream(null);
-    setShareSessionId("");
-    setShareDeviceStates({});
   }
 
-  async function stopOutputShare(
-    sessionId = shareSessionId,
-    stream = shareStream,
-  ) {
-    if (!sessionId) {
-      closeLocalShare(stream);
-      return;
-    }
+  function releaseShareRuntime(groupId: string) {
+    const runtime = shareRuntimes.current.get(groupId);
+    if (!runtime) return;
+    runtime.peers.forEach((peer) => peer.close());
+    shareRuntimes.current.delete(groupId);
+    const streamStillUsed = [...shareRuntimes.current.values()].some(
+      (row) => row.stream === runtime.stream,
+    );
+    if (!streamStillUsed)
+      runtime.stream.getTracks().forEach((track) => {
+        track.onended = null;
+        track.stop();
+      });
+    setActiveShares((current) => {
+      const next = { ...current };
+      delete next[groupId];
+      return next;
+    });
+  }
+
+  async function stopOutputShare(groupId: string, quiet = false) {
+    const runtime = shareRuntimes.current.get(groupId);
+    if (!runtime) return;
     try {
       await manageDisplayDevice(user, {
         action: "stopsharesession",
-        sessionId,
+        sessionId: runtime.sessionId,
       });
-      setNotice({ kind: "ok", text: "Live screen share berhasil dihentikan." });
+      if (!quiet)
+        setNotice({
+          kind: "ok",
+          text: `Live screen share ${runtime.group.name} berhasil dihentikan.`,
+        });
     } catch (error) {
-      setNotice({
-        kind: "error",
-        text:
-          error instanceof Error
-            ? error.message
-            : "Screen share tidak dapat dihentikan.",
-      });
+      if (!quiet)
+        setNotice({
+          kind: "error",
+          text:
+            error instanceof Error
+              ? error.message
+              : "Screen share tidak dapat dihentikan.",
+        });
     } finally {
-      closeLocalShare(stream);
+      releaseShareRuntime(groupId);
     }
+  }
+
+  async function stopAllOutputShares() {
+    const groupIds = [...shareRuntimes.current.keys()];
+    await Promise.all(groupIds.map((groupId) => stopOutputShare(groupId, true)));
+    setNotice({ kind: "ok", text: "Semua live screen share dihentikan." });
+  }
+
+  function stopSharesUsingStream(stream: MediaStream) {
+    const groupIds = [...shareRuntimes.current.entries()]
+      .filter(([, runtime]) => runtime.stream === stream)
+      .map(([groupId]) => groupId);
+    void Promise.all(groupIds.map((groupId) => stopOutputShare(groupId, true)));
   }
 
   async function startOutputShare(event: FormEvent) {
     event.preventDefault();
     if (!shareGroup) return;
-    if (!navigator.mediaDevices?.getDisplayMedia) {
+    const reusedRuntime =
+      shareSourceSelection === "NEW"
+        ? null
+        : shareRuntimes.current.get(shareSourceSelection) || null;
+    if (!reusedRuntime && !navigator.mediaDevices?.getDisplayMedia) {
       setNotice({
         kind: "error",
         text: "Browser ini tidak mendukung screen capture. Gunakan Chrome atau Edge melalui HTTPS.",
@@ -1569,41 +1646,57 @@ export default function FacilityOperations({
     let capturedStream: MediaStream | null = null;
     let sessionId = "";
     try {
-      capturedStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: { ideal: 24, max: 30 } },
-        audio: true,
-      });
+      capturedStream = reusedRuntime
+        ? reusedRuntime.stream
+        : await navigator.mediaDevices.getDisplayMedia({
+            video: { frameRate: { ideal: 24, max: 30 } },
+            audio: true,
+          });
+      if (!capturedStream) throw new Error("Screen capture tidak tersedia.");
       const result = await manageDisplayDevice(user, {
         action: "startsharesession",
         outputGroupId: shareGroup.id,
-        sourceName: shareSourceName,
+        sourceName: reusedRuntime?.sourceName || shareSourceName,
       });
       sessionId = result.sessionId || result.id || "";
       if (!sessionId || !result.deviceIds?.length)
         throw new Error("Target Player untuk screen share tidak tersedia.");
-      setShareStream(capturedStream);
-      setShareSessionId(sessionId);
-      setShareDeviceStates(
-        Object.fromEntries(
-          result.deviceIds.map((id) => [id, "Creating offer"]),
-        ),
-      );
+      const peers = new Map<string, RTCPeerConnection>();
+      const runtime: ShareRuntime = {
+        group: shareGroup,
+        sessionId,
+        sourceName: reusedRuntime?.sourceName || shareSourceName,
+        stream: capturedStream,
+        peers,
+      };
+      shareRuntimes.current.set(shareGroup.id, runtime);
+      setActiveShares((current) => ({
+        ...current,
+        [shareGroup.id]: {
+          groupId: shareGroup.id,
+          groupName: shareGroup.name,
+          sessionId,
+          sourceName: runtime.sourceName,
+          deviceStates: Object.fromEntries(
+            result.deviceIds?.map((id) => [id, "Creating offer"]) || [],
+          ),
+        },
+      }));
       await Promise.all(
         result.deviceIds.map(async (deviceId) => {
           const peer = new RTCPeerConnection({
             iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
           });
-          sharePeers.current.set(deviceId, peer);
-          capturedStream
-            ?.getTracks()
-            .forEach((track) =>
-              peer.addTrack(track, capturedStream as MediaStream),
-            );
+          peers.set(deviceId, peer);
+          capturedStream?.getTracks().forEach((track) =>
+            peer.addTrack(track, capturedStream as MediaStream),
+          );
           peer.onconnectionstatechange = () =>
-            setShareDeviceStates((current) => ({
-              ...current,
-              [deviceId]: peer.connectionState,
-            }));
+            updateShareDeviceState(
+              shareGroup.id,
+              deviceId,
+              peer.connectionState,
+            );
           const offer = await peer.createOffer();
           await peer.setLocalDescription(offer);
           await waitForPeerIce(peer);
@@ -1615,20 +1708,21 @@ export default function FacilityOperations({
             deviceId,
             offerSdp: JSON.stringify(peer.localDescription),
           });
-          setShareDeviceStates((current) => ({
-            ...current,
-            [deviceId]: "Waiting for Player",
-          }));
+          updateShareDeviceState(
+            shareGroup.id,
+            deviceId,
+            "Waiting for Player",
+          );
         }),
       );
       const videoTrack = capturedStream.getVideoTracks()[0];
-      if (videoTrack)
-        videoTrack.onended = () =>
-          void stopOutputShare(sessionId, capturedStream);
+      if (videoTrack && !reusedRuntime)
+        videoTrack.onended = () => stopSharesUsingStream(capturedStream!);
       setNotice({
         kind: "ok",
-        text: `Screen share ${shareSourceName} dikirim ke ${result.deviceIds.length} Player.`,
+        text: `Screen share ${runtime.sourceName} dikirim ke ${result.deviceIds.length} Player pada ${shareGroup.name}.`,
       });
+      setShareSourceSelection("NEW");
     } catch (error) {
       if (sessionId) {
         await manageDisplayDevice(user, {
@@ -1636,7 +1730,9 @@ export default function FacilityOperations({
           sessionId,
         }).catch(() => undefined);
       }
-      closeLocalShare(capturedStream);
+      if (shareGroup) releaseShareRuntime(shareGroup.id);
+      if (capturedStream && !reusedRuntime)
+        capturedStream.getTracks().forEach((track) => track.stop());
       setNotice({
         kind: "error",
         text:
@@ -2302,6 +2398,12 @@ export default function FacilityOperations({
     "Cleaning",
     "Maintenance",
   ];
+  const selectedActiveShare = shareGroup
+    ? activeShares[shareGroup.id]
+    : undefined;
+  const selectedShareRuntime = shareGroup
+    ? shareRuntimes.current.get(shareGroup.id)
+    : undefined;
 
   return (
     <div className="facilityModule">
@@ -3321,6 +3423,7 @@ export default function FacilityOperations({
                         <th>Location</th>
                         <th>Status</th>
                         <th>Now Playing</th>
+                        <th>Offline Cache</th>
                         <th>Running Text</th>
                         <th>Last Heartbeat</th>
                         <th>Last Command</th>
@@ -3374,6 +3477,21 @@ export default function FacilityOperations({
                                 {device.overrideUntil
                                   ? ` · Override until ${new Date(device.overrideUntil).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`
                                   : ""}
+                              </small>
+                            </td>
+                            <td>
+                              <b>{device.cacheStatus || "Not reported"}</b>
+                              <small>
+                                {device.cacheStatus === "Downloading"
+                                  ? `${device.cacheProgress || 0}% · `
+                                  : ""}
+                                {device.cachedContentCount || 0} local item
+                                {device.storageQuotaBytes
+                                  ? ` · ${Math.round(((device.storageUsageBytes || 0) / device.storageQuotaBytes) * 100)}% storage`
+                                  : ""}
+                                {device.persistentStorage
+                                  ? " · Persistent"
+                                  : " · Best effort"}
                               </small>
                             </td>
                             <td>
@@ -3506,6 +3624,49 @@ export default function FacilityOperations({
                   {scopedOutputGroups.length} group
                 </span>
               </div>
+              {Object.values(activeShares).length > 0 && (
+                <section className="activeShareDock">
+                  <div className="activeShareDockHead">
+                    <div>
+                      <small>ACTIVE OUTPUT SESSIONS</small>
+                      <b>{Object.values(activeShares).length} live session</b>
+                    </div>
+                    <button
+                      className="danger"
+                      type="button"
+                      onClick={() => void stopAllOutputShares()}
+                    >
+                      Stop All
+                    </button>
+                  </div>
+                  <div className="activeShareDockList">
+                    {Object.values(activeShares).map((share) => (
+                      <div key={share.groupId}>
+                        <span className="statusDot state-available" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const group = displayOutputGroups.find(
+                              (row) => row.id === share.groupId,
+                            );
+                            if (group) setShareGroup(group);
+                          }}
+                        >
+                          <b>{share.groupName}</b>
+                          <small>{share.sourceName}</small>
+                        </button>
+                        <button
+                          className="danger"
+                          type="button"
+                          onClick={() => void stopOutputShare(share.groupId)}
+                        >
+                          Stop
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
               {scopedOutputGroups.length ? (
                 <div className="outputGroupGrid">
                   {scopedOutputGroups.map((group) => {
@@ -3547,6 +3708,10 @@ export default function FacilityOperations({
                             <span>Source</span>
                             <b>{group.activeSourceName || "Not sharing"}</b>
                           </div>
+                          <div>
+                            <span>Mode</span>
+                            <b>{group.sourceMode || "Managed Channel"}</b>
+                          </div>
                         </div>
                         <div className="outputGroupDevices">
                           {groupDevices.length ? (
@@ -3573,7 +3738,7 @@ export default function FacilityOperations({
                             }
                             title={
                               group.sessionStatus === "Sharing" &&
-                              group.activeShareSessionId !== shareSessionId
+                              !activeShares[group.id]
                                 ? "Buka kontrol; sesi tanpa heartbeat dapat diambil alih setelah 30 detik"
                                 : "Bagikan tab, jendela, atau layar ke semua Player di group"
                             }
@@ -3582,9 +3747,10 @@ export default function FacilityOperations({
                               setShareSourceName(
                                 group.activeSourceName || "Operator Screen",
                               );
+                              setShareSourceSelection("NEW");
                             }}
                           >
-                            {group.activeShareSessionId === shareSessionId
+                            {activeShares[group.id]
                               ? "Open Share Control"
                               : group.sessionStatus === "Sharing"
                                 ? "View / Recover Share"
@@ -4546,6 +4712,35 @@ export default function FacilityOperations({
                 </select>
               </label>
               <label className="full">
+                <span>Preferred Source Mode</span>
+                <select
+                  value={outputGroupDraft.sourceMode || "Managed Channel"}
+                  onChange={(event) =>
+                    setOutputGroupDraft({
+                      ...outputGroupDraft,
+                      sourceMode: event.target.value as OutputSourceMode,
+                    })
+                  }
+                >
+                  <option>Cached Playlist</option>
+                  <option>Managed Channel</option>
+                  <option>Live Screen Share</option>
+                  <option>External TV/IPTV</option>
+                  <option>Emergency Override</option>
+                </select>
+                <small>
+                  {outputGroupDraft.sourceMode === "Cached Playlist"
+                    ? "Video/image disiapkan di cache Player agar tetap berjalan saat koneksi putus."
+                    : outputGroupDraft.sourceMode === "Live Screen Share"
+                      ? "Operator memilih tab, window, atau layar; distribusi langsung memakai WebRTC."
+                      : outputGroupDraft.sourceMode === "External TV/IPTV"
+                        ? "Memakai URL/provider yang memang mengizinkan playback pada browser atau aplikasi perangkat."
+                        : outputGroupDraft.sourceMode === "Emergency Override"
+                          ? "Konten prioritas mengambil alih output sampai override dihentikan atau berakhir."
+                          : "Channel dan jadwal dikelola terpusat; media kompatibel dapat disimpan lokal oleh Player."}
+                </small>
+              </label>
+              <label className="full">
                 <span>Output Group Name</span>
                 <input
                   value={outputGroupDraft.name}
@@ -4649,7 +4844,7 @@ export default function FacilityOperations({
         <div
           className="back"
           onMouseDown={(event) => {
-            if (event.target !== event.currentTarget || shareSessionId) return;
+            if (event.target !== event.currentTarget) return;
             setShareGroup(null);
           }}
         >
@@ -4661,10 +4856,7 @@ export default function FacilityOperations({
               </div>
               <button
                 type="button"
-                disabled={Boolean(shareSessionId)}
-                title={
-                  shareSessionId ? "Stop share sebelum menutup panel" : "Close"
-                }
+                title={selectedActiveShare ? "Minimize; session tetap berjalan" : "Close"}
                 onClick={() => setShareGroup(null)}
               >
                 ×
@@ -4685,11 +4877,11 @@ export default function FacilityOperations({
                 </div>
                 <div>
                   <span>Status</span>
-                  <b>{shareSessionId ? "Sharing" : "Ready"}</b>
+                  <b>{selectedActiveShare ? "Sharing" : "Ready"}</b>
                 </div>
               </div>
 
-              {!shareSessionId ? (
+              {!selectedActiveShare ? (
                 <>
                   <label className="full">
                     <span>Source Name</span>
@@ -4702,6 +4894,24 @@ export default function FacilityOperations({
                       }
                       placeholder="Operator Screen"
                     />
+                  </label>
+                  <label className="full">
+                    <span>Share Source</span>
+                    <select
+                      value={shareSourceSelection}
+                      onChange={(event) =>
+                        setShareSourceSelection(event.target.value)
+                      }
+                    >
+                      <option value="NEW">Choose new tab / window / screen</option>
+                      {Object.values(activeShares)
+                        .filter((share) => share.groupId !== shareGroup.id)
+                        .map((share) => (
+                          <option key={share.groupId} value={share.groupId}>
+                            Use {share.groupName} — {share.sourceName}
+                          </option>
+                        ))}
+                    </select>
                   </label>
                   <div className="notice warn full">
                     <span>
@@ -4717,19 +4927,25 @@ export default function FacilityOperations({
                   <div className="sharePreview full">
                     <video
                       ref={(node) => {
-                        if (node && node.srcObject !== shareStream)
-                          node.srcObject = shareStream;
+                        if (
+                          node &&
+                          node.srcObject !== selectedShareRuntime?.stream
+                        )
+                          node.srcObject = selectedShareRuntime?.stream || null;
                       }}
                       autoPlay
                       muted
                       playsInline
                     />
-                    <span>LIVE PREVIEW · {shareSourceName}</span>
+                    <span>
+                      LIVE PREVIEW · {selectedActiveShare.sourceName}
+                    </span>
                   </div>
                   <div className="shareTargetList full">
                     {stringArray(shareGroup.deviceIds).map((deviceId) => {
                       const device = devices.find((row) => row.id === deviceId);
-                      const state = shareDeviceStates[deviceId] || "Waiting";
+                      const state =
+                        selectedActiveShare.deviceStates[deviceId] || "Waiting";
                       return (
                         <div key={deviceId}>
                           <span
@@ -4752,7 +4968,7 @@ export default function FacilityOperations({
               )}
 
               <div className="modalActions full">
-                {!shareSessionId ? (
+                {!selectedActiveShare ? (
                   <>
                     <button type="button" onClick={() => setShareGroup(null)}>
                       Cancel
@@ -4762,14 +4978,18 @@ export default function FacilityOperations({
                       type="submit"
                       disabled={shareStarting}
                     >
-                      {shareStarting ? "Starting..." : "Choose Screen & Start"}
+                      {shareStarting
+                        ? "Starting..."
+                        : shareSourceSelection === "NEW"
+                          ? "Choose Screen & Start"
+                          : "Add Group to Existing Share"}
                     </button>
                   </>
                 ) : (
                   <button
                     className="danger"
                     type="button"
-                    onClick={() => void stopOutputShare()}
+                    onClick={() => void stopOutputShare(shareGroup.id)}
                   >
                     Stop Screen Share
                   </button>
