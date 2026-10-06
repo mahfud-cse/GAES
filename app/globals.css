@@ -198,6 +198,112 @@
   grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.7fr);
 }
 
+.facilityAnalyticsToolbar {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(130px, 180px) minmax(130px, 180px) minmax(260px, 1fr);
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+.facilityAnalyticsToolbar label {
+  display: grid;
+  gap: 5px;
+}
+
+.facilityAnalyticsToolbar label span {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.facilityExportActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  justify-content: flex-end;
+}
+
+.facilityUsageChart,
+.facilityRoomRanking {
+  display: grid;
+  gap: 10px;
+}
+
+.facilityUsageChart > div {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: minmax(76px, 110px) minmax(120px, 1fr) minmax(130px, auto);
+  align-items: center;
+}
+
+.facilityUsageChart > div > span,
+.facilityUsageChart small,
+.facilityRoomRanking span,
+.facilityRoomRanking small {
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.facilityUsageChart > div > div {
+  background: var(--color-surface-soft);
+  border-radius: 999px;
+  height: 16px;
+  overflow: hidden;
+  position: relative;
+}
+
+.facilityUsageChart i,
+.facilityUsageChart b {
+  border-radius: 999px;
+  height: 100%;
+  left: 0;
+  position: absolute;
+  top: 0;
+}
+
+.facilityUsageChart i {
+  background: #bfd0e3;
+}
+
+.facilityUsageChart b {
+  background: var(--color-navy-800);
+  height: 7px;
+  top: 4px;
+}
+
+.peakHourSummary,
+.facilityRoomRanking > div:not(.peakHourSummary) {
+  align-items: center;
+  background: var(--color-surface-soft);
+  border-radius: var(--radius-sm);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 10px;
+}
+
+.peakHourSummary strong {
+  color: var(--color-navy-900);
+  font-size: 22px;
+}
+
+@media (max-width: 860px) {
+  .facilityAnalyticsToolbar {
+    align-items: stretch;
+    grid-template-columns: 1fr 1fr;
+  }
+  .facilityAnalyticsToolbar .bookingViewSwitch,
+  .facilityExportActions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+  .facilityUsageChart > div {
+    grid-template-columns: 1fr;
+  }
+}
+
 .facilityOverviewGrid > .card,
 .facilitySectionCard,
 .roomBookingCard {
@@ -3619,6 +3725,22 @@ textarea.autoField {
 .notificationList span {
   color: #64748b;
   font-size: 10px;
+}
+
+.notificationList button:not(:disabled):is(:hover, :focus-visible),
+.pilotChecklist > button:not(:disabled):is(:hover, :focus-visible) {
+  background: var(--color-navy-800);
+  border-color: var(--color-navy-800);
+  color: #fff;
+}
+
+.notificationList button:not(:disabled):is(:hover, :focus-visible)
+  :where(i, b, span, small, strong),
+.pilotChecklist > button:not(:disabled):is(:hover, :focus-visible)
+  :where(i, b, span, small, strong, .pilotStatus),
+[role="tab"]:not(:disabled):is(:hover, :focus-visible)
+  :where(i, b, span, small, strong, svg) {
+  color: inherit;
 }
 .profileIdentity {
   margin-bottom: 15px;

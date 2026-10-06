@@ -299,6 +299,9 @@ type RoomBooking = {
   recurrenceGroupId?: string;
   createdBy: string;
   createdByName: string;
+  checkedInAt?: unknown;
+  checkedOutAt?: unknown;
+  privacy?: "Detail" | "Masked";
 };
 type BookingDraft = {
   station: string;
@@ -329,6 +332,8 @@ type RoomOperation = {
   checkedInByName?: string;
   handoverTo?: string;
   issueSummary?: string;
+  checkedInAt?: unknown;
+  checkedOutAt?: unknown;
 };
 type RoomMaintenance = {
   id: string;
@@ -418,7 +423,6 @@ const CONTROL_ROLES: FacilityRole[] = [
 const APPROVER_ROLES: FacilityRole[] = [
   "Super Admin",
   "Admin",
-  "HO Admin",
   "BO Admin",
   "Lounge Manager",
 ];
@@ -777,10 +781,16 @@ export default function FacilityOperations({
   account,
   stations,
   user,
+  route,
 }: {
   account: FacilityAccount;
   stations: StationOption[];
   user: User;
+  route?: {
+    tab: "Room Booking" | "TV & Digital Signage";
+    targetId?: string;
+    nonce: number;
+  } | null;
 }) {
   const [activeTab, setActiveTab] = useState<ModuleTab>("Overview");
   const [rooms, setRooms] = useState<RoomRecord[]>([]);
@@ -827,11 +837,20 @@ export default function FacilityOperations({
     "Day" | "Week" | "Month" | "List"
   >("Month");
   const [bookingAnchor, setBookingAnchor] = useState(localToday());
+  const [usageGrain, setUsageGrain] = useState<"Daily" | "Weekly" | "Monthly">(
+    "Daily",
+  );
+  const [usageDateFrom, setUsageDateFrom] = useState(
+    `${localToday().slice(0, 8)}01`,
+  );
+  const [usageDateTo, setUsageDateTo] = useState(localToday());
   const [bookingRoomFilter, setBookingRoomFilter] = useState("ALL");
   const [bookingStatusFilter, setBookingStatusFilter] = useState("ALL");
   const [bookingDraft, setBookingDraft] = useState<BookingDraft>(EMPTY_BOOKING);
   const [bookingRequestId, setBookingRequestId] = useState("");
   const [editingBooking, setEditingBooking] = useState<string | null>(null);
+  const [editingBookingStatus, setEditingBookingStatus] =
+    useState<BookingStatus | null>(null);
   const [showBookingForm, setShowBookingForm] = useState(false);
   const [bookingDetail, setBookingDetail] = useState<RoomBooking | null>(null);
   const [savingBooking, setSavingBooking] = useState(false);
@@ -913,6 +932,28 @@ export default function FacilityOperations({
     useState<DisplayPilotTest["status"]>("Pass");
   const [pilotNote, setPilotNote] = useState("");
   const [savingPilot, setSavingPilot] = useState(false);
+  const [pilotFeedback, setPilotFeedback] = useState<Notice | null>(null);
+  const handledRouteNonce = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!route) return;
+    const timer = window.setTimeout(() => setActiveTab(route.tab), 0);
+    return () => window.clearTimeout(timer);
+  }, [route]);
+
+  useEffect(() => {
+    if (
+      !route?.targetId ||
+      route.tab !== "Room Booking" ||
+      handledRouteNonce.current === route.nonce
+    )
+      return;
+    const booking = bookings.find((row) => row.id === route.targetId);
+    if (!booking) return;
+    handledRouteNonce.current = route.nonce;
+    const timer = window.setTimeout(() => setBookingDetail(booking), 0);
+    return () => window.clearTimeout(timer);
+  }, [bookings, route]);
 
   const globalScope = GLOBAL_ROLES.includes(account.role);
   const canConfigure = CONFIG_ROLES.includes(account.role);
@@ -1012,39 +1053,79 @@ export default function FacilityOperations({
         setDisplayRollouts,
         onError,
       ),
-      subscribeStationCollection<RoomBooking>(
-        "roomBookings",
-        globalScope ? "ALL" : account.station,
-        setBookings,
-        onError,
-      ),
-      subscribeStationCollection<RoomOperation>(
-        "roomOperations",
-        globalScope ? "ALL" : account.station,
-        setOperations,
-        onError,
-      ),
-      subscribeStationCollection<RoomMaintenance>(
-        "roomMaintenance",
-        globalScope ? "ALL" : account.station,
-        setMaintenanceRows,
-        onError,
-      ),
-      subscribeStationCollection<RoomIncident>(
-        "roomIncidents",
-        globalScope ? "ALL" : account.station,
-        setIncidents,
-        onError,
-      ),
-      subscribeStationCollection<RoomActivity>(
-        "roomActivityLogs",
-        globalScope ? "ALL" : account.station,
-        setRoomActivities,
-        onError,
-      ),
+      ["HO Admin", "Lounge Officer"].includes(account.role)
+        ? () => undefined
+        : subscribeStationCollection<RoomBooking>(
+            "roomBookings",
+            globalScope ? "ALL" : account.station,
+            setBookings,
+            onError,
+          ),
+      account.role === "HO Admin"
+        ? () => undefined
+        : subscribeStationCollection<RoomOperation>(
+            "roomOperations",
+            globalScope ? "ALL" : account.station,
+            setOperations,
+            onError,
+          ),
+      account.role === "HO Admin"
+        ? () => undefined
+        : subscribeStationCollection<RoomMaintenance>(
+            "roomMaintenance",
+            globalScope ? "ALL" : account.station,
+            setMaintenanceRows,
+            onError,
+          ),
+      account.role === "HO Admin"
+        ? () => undefined
+        : subscribeStationCollection<RoomIncident>(
+            "roomIncidents",
+            globalScope ? "ALL" : account.station,
+            setIncidents,
+            onError,
+          ),
+      account.role === "HO Admin"
+        ? () => undefined
+        : subscribeStationCollection<RoomActivity>(
+            "roomActivityLogs",
+            globalScope ? "ALL" : account.station,
+            setRoomActivities,
+            onError,
+          ),
     ];
     return () => stops.forEach((stop) => stop());
-  }, [account.station, globalScope]);
+  }, [account.role, account.station, globalScope]);
+
+  useEffect(() => {
+    if (!["HO Admin", "Lounge Officer"].includes(account.role)) return;
+    let disposed = false;
+    const loadScopedBookings = async () => {
+      try {
+        const result = await manageRoomBooking(user, {
+          action: "list",
+          station: globalScope ? "ALL" : account.station,
+        });
+        if (!disposed)
+          setBookings((result.bookings || []) as unknown as RoomBooking[]);
+      } catch (error) {
+        if (!disposed)
+          setNotice({
+            kind: "error",
+            text:
+              error instanceof Error
+                ? error.message
+                : "Data booking tidak dapat dimuat.",
+          });
+      }
+    };
+    void loadScopedBookings();
+    const timer = window.setInterval(() => void loadScopedBookings(), 30_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [account.role, account.station, globalScope, user]);
 
   useEffect(() => {
     if (!activeShareKey) return;
@@ -1221,6 +1302,90 @@ export default function FacilityOperations({
       );
   }, [activityQuery, permittedStation, roomActivities, stationFilter]);
 
+  const usageBookings = useMemo(
+    () =>
+      scopedBookings.filter(
+        (booking) =>
+          booking.localDate >= usageDateFrom &&
+          booking.localDate <= usageDateTo &&
+          !["Draft", "Rejected", "Cancelled"].includes(booking.status),
+      ),
+    [scopedBookings, usageDateFrom, usageDateTo],
+  );
+  const usageAnalytics = useMemo(() => {
+    const grouped = new Map<
+      string,
+      { bookings: number; plannedMinutes: number; actualMinutes: number }
+    >();
+    const roomTotals = new Map<string, number>();
+    const hourTotals = Array.from({ length: 24 }, () => 0);
+    usageBookings.forEach((booking) => {
+      const key =
+        usageGrain === "Monthly"
+          ? booking.localDate.slice(0, 7)
+          : usageGrain === "Weekly"
+            ? dateValue(startOfWeek(booking.localDate))
+            : booking.localDate;
+      const plannedMinutes = Math.max(
+        0,
+        (Date.parse(booking.endAt) - Date.parse(booking.startAt)) / 60_000,
+      );
+      const operation = scopedOperations.find(
+        (row) => row.bookingId === booking.id,
+      );
+      const checkedIn = activityMillis(
+        operation?.checkedInAt || booking.checkedInAt,
+      );
+      const checkedOut = activityMillis(
+        operation?.checkedOutAt || booking.checkedOutAt,
+      );
+      const actualMinutes =
+        checkedIn && checkedOut && checkedOut > checkedIn
+          ? (checkedOut - checkedIn) / 60_000
+          : 0;
+      const current = grouped.get(key) || {
+        bookings: 0,
+        plannedMinutes: 0,
+        actualMinutes: 0,
+      };
+      current.bookings += 1;
+      current.plannedMinutes += plannedMinutes;
+      current.actualMinutes += actualMinutes;
+      grouped.set(key, current);
+      roomTotals.set(
+        booking.roomName,
+        (roomTotals.get(booking.roomName) || 0) + actualMinutes,
+      );
+      const hour = Number(booking.startTime.slice(0, 2));
+      if (Number.isFinite(hour) && hour >= 0 && hour < 24)
+        hourTotals[hour] += 1;
+    });
+    const series = [...grouped.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([label, value]) => ({ label, ...value }));
+    const rooms = [...roomTotals.entries()]
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 8)
+      .map(([label, minutes]) => ({ label, minutes }));
+    const peakHour = hourTotals.reduce(
+      (best, count, hour) =>
+        count > best.count ? { hour, count } : best,
+      { hour: 0, count: 0 },
+    );
+    return { series, rooms, hourTotals, peakHour };
+  }, [scopedOperations, usageBookings, usageGrain]);
+  const plannedUsageMinutes = usageAnalytics.series.reduce(
+    (total, row) => total + row.plannedMinutes,
+    0,
+  );
+  const actualUsageMinutes = usageAnalytics.series.reduce(
+    (total, row) => total + row.actualMinutes,
+    0,
+  );
+  const utilizationPercent = plannedUsageMinutes
+    ? Math.round((actualUsageMinutes / plannedUsageMinutes) * 100)
+    : 0;
+
   const activeStations = stations.filter((station) =>
     permittedStation(station.code),
   );
@@ -1256,6 +1421,8 @@ export default function FacilityOperations({
     ).length;
   const canApproveBooking = APPROVER_ROLES.includes(account.role);
   const canSuperviseOperations = APPROVER_ROLES.includes(account.role);
+  const canCreateBooking = account.role !== "HO Admin";
+  const canOperateRoom = account.role !== "HO Admin";
   const editingDeviceRecord = editingDevice
     ? devices.find((device) => device.id === editingDevice)
     : undefined;
@@ -2021,6 +2188,7 @@ export default function FacilityOperations({
       (row) => row.deviceId === device.id && row.checkId === checkId,
     );
     setPilotDialog({ device, checkId });
+    setPilotFeedback(null);
     setPilotStatus(
       existing?.status ||
         (checkId === "native-screenshot" && device.capabilities?.browserPlayer
@@ -2034,6 +2202,7 @@ export default function FacilityOperations({
     event.preventDefault();
     if (!pilotDialog) return;
     setSavingPilot(true);
+    setPilotFeedback(null);
     try {
       await manageDisplayPilot(user, {
         action: "savetest",
@@ -2045,7 +2214,7 @@ export default function FacilityOperations({
       setNotice({ kind: "ok", text: "Hasil Pilot UAT berhasil disimpan." });
       setPilotDialog(null);
     } catch (error) {
-      setNotice({
+      setPilotFeedback({
         kind: "error",
         text:
           error instanceof Error
@@ -2090,6 +2259,7 @@ export default function FacilityOperations({
       (room) => room.station === defaultStation && room.status === "Active",
     );
     setEditingBooking(null);
+    setEditingBookingStatus(null);
     setBookingRequestId(
       globalThis.crypto?.randomUUID?.() || recordId("booking-request"),
     );
@@ -2105,6 +2275,7 @@ export default function FacilityOperations({
 
   function editDraft(booking: RoomBooking) {
     setEditingBooking(booking.id);
+    setEditingBookingStatus(booking.status);
     setBookingDraft({
       station: booking.station,
       roomId: booking.roomId,
@@ -2165,7 +2336,7 @@ export default function FacilityOperations({
           ? { action: "update", id: editingBooking, booking }
           : { action: "create", booking },
       );
-      if (editingBooking && submit) {
+      if (editingBooking && submit && editingBookingStatus === "Draft") {
         result = await manageRoomBooking(user, {
           action: "submit",
           id: editingBooking,
@@ -2179,6 +2350,7 @@ export default function FacilityOperations({
       });
       setShowBookingForm(false);
       setEditingBooking(null);
+      setEditingBookingStatus(null);
     } catch (error) {
       setNotice({
         kind: "error",
@@ -2383,6 +2555,88 @@ export default function FacilityOperations({
     setBookingAnchor(local.toISOString().slice(0, 10));
   }
 
+  async function downloadFacilityReport(
+    kind: "usage" | "rooms" | "displays",
+  ) {
+    const XLSX = await import("xlsx");
+    const rows =
+      kind === "usage"
+        ? usageBookings.map((booking) => {
+            const operation = scopedOperations.find(
+              (row) => row.bookingId === booking.id,
+            );
+            const checkedIn = activityMillis(
+              operation?.checkedInAt || booking.checkedInAt,
+            );
+            const checkedOut = activityMillis(
+              operation?.checkedOutAt || booking.checkedOutAt,
+            );
+            return {
+              Station: booking.station,
+              Room: booking.roomName,
+              Date: booking.localDate,
+              Start: booking.startTime,
+              End: booking.endTime,
+              Status: booking.status,
+              "Planned Minutes": Math.max(
+                0,
+                Math.round(
+                  (Date.parse(booking.endAt) - Date.parse(booking.startAt)) /
+                    60_000,
+                ),
+              ),
+              "Actual Minutes":
+                checkedIn && checkedOut && checkedOut > checkedIn
+                  ? Math.round((checkedOut - checkedIn) / 60_000)
+                  : 0,
+              Organizer: booking.organizer,
+              Purpose: booking.purpose,
+              Attendees: booking.attendees,
+            };
+          })
+        : kind === "rooms"
+          ? scopedRooms.map((room) => ({
+              Station: room.station,
+              Room: room.name,
+              Area: room.area,
+              Type: room.roomType,
+              Capacity: room.capacity,
+              Facilities: room.facilities.join(", "),
+              "Operational State": room.operationalState,
+              Status: room.status,
+            }))
+          : scopedDevices.map((device) => ({
+              Station: device.station,
+              Device: device.name,
+              Room: roomName(device.roomId),
+              Platform: device.platform,
+              Connection: device.connectionType,
+              Status: playerOperationalStatus(device),
+              Enrollment: device.enrollmentStatus || "Not Enrolled",
+              "Now Playing": device.nowPlaying || "",
+              "Playback Mode": device.playbackMode || "",
+              "Cache Status": device.cacheStatus || "Not reported",
+              "Cached Items": device.cachedContentCount || 0,
+              "Last Heartbeat": readableHeartbeat(device.lastHeartbeat),
+              "Rollout Status": device.rolloutStatus || "Testing",
+            }));
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(
+      workbook,
+      worksheet,
+      kind === "usage"
+        ? "Room Usage"
+        : kind === "rooms"
+          ? "Room Directory"
+          : "TV Signage",
+    );
+    XLSX.writeFile(
+      workbook,
+      `GAES_${kind === "usage" ? "Room_Usage" : kind === "rooms" ? "Room_Directory" : "TV_Signage"}_${usageDateFrom}_${usageDateTo}.xlsx`,
+    );
+  }
+
   const tabs: ModuleTab[] = [
     "Overview",
     "Room Booking",
@@ -2538,67 +2792,97 @@ export default function FacilityOperations({
               </strong>
               <small>Across visible rooms</small>
             </article>
+            <article>
+              <span>Actual Usage</span>
+              <strong>{Math.round(actualUsageMinutes / 60)}h</strong>
+              <small>{Math.round(plannedUsageMinutes / 60)}h planned</small>
+            </article>
+            <article>
+              <span>Plan Realization</span>
+              <strong>{utilizationPercent}%</strong>
+              <small>Actual occupied vs planned</small>
+            </article>
+          </div>
+          <div className="facilityAnalyticsToolbar card">
+            <div className="bookingViewSwitch" role="tablist" aria-label="Usage aggregation">
+              {(["Daily", "Weekly", "Monthly"] as const).map((grain) => (
+                <button
+                  key={grain}
+                  type="button"
+                  role="tab"
+                  aria-selected={usageGrain === grain}
+                  className={usageGrain === grain ? "active" : ""}
+                  onClick={() => setUsageGrain(grain)}
+                >
+                  {grain}
+                </button>
+              ))}
+            </div>
+            <label>
+              <span>From</span>
+              <input type="date" value={usageDateFrom} onChange={(event) => setUsageDateFrom(event.target.value)} />
+            </label>
+            <label>
+              <span>To</span>
+              <input type="date" value={usageDateTo} onChange={(event) => setUsageDateTo(event.target.value)} />
+            </label>
+            <div className="facilityExportActions">
+              <button type="button" onClick={() => void downloadFacilityReport("usage")}>Room Usage XLSX</button>
+              <button type="button" onClick={() => void downloadFacilityReport("rooms")}>Room List XLSX</button>
+              <button type="button" onClick={() => void downloadFacilityReport("displays")}>TV &amp; Signage XLSX</button>
+            </div>
           </div>
           <div className="facilityOverviewGrid">
             <article className="card">
               <div className="cardHeading">
                 <div>
-                  <small>ROOM READINESS</small>
-                  <h2>Current Room Status</h2>
+                  <small>USAGE ANALYTICS</small>
+                  <h2>Planned vs Actual Usage</h2>
                 </div>
               </div>
-              {!scopedRooms.length ? (
-                <EmptyState text="Belum ada room pada station ini. Tambahkan melalui Master & Configuration." />
+              {!usageAnalytics.series.length ? (
+                <EmptyState text="Belum ada data penggunaan pada periode ini." />
               ) : (
-                <div className="facilityRoomGrid">
-                  {scopedRooms.map((room) => (
-                    <div className="facilityRoomCard" key={room.id}>
-                      <div>
-                        <span
-                          className={`statusDot state-${room.operationalState.toLowerCase()}`}
-                        />{" "}
-                        <b>{room.name}</b>
+                <div className="facilityUsageChart">
+                  {usageAnalytics.series.map((row) => {
+                    const maximum = Math.max(
+                      1,
+                      ...usageAnalytics.series.map((item) => item.plannedMinutes),
+                    );
+                    return (
+                      <div key={row.label}>
+                        <span>{row.label}</span>
+                        <div>
+                          <i style={{ width: `${Math.max(2, (row.plannedMinutes / maximum) * 100)}%` }} />
+                          <b style={{ width: `${Math.max(0, (row.actualMinutes / maximum) * 100)}%` }} />
+                        </div>
+                        <small>{Math.round(row.plannedMinutes / 60)}h plan · {Math.round(row.actualMinutes / 60)}h actual</small>
                       </div>
-                      <small>
-                        {room.station} · {room.area} · Capacity {room.capacity}
-                      </small>
-                      <strong>{room.operationalState}</strong>
-                      <span>
-                        {room.facilities.length
-                          ? room.facilities.join(" · ")
-                          : "Facility list belum diisi"}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </article>
             <article className="card">
               <div className="cardHeading">
                 <div>
-                  <small>DISPLAY MONITOR</small>
-                  <h2>Now Playing</h2>
+                  <small>ROOM CHARACTERISTICS</small>
+                  <h2>Most Used Rooms &amp; Peak Hour</h2>
                 </div>
               </div>
-              {!scopedDevices.length ? (
-                <EmptyState text="Belum ada display device yang terdaftar." />
+              {!usageAnalytics.rooms.length ? (
+                <EmptyState text="Actual check-in/check-out belum tersedia pada periode ini." />
               ) : (
-                <div className="facilityDeviceList">
-                  {scopedDevices.map((device) => (
-                    <div key={device.id}>
-                      <span
-                        className={`deviceStatus ${isOnline(device) ? "online" : "offline"}`}
-                      >
-                        {isOnline(device) ? "Online" : device.status}
-                      </span>
-                      <b>{device.name}</b>
-                      <small>
-                        {device.station} · {roomName(device.roomId)}
-                      </small>
-                      <span>{device.nowPlaying || "Belum ada tayangan"}</span>
-                      {device.overlayText && (
-                        <em>Running text: {device.overlayText}</em>
-                      )}
+                <div className="facilityRoomRanking">
+                  <div className="peakHourSummary">
+                    <span>Peak booking start</span>
+                    <strong>{String(usageAnalytics.peakHour.hour).padStart(2, "0")}:00</strong>
+                    <small>{usageAnalytics.peakHour.count} booking</small>
+                  </div>
+                  {usageAnalytics.rooms.map((room, index) => (
+                    <div key={room.label}>
+                      <b>{index + 1}. {room.label}</b>
+                      <span>{Math.round(room.minutes / 60)} actual hours</span>
                     </div>
                   ))}
                 </div>
@@ -2619,9 +2903,11 @@ export default function FacilityOperations({
                 preparation dan cleaning buffer.
               </p>
             </div>
-            <button className="primary" type="button" onClick={openNewBooking}>
-              + New Booking
-            </button>
+            {canCreateBooking && (
+              <button className="primary" type="button" onClick={openNewBooking}>
+                + New Booking
+              </button>
+            )}
           </div>
 
           <div className="bookingToolbar">
@@ -2713,6 +2999,7 @@ export default function FacilityOperations({
             bookings={scopedBookings}
             currentUserId={account.id}
             canApprove={canApproveBooking}
+            ownerCanCancel={account.role !== "Lounge Officer"}
             onOpen={setBookingDetail}
             onEdit={editDraft}
             onAction={(booking, action) => void bookingAction(booking, action)}
@@ -2733,15 +3020,17 @@ export default function FacilityOperations({
                 </p>
               </div>
               <div className="facilityHeaderActions">
-                <button
-                  type="button"
-                  onClick={() =>
-                    openOperationDialog("incident", undefined, scopedRooms[0])
-                  }
-                  disabled={!scopedRooms.length}
-                >
-                  Report Incident
-                </button>
+                {canOperateRoom && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openOperationDialog("incident", undefined, scopedRooms[0])
+                    }
+                    disabled={!scopedRooms.length}
+                  >
+                    Report Incident
+                  </button>
+                )}
                 {canSuperviseOperations && (
                   <button
                     className="primary"
@@ -2890,7 +3179,7 @@ export default function FacilityOperations({
                             </td>
                             <td>
                               <div className="bookingActions">
-                                {booking.status === "Approved" && (
+                                {canOperateRoom && booking.status === "Approved" && (
                                   <button
                                     type="button"
                                     onClick={() =>
@@ -2922,7 +3211,7 @@ export default function FacilityOperations({
                                       No Show
                                     </button>
                                   )}
-                                {booking.status === "Checked-in" && (
+                                {canOperateRoom && booking.status === "Checked-in" && (
                                   <button
                                     type="button"
                                     onClick={() =>
@@ -2932,7 +3221,7 @@ export default function FacilityOperations({
                                     Check-out
                                   </button>
                                 )}
-                                {booking.status === "Checked-in" && (
+                                {canOperateRoom && booking.status === "Checked-in" && (
                                   <button
                                     type="button"
                                     onClick={() =>
@@ -4630,6 +4919,11 @@ export default function FacilityOperations({
                   all required checks pass and it is activated again.
                 </span>
               </div>
+              {pilotFeedback && (
+                <div className={`notice ${pilotFeedback.kind} full`} role="alert">
+                  <span>{pilotFeedback.text}</span>
+                </div>
+              )}
               <div className="modalActions full">
                 <button type="button" onClick={() => setPilotDialog(null)}>
                   Cancel
@@ -6515,7 +6809,11 @@ export default function FacilityOperations({
               <div>
                 <small>ROOM BOOKING</small>
                 <h2>
-                  {editingBooking ? "Edit Draft Booking" : "New Room Booking"}
+                  {editingBooking
+                    ? editingBookingStatus === "Draft"
+                      ? "Edit Draft Booking"
+                      : "Edit Submitted Booking"
+                    : "New Room Booking"}
                 </h2>
               </div>
               <button type="button" onClick={() => setShowBookingForm(false)}>
@@ -6801,16 +7099,22 @@ export default function FacilityOperations({
                   Cancel
                 </button>
                 <button type="submit" disabled={savingBooking}>
-                  {savingBooking ? "Saving..." : "Save Draft"}
+                  {savingBooking
+                    ? "Saving..."
+                    : editingBookingStatus && editingBookingStatus !== "Draft"
+                      ? "Save Changes"
+                      : "Save Draft"}
                 </button>
-                <button
-                  className="primary"
-                  type="button"
-                  disabled={savingBooking}
-                  onClick={() => void saveBooking(true)}
-                >
-                  Submit for Approval
-                </button>
+                {(!editingBookingStatus || editingBookingStatus === "Draft") && (
+                  <button
+                    className="primary"
+                    type="button"
+                    disabled={savingBooking}
+                    onClick={() => void saveBooking(true)}
+                  >
+                    Submit for Approval
+                  </button>
+                )}
               </div>
             </form>
           </div>
@@ -6885,6 +7189,7 @@ export default function FacilityOperations({
                 booking={bookingDetail}
                 currentUserId={account.id}
                 canApprove={canApproveBooking}
+                ownerCanCancel={account.role !== "Lounge Officer"}
                 onEdit={(booking) => {
                   setBookingDetail(null);
                   editDraft(booking);
@@ -7285,6 +7590,7 @@ function BookingCalendar({
   bookings,
   currentUserId,
   canApprove,
+  ownerCanCancel,
   onOpen,
   onEdit,
   onAction,
@@ -7294,6 +7600,7 @@ function BookingCalendar({
   bookings: RoomBooking[];
   currentUserId: string;
   canApprove: boolean;
+  ownerCanCancel: boolean;
   onOpen: (booking: RoomBooking) => void;
   onEdit: (booking: RoomBooking) => void;
   onAction: (
@@ -7335,6 +7642,7 @@ function BookingCalendar({
               booking={booking}
               currentUserId={currentUserId}
               canApprove={canApprove}
+              ownerCanCancel={ownerCanCancel}
               onEdit={onEdit}
               onAction={onAction}
             />
@@ -7396,6 +7704,7 @@ function BookingCalendar({
                       booking={booking}
                       currentUserId={currentUserId}
                       canApprove={canApprove}
+                      ownerCanCancel={ownerCanCancel}
                       onEdit={onEdit}
                       onAction={onAction}
                     />
@@ -7517,12 +7826,14 @@ function BookingActions({
   booking,
   currentUserId,
   canApprove,
+  ownerCanCancel,
   onEdit,
   onAction,
 }: {
   booking: RoomBooking;
   currentUserId: string;
   canApprove: boolean;
+  ownerCanCancel: boolean;
   onEdit: (booking: RoomBooking) => void;
   onAction: (
     booking: RoomBooking,
@@ -7532,7 +7843,7 @@ function BookingActions({
   const owner = booking.createdBy === currentUserId;
   return (
     <div className="bookingActions">
-      {booking.status === "Draft" && owner && (
+      {booking.status === "Draft" && (owner || canApprove) && (
         <>
           <button type="button" onClick={() => onEdit(booking)}>
             Edit
@@ -7544,6 +7855,9 @@ function BookingActions({
       )}
       {booking.status === "Requested" && canApprove && (
         <>
+          <button type="button" onClick={() => onEdit(booking)}>
+            Edit
+          </button>
           <button type="button" onClick={() => onAction(booking, "approve")}>
             Approve
           </button>
@@ -7552,8 +7866,14 @@ function BookingActions({
           </button>
         </>
       )}
+      {booking.status === "Approved" && canApprove && (
+        <button type="button" onClick={() => onEdit(booking)}>
+          Edit
+        </button>
+      )}
       {["Draft", "Requested", "Approved"].includes(booking.status) &&
-        (owner || canApprove) && (
+        (canApprove ||
+          (owner && (booking.status === "Draft" || ownerCanCancel))) && (
           <button type="button" onClick={() => onAction(booking, "cancel")}>
             Cancel
           </button>

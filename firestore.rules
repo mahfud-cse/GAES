@@ -16,8 +16,12 @@ service cloud.firestore {
     match /visitors/{id} {
       allow read: if active() && (roleIs(['Super Admin','Admin','HO Admin','HO Ancillary Coordinator','Report Viewer']) || sameStation(resource.data));
       allow create: if active() && sameStation(request.resource.data);
-      allow update: if active() && (roleIs(['Super Admin','Admin','BO Admin','Lounge Manager','HO Ancillary Verifier','Airline Verifier']) || sameStation(resource.data));
-      allow delete: if roleIs(['Super Admin','Admin']);
+      allow update: if active() && (
+        roleIs(['Super Admin','Admin','HO Ancillary Verifier','Airline Verifier']) ||
+        (roleIs(['BO Admin','Lounge Manager']) && sameStation(resource.data) && sameStation(request.resource.data))
+      );
+      allow delete: if roleIs(['Super Admin','Admin']) ||
+        (roleIs(['BO Admin','Lounge Manager']) && sameStation(resource.data));
     }
     match /lounges/{id} {
       allow read: if active();
@@ -57,22 +61,22 @@ service cloud.firestore {
       allow delete: if roleIs(['Super Admin','Admin']);
     }
     match /rooms/{id} {
-      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
-        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
-      allow create: if roleIs(['Super Admin','Admin','HO Admin']) && sameStation(request.resource.data);
-      allow update: if roleIs(['Super Admin','Admin','HO Admin']) && sameStation(resource.data) && sameStation(request.resource.data);
-      allow delete: if roleIs(['Super Admin','Admin','HO Admin']) && sameStation(resource.data);
+      allow read: if roleIs(['Super Admin','Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
+      allow create: if roleIs(['Super Admin','Admin']) && sameStation(request.resource.data);
+      allow update: if roleIs(['Super Admin','Admin']) && sameStation(resource.data) && sameStation(request.resource.data);
+      allow delete: if roleIs(['Super Admin','Admin']) && sameStation(resource.data);
     }
     match /roomFacilities/{id} {
-      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
-        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
-      allow create: if roleIs(['Super Admin','Admin','HO Admin']) && sameStation(request.resource.data);
-      allow update: if roleIs(['Super Admin','Admin','HO Admin']) && sameStation(resource.data) && sameStation(request.resource.data);
-      allow delete: if roleIs(['Super Admin','Admin','HO Admin']) && sameStation(resource.data);
+      allow read: if roleIs(['Super Admin','Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
+      allow create: if roleIs(['Super Admin','Admin']) && sameStation(request.resource.data);
+      allow update: if roleIs(['Super Admin','Admin']) && sameStation(resource.data) && sameStation(request.resource.data);
+      allow delete: if roleIs(['Super Admin','Admin']) && sameStation(resource.data);
     }
     match /roomBookings/{id} {
-      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
-        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow read: if roleIs(['Super Admin','Admin','BO Admin','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
       allow write: if false;
     }
     match /roomBookingSlots/{id} {
@@ -82,23 +86,23 @@ service cloud.firestore {
       allow read, write: if false;
     }
     match /roomOperations/{id} {
-      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
-        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow read: if roleIs(['Super Admin','Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
       allow write: if false;
     }
     match /roomMaintenance/{id} {
-      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
-        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow read: if roleIs(['Super Admin','Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
       allow write: if false;
     }
     match /roomIncidents/{id} {
-      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
-        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow read: if roleIs(['Super Admin','Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
       allow write: if false;
     }
     match /roomActivityLogs/{id} {
-      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
-        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow read: if roleIs(['Super Admin','Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
       allow write: if false;
     }
     match /displayDevices/{id} {

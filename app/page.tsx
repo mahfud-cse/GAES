@@ -30,6 +30,8 @@ import {
   createVisitor,
   deleteManagedUser,
   importManagedUsers,
+  manageNotification,
+  manageVisitor,
   requestPasswordReset,
   resetManagedUserPassword,
   resolveUsername,
@@ -1181,8 +1183,36 @@ type PortalNotification = {
   title: string;
   text: string;
   targetUid?: string;
+  targetId?: string;
   active: boolean;
 };
+type PortalAuditLog = {
+  id: string;
+  action?: string;
+  actorName?: string;
+  actorId?: string;
+  station?: string;
+  targetId?: string;
+  notificationType?: string;
+  createdAt?: unknown;
+};
+
+function portalActivityTime(value: unknown) {
+  if (!value) return "—";
+  const timestamp = value as { toDate?: () => Date; seconds?: number };
+  const date =
+    typeof timestamp.toDate === "function"
+      ? timestamp.toDate()
+      : typeof timestamp.seconds === "number"
+        ? new Date(timestamp.seconds * 1000)
+        : new Date(String(value));
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleString("id-ID", {
+        dateStyle: "short",
+        timeStyle: "short",
+      });
+}
 type Station = {
   code: string;
   name: string;
@@ -2196,6 +2226,11 @@ export default function Home() {
     [lounges, setLounges] = useState<Lounge[]>([]),
     [visitors, setVisitors] = useState<Visitor[]>([]),
     [flights, setFlights] = useState<Flight[]>([]);
+  const [facilityRoute, setFacilityRoute] = useState<{
+    tab: "Room Booking" | "TV & Digital Signage";
+    targetId?: string;
+    nonce: number;
+  } | null>(null);
   const [reconTab, setReconTab] = useState("Visitor List"),
     [flightTab, setFlightTab] = useState("Daily Flight"),
     [masterTab, setMasterTab] = useState("Master Lounge/Tenant");
@@ -2242,6 +2277,7 @@ export default function Home() {
     [portalNotifications, setPortalNotifications] = useState<
       PortalNotification[]
     >([]),
+    [portalAuditLogs, setPortalAuditLogs] = useState<PortalAuditLog[]>([]),
     [partnerships, setPartnerships] = useState<Partnership[]>([]),
     [airlines, setAirlines] = useState<Airline[]>([]),
     [stations, setStations] = useState<Station[]>([]),
@@ -2488,10 +2524,7 @@ export default function Home() {
     [actionDialog, setActionDialog] = useState<null | {
       kind: "ok" | "error" | "warn";
       text: string;
-    }>(null),
-    [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(
-      new Set(),
-    );
+    }>(null);
   const [language, setLanguage] = useState<"ID" | "EN">("ID"),
     [showProfileMenu, setShowProfileMenu] = useState(false),
     [showManageTable, setShowManageTable] = useState(false),
@@ -2712,23 +2745,6 @@ export default function Home() {
     syncLocation();
   }, [currentAccount, tab, masterTab, reconTab, flightTab]);
   useEffect(() => {
-    if (!firebaseUser) {
-      setReadNotificationIds(new Set());
-      return;
-    }
-    try {
-      const saved = JSON.parse(
-        localStorage.getItem(`gaes-read-notifications-${firebaseUser.uid}`) ||
-          "[]",
-      );
-      setReadNotificationIds(
-        new Set(Array.isArray(saved) ? saved.map(String) : []),
-      );
-    } catch {
-      setReadNotificationIds(new Set());
-    }
-  }, [firebaseUser]);
-  useEffect(() => {
     const restoreLocation = () => {
       const params = new URLSearchParams(window.location.search);
       const requested = params.get("view") as MainTab | null;
@@ -2817,6 +2833,14 @@ export default function Home() {
           setPortalNotifications(rows.filter((item) => item.active !== false)),
         subscriptionError,
       ),
+      currentAccount && ["Super Admin", "Admin"].includes(currentAccount.role)
+        ? subscribeCollection<PortalAuditLog>(
+            "auditLogs",
+            setPortalAuditLogs,
+            undefined,
+            subscriptionError,
+          )
+        : () => undefined,
       subscribeCollection<unknown>(
         "stations",
         (rows) =>
@@ -2940,6 +2964,12 @@ export default function Home() {
       "HO Ancillary Verifier",
     ].includes(role),
     canManageMaster = role === "Super Admin" || role === "Admin",
+    canManageSubmittedVisitor = [
+      "Super Admin",
+      "Admin",
+      "BO Admin",
+      "Lounge Manager",
+    ].includes(role),
     canSeeDashboard = dashboardAllowedRoles.includes(role),
     canSeeFacility = roleCanUseFacility(role),
     canDeleteFlight = (f: Flight) =>
@@ -2989,28 +3019,11 @@ export default function Home() {
     setDeleteRequest({ title, message, action });
   }
 
-  function markNotificationRead(id: string) {
-    setReadNotificationIds((current) => {
-      const next = new Set(current).add(id);
-      if (firebaseUser) {
-        localStorage.setItem(
-          `gaes-read-notifications-${firebaseUser.uid}`,
-          JSON.stringify([...next]),
-        );
-      }
-      return next;
-    });
-  }
-
   async function markPortalNotificationRead(item: PortalNotification) {
     setPortalNotifications((rows) => rows.filter((row) => row.id !== item.id));
     try {
-      await saveRecord("notifications", {
-        id: item.id,
-        userId: item.userId,
-        active: false,
-        readAt: new Date().toISOString(),
-      });
+      if (!firebaseUser) throw new Error("Sesi Firebase tidak aktif.");
+      await manageNotification(firebaseUser, { action: "read", id: item.id });
     } catch (error) {
       setPortalNotifications((rows) => [item, ...rows]);
       setActionDialog({
@@ -4054,29 +4067,13 @@ export default function Home() {
           .toLowerCase()
           .includes(masterQuery.toLowerCase()),
     ),
-    activityRows = [
-      {
-        id: "a1",
-        time: `${localDate()} 09:15`,
-        user: "Super Admin",
-        activity: "Update operational rule",
-        scope: "Semua BO",
-      },
-      {
-        id: "a2",
-        time: `${localDate()} 08:30`,
-        user: "BO Admin CGK",
-        activity: "Update ETD GA204",
-        scope: "CGK",
-      },
-      {
-        id: "a3",
-        time: `${localDate()} 08:12`,
-        user: "Lounge Officer",
-        activity: "Submit visitor",
-        scope: "CGK",
-      },
-    ],
+    activityRows = portalAuditLogs.map((entry) => ({
+      id: entry.id,
+      time: portalActivityTime(entry.createdAt),
+      user: entry.actorName || entry.actorId || "System",
+      activity: `${entry.action || "ACTIVITY"}${entry.notificationType ? ` · ${entry.notificationType}` : ""}`,
+      scope: entry.station || entry.targetId || "Global",
+    })),
     filteredActivity = sortData(
       activityRows.filter(
         (a) =>
@@ -6008,10 +6005,7 @@ export default function Home() {
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
             </svg>
-            <strong>
-              {visitors.filter((visitor) => visitor.boStatus !== "Accepted")
-                .length + portalNotifications.length}
-            </strong>
+            <strong>{portalNotifications.length}</strong>
           </button>
           <button
             type="button"
@@ -6073,13 +6067,7 @@ export default function Home() {
                 >
                   {tr("Notifikasi", "Notifications")}{" "}
                   <strong>
-                    {visitors.filter(
-                      (v) =>
-                        v.boStatus !== "Accepted" &&
-                        !readNotificationIds.has(
-                          `${v.boStatus === "Rejected" ? "dispute" : "verify"}-${v.id}`,
-                        ),
-                    ).length + portalNotifications.length}
+                    {portalNotifications.length}
                   </strong>
                 </button>
                 <button
@@ -7692,26 +7680,37 @@ export default function Home() {
                                     <td key={c.id}>{customValue(v, c)}</td>
                                   ))}
                                 <td>
-                                  <div className="rowAct">
-                                    <button onClick={() => setEdit(v)}>
-                                      Ubah
-                                    </button>
-                                    <button
-                                      className="del"
-                                      onClick={() =>
-                                        askDelete(
-                                          "Hapus data visitor?",
-                                          `${v.name} · ${v.flight} · ${v.travelDate || v.date}`,
-                                          () =>
-                                            setVisitors((x) =>
-                                              x.filter((y) => y.id !== v.id),
-                                            ),
-                                        )
-                                      }
-                                    >
-                                      Hapus
-                                    </button>
-                                  </div>
+                                  {canManageSubmittedVisitor ? (
+                                    <div className="rowAct">
+                                      <button onClick={() => setEdit(v)}>
+                                        Ubah
+                                      </button>
+                                      <button
+                                        className="del"
+                                        onClick={() =>
+                                          askDelete(
+                                            "Hapus data visitor?",
+                                            `${v.name} · ${v.flight} · ${v.travelDate || v.date}`,
+                                            async () => {
+                                              if (!firebaseUser)
+                                                throw new Error("Sesi Firebase tidak aktif.");
+                                              await manageVisitor(firebaseUser, {
+                                                action: "delete",
+                                                id: v.id,
+                                              });
+                                              setVisitors((rows) =>
+                                                rows.filter((row) => row.id !== v.id),
+                                              );
+                                            },
+                                          )
+                                        }
+                                      >
+                                        Hapus
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <small>Read only</small>
+                                  )}
                                 </td>
                               </tr>
                             ))
@@ -8299,6 +8298,7 @@ export default function Home() {
             canSeeFacility && (
               <FacilityOperations
                 user={firebaseUser}
+                route={facilityRoute}
                 account={{
                   id: currentAccount.id,
                   name: currentAccount.name,
@@ -10227,7 +10227,7 @@ export default function Home() {
             <article className="card tableCard">
               <div className="miniHead">
                 <h2>Activity Log</h2>
-                <span>Simulasi audit trail</span>
+                <span>Audit trail backend termasuk pembukaan notification</span>
               </div>
               <MasterFilterBar
                 query={masterQuery}
@@ -11140,6 +11140,25 @@ export default function Home() {
                     if (item.type === "PASSWORD_RESET_REQUEST") {
                       setMasterTab("User & Role");
                       setTab("master");
+                    } else if (
+                      ["ROOM_BOOKING_APPROVAL", "ROOM_BOOKING_STATUS"].includes(
+                        item.type,
+                      )
+                    ) {
+                      setFacilityRoute({
+                        tab: "Room Booking",
+                        targetId: item.targetId,
+                        nonce: Date.now(),
+                      });
+                      setTab("facility");
+                    } else if (item.type === "VISITOR_VERIFICATION") {
+                      setReconTab("Verifier Review");
+                      setTab("reconciliation");
+                    } else if (
+                      ["VISITOR_DISPUTE", "VISITOR_STATUS"].includes(item.type)
+                    ) {
+                      setReconTab("Dispute & Correction");
+                      setTab("reconciliation");
                     }
                     setShowInbox(false);
                   }}
@@ -11153,67 +11172,9 @@ export default function Home() {
                   <span>{item.text}</span>
                 </button>
               ))}
-              {verificationQueue
-                .filter(
-                  (v) =>
-                    v.boStatus === "Pending" &&
-                    !readNotificationIds.has(`verify-${v.id}`),
-                )
-                .map((v) => (
-                  <button
-                    key={`verify-${v.id}`}
-                    onClick={() => {
-                      markNotificationRead(`verify-${v.id}`);
-                      setReconTab("Verifier Review");
-                      setTab("reconciliation");
-                      setShowInbox(false);
-                    }}
-                  >
-                    <i>VERIFY</i>
-                    <b>
-                      {v.name} · {v.flight}
-                    </b>
-                    <span>
-                      {v.category} menunggu verifikasi {v.verifier}
-                    </span>
-                  </button>
-                ))}
-              {shown
-                .filter(
-                  (v) =>
-                    v.boStatus === "Rejected" &&
-                    v.reconciliationStatus !== "Final" &&
-                    !readNotificationIds.has(`dispute-${v.id}`),
-                )
-                .map((v) => (
-                  <button
-                    key={`dispute-${v.id}`}
-                    onClick={() => {
-                      markNotificationRead(`dispute-${v.id}`);
-                      setReconTab("Dispute & Correction");
-                      setTab("reconciliation");
-                      setShowInbox(false);
-                    }}
-                  >
-                    <i>DISPUTE</i>
-                    <b>
-                      {v.name} · {v.disputeCode || "Koreksi"}
-                    </b>
-                    <span>{v.boReason}</span>
-                  </button>
-                ))}
-              {!portalNotifications.length &&
-                !verificationQueue.some(
-                  (v) =>
-                    v.boStatus === "Pending" &&
-                    !readNotificationIds.has(`verify-${v.id}`),
-                ) &&
-                !shown.some(
-                  (v) =>
-                    v.boStatus === "Rejected" &&
-                    v.reconciliationStatus !== "Final" &&
-                    !readNotificationIds.has(`dispute-${v.id}`),
-                ) && <div className="empty">Tidak ada aktivitas baru.</div>}
+              {!portalNotifications.length && (
+                <div className="empty">Tidak ada aktivitas baru.</div>
+              )}
             </div>
           </section>
         </div>
@@ -11349,7 +11310,12 @@ export default function Home() {
                   vendorStatus: "Pending",
                   reconciliationStatus: "Open",
                 };
-                await saveRecord("visitors", updated);
+                if (!firebaseUser) throw new Error("Sesi Firebase tidak aktif.");
+                await manageVisitor(firebaseUser, {
+                  action: "update",
+                  id: updated.id,
+                  visitor: updated,
+                });
                 setVisitors((xs) =>
                   xs.map((x) => (x.id === updated.id ? updated : x)),
                 );
