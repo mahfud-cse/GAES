@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { failure, httpError, json, requireUser, targetDb } from "./_firebase-admin.mjs";
+import { writeAudit } from "./_audit.mjs";
 
 const normalize = (value) => String(value || "").trim().toUpperCase().replace(/\s+/g, " ");
 
@@ -13,7 +14,7 @@ export default async (request) => {
       return json(400, { error: "Nama, flight, sequence, dan Date of Travel wajib diisi." });
     }
     if (visitor.eligible !== "Y") {
-      return json(422, { code: "INELIGIBLE", error: "Penumpang tidak eligible. Silakan coba scan ulang." });
+      return json(422, { code: "INELIGIBLE", error: "Indikator kelayakan akses (Y) tidak ditemukan. Berdasarkan ketentuan yang berlaku, penumpang tidak memenuhi kriteria akses lounge. Pastikan boarding pass telah dipindai dengan benar atau lakukan verifikasi manual sesuai kewenangan." });
     }
 
     const duplicateKey = createHash("sha256").update(identity.join("|")).digest("hex");
@@ -58,11 +59,17 @@ export default async (request) => {
           createdAt: new Date(),
         });
       });
-      transaction.create(db.collection("auditLogs").doc(), {
+      writeAudit(transaction, db, actor, {
         action: "CREATE_VISITOR",
+        module: "Lounge/Tenant Access",
+        station: visitor.airport,
+        loungeId: visitor.loungeId,
+        loungeName: visitor.lounge,
+        targetType: "Visitor",
         targetId: visitorRef.id,
-        actorId: actor.decoded.uid,
-        createdAt: new Date(),
+        targetName: `${visitor.name} · ${visitor.flight}`,
+        result: "Pending Verification",
+        detail: `${visitor.source || "Access entry"} · ${visitor.category || "Unspecified category"}`,
       });
     });
     return json(201, { id: visitorRef.id, lateScan: visitor.boReason === "Melewati STD/ETD" });

@@ -2052,9 +2052,83 @@ body {
   object-fit: cover;
 }
 
+.displayPlayer.fit-contain .playerMedia {
+  object-fit: contain;
+}
+
+.displayPlayer.fit-stretch .playerMedia {
+  object-fit: fill;
+}
+
 .playerShareMedia {
   object-fit: contain;
   z-index: 2;
+}
+
+.deviceOrientationPreview {
+  align-items: center;
+  background: #f5f8fc;
+  border: 1px solid #dbe5f0;
+  border-radius: 12px;
+  display: grid;
+  gap: 14px;
+  grid-column: 1 / -1;
+  grid-template-columns: 110px 1fr;
+  padding: 14px;
+}
+
+.deviceOrientationPreview > div {
+  align-items: center;
+  background: #062b5c;
+  border-radius: 8px;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  height: 62px;
+  justify-content: center;
+  margin: auto;
+  width: 104px;
+}
+
+.deviceOrientationPreview > div.portrait {
+  height: 104px;
+  width: 62px;
+}
+
+.deviceOrientationPreview span,
+.deviceOrientationPreview small {
+  color: #d7e3f2;
+  font-size: 9px;
+}
+
+.deviceOrientationPreview p {
+  color: #425b76;
+  margin: 0;
+}
+
+.inlineWarning {
+  background: #fff8e7;
+  border: 1px solid #e8c56a;
+  border-radius: 10px;
+  color: #6c5210;
+  padding: 12px 14px;
+}
+
+.visitorImportModal {
+  max-width: 980px;
+}
+
+.importPreviewTable {
+  max-height: 48vh;
+}
+
+.facilityTrafficChart {
+  margin-top: 14px;
+  min-width: 520px;
+}
+
+.facilityTrafficSummary {
+  margin-top: 10px;
 }
 
 .playerStandby {

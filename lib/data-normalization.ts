@@ -268,16 +268,24 @@ export function normalizeVisitor(row: Row) {
   const id = text(row.id);
   const name = text(row.name);
   const flight = upper(row.flight).replace(/\s/g, "");
-  const travelDate = isoDate(row.travelDate, isoDate(row.date));
+  const incompleteImport = text(row.importStatus) === "Needs Data Completion";
+  const explicitTravelDate = isoDate(row.travelDate);
+  const travelDate = explicitTravelDate || (incompleteImport ? "" : isoDate(row.date));
+  const accessDate = isoDate(row.date, travelDate);
   const airport = upper(row.airport);
-  if (!id || !name || !flight || !travelDate || !/^[A-Z]{3}$/.test(airport))
+  if (
+    !id ||
+    !name ||
+    !/^[A-Z]{3}$/.test(airport) ||
+    (!incompleteImport && (!flight || !travelDate))
+  )
     return null;
   return {
     ...row,
     id,
     name,
     flight,
-    date: isoDate(row.date, travelDate),
+    date: accessDate,
     travelDate,
     time: timeValue(row.time, "00:00"),
     airport,
@@ -287,6 +295,7 @@ export function normalizeVisitor(row: Row) {
     seat: text(row.seat),
     seq: text(row.seq),
     ticket: text(row.ticket),
+    eligible: upper(row.eligible) === "Y" ? "Y" : upper(row.eligible) === "N" ? "N" : "",
     category: text(row.category, "Lainnya"),
     reference: text(row.reference),
     currency: upper(row.currency, "IDR"),

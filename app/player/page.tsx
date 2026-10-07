@@ -16,6 +16,7 @@ type ContentItem = {
   contentType: "Live TV" | "Video" | "Image" | "Web URL";
   sourceUrl: string;
   durationSeconds: number;
+  orientation?: "Any" | "Landscape" | "Portrait";
 };
 type Playback = {
   channelId: string;
@@ -55,7 +56,13 @@ type HeartbeatResponse = {
   announcements?: Announcement[];
   share?: SharePlan | null;
   commands?: Command[];
-  device?: { name: string; station: string };
+  device?: {
+    name: string;
+    station: string;
+    orientation?: "Auto" | "Landscape" | "Portrait";
+    fitMode?: "Contain" | "Cover" | "Stretch";
+    targetResolution?: string;
+  };
 };
 type Ack = {
   commandId: string;
@@ -148,6 +155,11 @@ export default function DisplayPlayerPage() {
   const [online, setOnline] = useState(true);
   const [lastError, setLastError] = useState("");
   const [lastHeartbeat, setLastHeartbeat] = useState("");
+  const [displayProfile, setDisplayProfile] = useState({
+    orientation: "Auto" as "Auto" | "Landscape" | "Portrait",
+    fitMode: "Cover" as "Contain" | "Cover" | "Stretch",
+    targetResolution: "Auto",
+  });
   const [cacheTelemetry, setCacheTelemetry] = useState<CacheTelemetry>({
     status: "Pending Download",
     progress: 0,
@@ -522,6 +534,13 @@ export default function DisplayPlayerPage() {
       setOnline(true);
       setLastHeartbeat(new Date().toISOString());
       setLastError("");
+      if (result.device) {
+        setDisplayProfile({
+          orientation: result.device.orientation || "Auto",
+          fitMode: result.device.fitMode || "Cover",
+          targetResolution: result.device.targetResolution || "Auto",
+        });
+      }
       executeCommands(result.commands || []);
       await handleShare(result.share);
       const override = manualOverride.current;
@@ -780,7 +799,10 @@ export default function DisplayPlayerPage() {
     );
 
   return (
-    <main className={`displayPlayer ${paused ? "paused" : ""}`}>
+    <main
+      className={`displayPlayer ${paused ? "paused" : ""} orientation-${displayProfile.orientation.toLowerCase()} fit-${displayProfile.fitMode.toLowerCase()}`}
+      data-resolution={displayProfile.targetResolution}
+    >
       <div className="playerCanvas">
         {!current && (
           <div className="playerStandby">

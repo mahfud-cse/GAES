@@ -15,6 +15,7 @@ import {
   manageDisplayPilot,
   manageRoomBooking,
   manageRoomOperation,
+  recordPortalActivity,
 } from "../lib/firebase/api";
 import { uploadDisplayMedia } from "../lib/firebase/evidence";
 import {
@@ -115,6 +116,9 @@ type DeviceRecord = {
   storageUsageBytes?: number;
   storageQuotaBytes?: number;
   persistentStorage?: boolean;
+  orientation?: "Auto" | "Landscape" | "Portrait";
+  fitMode?: "Contain" | "Cover" | "Stretch";
+  targetResolution?: "Auto" | "1920x1080" | "1080x1920" | "3840x2160" | "2160x3840";
 };
 
 type DisplayContent = {
@@ -127,6 +131,7 @@ type DisplayContent = {
   durationSeconds: number;
   description: string;
   status: "Active" | "Inactive";
+  orientation?: "Any" | "Landscape" | "Portrait";
 };
 type DisplayChannel = {
   id: string;
@@ -474,6 +479,9 @@ const EMPTY_DEVICE: Omit<DeviceRecord, "id"> = {
   overlayText: "",
   lastHeartbeat: "",
   playerVersion: "",
+  orientation: "Auto",
+  fitMode: "Cover",
+  targetResolution: "Auto",
 };
 
 const DEFAULT_ANNOUNCEMENT_TEMPLATES: AnnouncementTemplate[] = [
@@ -593,6 +601,7 @@ const EMPTY_CONTENT: Omit<DisplayContent, "id"> = {
   durationSeconds: 0,
   description: "",
   status: "Active",
+  orientation: "Any",
 };
 
 const EMPTY_CHANNEL: Omit<DisplayChannel, "id"> = {
@@ -1313,22 +1322,18 @@ export default function FacilityOperations({
     [scopedBookings, usageDateFrom, usageDateTo],
   );
   const usageAnalytics = useMemo(() => {
-    const grouped = new Map<
-      string,
-      { bookings: number; plannedMinutes: number; actualMinutes: number }
-    >();
     const roomTotals = new Map<string, number>();
     const hourTotals = Array.from({ length: 24 }, () => 0);
+    const periodKeys = new Set<string>();
+    let actualMinutesTotal = 0;
+    let actualSessions = 0;
     usageBookings.forEach((booking) => {
-      const key =
+      periodKeys.add(
         usageGrain === "Monthly"
           ? booking.localDate.slice(0, 7)
           : usageGrain === "Weekly"
             ? dateValue(startOfWeek(booking.localDate))
-            : booking.localDate;
-      const plannedMinutes = Math.max(
-        0,
-        (Date.parse(booking.endAt) - Date.parse(booking.startAt)) / 60_000,
+            : booking.localDate,
       );
       const operation = scopedOperations.find(
         (row) => row.bookingId === booking.id,
@@ -1343,48 +1348,54 @@ export default function FacilityOperations({
         checkedIn && checkedOut && checkedOut > checkedIn
           ? (checkedOut - checkedIn) / 60_000
           : 0;
-      const current = grouped.get(key) || {
-        bookings: 0,
-        plannedMinutes: 0,
-        actualMinutes: 0,
-      };
-      current.bookings += 1;
-      current.plannedMinutes += plannedMinutes;
-      current.actualMinutes += actualMinutes;
-      grouped.set(key, current);
+      if (!actualMinutes) return;
+      actualMinutesTotal += actualMinutes;
+      actualSessions += 1;
       roomTotals.set(
         booking.roomName,
         (roomTotals.get(booking.roomName) || 0) + actualMinutes,
       );
-      const hour = Number(booking.startTime.slice(0, 2));
+      const hour = new Date(checkedIn).getHours();
       if (Number.isFinite(hour) && hour >= 0 && hour < 24)
         hourTotals[hour] += 1;
     });
-    const series = [...grouped.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([label, value]) => ({ label, ...value }));
+    const divisor = Math.max(periodKeys.size, 1);
+    const traffic = hourTotals.map((total, hour) => ({
+      hour,
+      total,
+      average: total / divisor,
+    }));
     const rooms = [...roomTotals.entries()]
       .sort(([, a], [, b]) => b - a)
       .slice(0, 8)
       .map(([label, minutes]) => ({ label, minutes }));
-    const peakHour = hourTotals.reduce(
-      (best, count, hour) =>
-        count > best.count ? { hour, count } : best,
-      { hour: 0, count: 0 },
+    const peakHour = traffic.reduce(
+      (best, current) => current.average > best.average ? current : best,
+      traffic[0],
     );
-    return { series, rooms, hourTotals, peakHour };
+    return {
+      traffic,
+      rooms,
+      peakHour,
+      actualMinutes: actualMinutesTotal,
+      actualSessions,
+      periodCount: divisor,
+      maximum: Math.max(1, ...traffic.map((row) => row.average)),
+    };
   }, [scopedOperations, usageBookings, usageGrain]);
-  const plannedUsageMinutes = usageAnalytics.series.reduce(
-    (total, row) => total + row.plannedMinutes,
-    0,
+  const actualUsageMinutes = usageAnalytics.actualMinutes;
+  const usageDays = Math.max(
+    1,
+    Math.floor(
+      (Date.parse(`${usageDateTo}T12:00:00Z`) - Date.parse(`${usageDateFrom}T12:00:00Z`)) /
+        86_400_000,
+    ) + 1,
   );
-  const actualUsageMinutes = usageAnalytics.series.reduce(
-    (total, row) => total + row.actualMinutes,
-    0,
+  const activeRoomCount = Math.max(1, scopedRooms.filter((room) => room.status === "Active").length);
+  const utilizationPercent = Math.min(
+    100,
+    Math.round((actualUsageMinutes / (activeRoomCount * usageDays * 24 * 60)) * 100),
   );
-  const utilizationPercent = plannedUsageMinutes
-    ? Math.round((actualUsageMinutes / plannedUsageMinutes) * 100)
-    : 0;
 
   const activeStations = stations.filter((station) =>
     permittedStation(station.code),
@@ -1445,6 +1456,15 @@ export default function FacilityOperations({
       facilities,
       capacity: Math.max(1, Number(roomDraft.capacity) || 1),
     });
+    await recordPortalActivity(user, {
+      action: "ROOM_CONFIG_SAVED",
+      module: "Facility & Room Configuration",
+      station: roomDraft.station,
+      targetType: "Room",
+      targetId: id,
+      targetName: roomDraft.name,
+      detail: `${editingRoom ? "Updated" : "Created"} · ${roomDraft.roomType} · capacity ${Math.max(1, Number(roomDraft.capacity) || 1)}`,
+    });
     setNotice({
       kind: "ok",
       text: `Room ${roomDraft.name} berhasil disimpan.`,
@@ -1466,10 +1486,13 @@ export default function FacilityOperations({
       return;
     }
     const id = editingDevice || recordId("display");
-    await saveRecord("displayDevices", {
-      id,
-      ...deviceDraft,
-      approvalStatus: canonicalApprovalStatus(deviceDraft.approvalStatus),
+    await manageDisplayDevice(user, {
+      action: "savedevice",
+      device: {
+        id,
+        ...deviceDraft,
+        approvalStatus: canonicalApprovalStatus(deviceDraft.approvalStatus),
+      },
     });
     setNotice({
       kind: "ok",
@@ -1485,12 +1508,9 @@ export default function FacilityOperations({
 
   async function approveDevice(device: DeviceRecord) {
     if (!canConfigure || !permittedStation(device.station)) return;
-    await saveRecord("displayDevices", {
-      ...device,
-      approvalStatus: "Approved",
-      status: device.status === "Unregistered" ? "Offline" : device.status,
-      approvedBy: account.name,
-      approvedAt: new Date().toISOString(),
+    await manageDisplayDevice(user, {
+      action: "savedevice",
+      device: { ...device, approvalStatus: "Approved" },
     });
     setNotice({
       kind: "ok",
@@ -2611,6 +2631,9 @@ export default function FacilityOperations({
               Room: roomName(device.roomId),
               Platform: device.platform,
               Connection: device.connectionType,
+              Orientation: device.orientation || "Auto",
+              "Content Fit": device.fitMode || "Cover",
+              Resolution: device.targetResolution || "Auto",
               Status: playerOperationalStatus(device),
               Enrollment: device.enrollmentStatus || "Not Enrolled",
               "Now Playing": device.nowPlaying || "",
@@ -2795,12 +2818,12 @@ export default function FacilityOperations({
             <article>
               <span>Actual Usage</span>
               <strong>{Math.round(actualUsageMinutes / 60)}h</strong>
-              <small>{Math.round(plannedUsageMinutes / 60)}h planned</small>
+              <small>{usageAnalytics.actualSessions} completed usage sessions</small>
             </article>
             <article>
-              <span>Plan Realization</span>
+              <span>Room Utilization</span>
               <strong>{utilizationPercent}%</strong>
-              <small>Actual occupied vs planned</small>
+              <small>Actual occupied time across active rooms</small>
             </article>
           </div>
           <div className="facilityAnalyticsToolbar card">
@@ -2837,30 +2860,28 @@ export default function FacilityOperations({
               <div className="cardHeading">
                 <div>
                   <small>USAGE ANALYTICS</small>
-                  <h2>Planned vs Actual Usage</h2>
+                  <h2>Room Usage Traffic</h2>
                 </div>
               </div>
-              {!usageAnalytics.series.length ? (
+              {!usageAnalytics.actualSessions ? (
                 <EmptyState text="Belum ada data penggunaan pada periode ini." />
               ) : (
-                <div className="facilityUsageChart">
-                  {usageAnalytics.series.map((row) => {
-                    const maximum = Math.max(
-                      1,
-                      ...usageAnalytics.series.map((item) => item.plannedMinutes),
-                    );
-                    return (
-                      <div key={row.label}>
-                        <span>{row.label}</span>
-                        <div>
-                          <i style={{ width: `${Math.max(2, (row.plannedMinutes / maximum) * 100)}%` }} />
-                          <b style={{ width: `${Math.max(0, (row.actualMinutes / maximum) * 100)}%` }} />
-                        </div>
-                        <small>{Math.round(row.plannedMinutes / 60)}h plan · {Math.round(row.actualMinutes / 60)}h actual</small>
+                <>
+                  <div className="trafficSummary facilityTrafficSummary">
+                    <span>Average/session <b>{Math.round(actualUsageMinutes / Math.max(usageAnalytics.actualSessions, 1))} min</b></span>
+                    <span>Peak hour <b>{String(usageAnalytics.peakHour.hour).padStart(2, "0")}:00</b></span>
+                    <span>Peak traffic <b>{usageAnalytics.peakHour.average.toFixed(1)}</b></span>
+                    <span>Usage sessions <b>{usageAnalytics.actualSessions}</b></span>
+                  </div>
+                  <div className="trafficChart facilityTrafficChart" aria-label="Grafik rata-rata penggunaan ruangan per jam">
+                    {usageAnalytics.traffic.map((item) => (
+                      <div className="trafficBarCell" key={item.hour} title={`${String(item.hour).padStart(2, "0")}:00 · rata-rata ${item.average.toFixed(1)} · total ${item.total}`}>
+                        <div className="trafficBar" style={{ height: `${Math.max(item.average ? 8 : 1, (item.average / usageAnalytics.maximum) * 100)}%` }} />
+                        <small>{String(item.hour).padStart(2, "0")}</small>
                       </div>
-                    );
-                  })}
-                </div>
+                    ))}
+                  </div>
+                </>
               )}
             </article>
             <article className="card">
@@ -2875,9 +2896,9 @@ export default function FacilityOperations({
               ) : (
                 <div className="facilityRoomRanking">
                   <div className="peakHourSummary">
-                    <span>Peak booking start</span>
+                    <span>Peak actual check-in</span>
                     <strong>{String(usageAnalytics.peakHour.hour).padStart(2, "0")}:00</strong>
-                    <small>{usageAnalytics.peakHour.count} booking</small>
+                    <small>{usageAnalytics.peakHour.average.toFixed(1)} average session</small>
                   </div>
                   {usageAnalytics.rooms.map((room, index) => (
                     <div key={room.label}>
@@ -3727,7 +3748,7 @@ export default function FacilityOperations({
                             <td>
                               <b>{device.name}</b>
                               <small>
-                                {device.platform} · {device.connectionType}
+                                {device.platform} · {device.connectionType} · {device.orientation || "Auto"}
                               </small>
                             </td>
                             <td>
@@ -4274,6 +4295,7 @@ export default function FacilityOperations({
                           ? `${row.durationSeconds} seconds`
                           : "Continuous source"}{" "}
                         · {row.status}
+                        · {row.orientation || "Any orientation"}
                       </small>
                       {canConfigure && (
                         <div className="contentCardActions">
@@ -4566,7 +4588,7 @@ export default function FacilityOperations({
                     <tr key={device.id}>
                       <td>
                         <b>{device.name}</b>
-                        <small>{device.platform}</small>
+                        <small>{device.platform} · {device.orientation || "Auto"} · {device.fitMode || "Cover"}</small>
                       </td>
                       <td>
                         {device.station}
@@ -5096,7 +5118,7 @@ export default function FacilityOperations({
                           <b>{device.name}</b>
                           <small>
                             {roomName(device.roomId)} ·{" "}
-                            {device.enrollmentStatus || "Not Enrolled"}
+                            {device.enrollmentStatus || "Not Enrolled"} · {device.orientation || "Auto"}
                           </small>
                         </span>
                       </label>
@@ -5105,6 +5127,15 @@ export default function FacilityOperations({
                   <p>No approved device is available at this station.</p>
                 )}
               </fieldset>
+              {new Set(
+                outputGroupDraft.deviceIds
+                  .map((id) => devices.find((device) => device.id === id)?.orientation || "Auto")
+                  .filter((orientation) => orientation !== "Auto"),
+              ).size > 1 && (
+                <div className="inlineWarning full">
+                  Output group memuat device landscape dan portrait. Pisahkan group bila materi harus tampil penuh tanpa crop atau letterbox.
+                </div>
+              )}
               <div className="notice warn full">
                 <span>
                   Satu device hanya dapat menerima satu live output pada waktu
@@ -5963,6 +5994,25 @@ export default function FacilityOperations({
                     </select>
                   </label>
                   <label>
+                    <span>Material Orientation</span>
+                    <select
+                      value={contentDraft.orientation || "Any"}
+                      onChange={(event) =>
+                        setContentDraft({
+                          ...contentDraft,
+                          orientation: event.target.value as DisplayContent["orientation"],
+                        })
+                      }
+                    >
+                      <option>Any</option>
+                      <option>Landscape</option>
+                      <option>Portrait</option>
+                    </select>
+                    <small>
+                      Landscape 16:9 direkomendasikan 1920×1080; portrait 9:16 direkomendasikan 1080×1920.
+                    </small>
+                  </label>
+                  <label>
                     <span>Duration (seconds)</span>
                     <input
                       type="number"
@@ -6041,6 +6091,17 @@ export default function FacilityOperations({
                       }
                     />
                   </label>
+                  {contentDraft.orientation !== "Any" &&
+                    scopedDevices.some(
+                      (device) =>
+                        device.orientation &&
+                        device.orientation !== "Auto" &&
+                        device.orientation !== contentDraft.orientation,
+                    ) && (
+                      <div className="inlineWarning full">
+                        Materi {contentDraft.orientation?.toLowerCase()} tidak cocok dengan sebagian device pada scope ini. Periksa target schedule atau output group sebelum ditayangkan.
+                      </div>
+                    )}
                 </>
               )}
 
@@ -7446,6 +7507,67 @@ export default function FacilityOperations({
                   <option value="Rejected">Rejected</option>
                 </select>
               </label>
+              <label>
+                <span>Screen Orientation</span>
+                <select
+                  value={deviceDraft.orientation || "Auto"}
+                  onChange={(event) =>
+                    setDeviceDraft({
+                      ...deviceDraft,
+                      orientation: event.target.value as DeviceRecord["orientation"],
+                      targetResolution:
+                        event.target.value === "Portrait"
+                          ? "1080x1920"
+                          : event.target.value === "Landscape"
+                            ? "1920x1080"
+                            : "Auto",
+                    })
+                  }
+                >
+                  <option>Auto</option>
+                  <option>Landscape</option>
+                  <option>Portrait</option>
+                </select>
+              </label>
+              <label>
+                <span>Content Fit</span>
+                <select
+                  value={deviceDraft.fitMode || "Cover"}
+                  onChange={(event) =>
+                    setDeviceDraft({ ...deviceDraft, fitMode: event.target.value as DeviceRecord["fitMode"] })
+                  }
+                >
+                  <option>Contain</option>
+                  <option>Cover</option>
+                  <option>Stretch</option>
+                </select>
+              </label>
+              <label>
+                <span>Target Resolution</span>
+                <select
+                  value={deviceDraft.targetResolution || "Auto"}
+                  onChange={(event) =>
+                    setDeviceDraft({ ...deviceDraft, targetResolution: event.target.value as DeviceRecord["targetResolution"] })
+                  }
+                >
+                  <option>Auto</option>
+                  <option>1920x1080</option>
+                  <option>1080x1920</option>
+                  <option>3840x2160</option>
+                  <option>2160x3840</option>
+                </select>
+              </label>
+              <div className="deviceOrientationPreview">
+                <div className={(deviceDraft.orientation || "Auto").toLowerCase()}>
+                  <span>Preview</span>
+                  <b>{deviceDraft.orientation || "Auto"}</b>
+                  <small>{deviceDraft.targetResolution || "Auto"}</small>
+                </div>
+                <p>
+                  Portrait signage direkomendasikan menggunakan materi 9:16 (1080×1920).
+                  Orientasi fisik layar dan pengaturan OS/player tetap harus disetel ke portrait.
+                </p>
+              </div>
               <div className="deviceFormGuidance full">
                 <b>Setelah inventory disimpan</b>
                 <ol>

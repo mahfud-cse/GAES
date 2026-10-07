@@ -30,8 +30,10 @@ import {
   createVisitor,
   deleteManagedUser,
   importManagedUsers,
+  importVisitorBundle,
   manageNotification,
   manageVisitor,
+  recordPortalActivity,
   requestPasswordReset,
   resetManagedUserPassword,
   resolveUsername,
@@ -89,7 +91,7 @@ type Visitor = {
   seat: string;
   seq: string;
   ticket: string;
-  eligible: "Y" | "N";
+  eligible: "Y" | "N" | "";
   category: string;
   reference: string;
   currency: string;
@@ -122,6 +124,11 @@ type Visitor = {
   evidenceType?: "Boarding Pass" | "Membership Card" | "Other";
   evidenceUploadedAt?: string;
   reportRevision?: number;
+  importBatchId?: string;
+  importStatus?: "Needs Data Completion" | "Ready for Verification" | "";
+  missingFields?: string[];
+  membership?: string;
+  notes?: string;
 };
 type CustomColumn = {
   id: string;
@@ -297,6 +304,7 @@ const interfaceTranslations: Record<string, string> = {
   "Semua Periode": "All Periods",
   "Fasilitas & Operasional Ruangan": "Facility & Room Operations",
   Ringkasan: "Overview",
+  "Ringkasan Penggunaan": "Usage Overview",
   "Siap digunakan": "Ready to use",
   "Dalam operasional": "In operation",
   "Perlu perhatian": "Need attention",
@@ -312,9 +320,6 @@ const interfaceTranslations: Record<string, string> = {
   Hari: "Day",
   Minggu: "Week",
   Bulan: "Month",
-  Harian: "Daily",
-  Mingguan: "Weekly",
-  Bulanan: "Monthly",
   Daftar: "List",
   "Hari Ini": "Today",
   "Semua Ruangan": "All Rooms",
@@ -1197,6 +1202,22 @@ type PortalAuditLog = {
   station?: string;
   targetId?: string;
   notificationType?: string;
+  module?: string;
+  result?: string;
+  actorRole?: string;
+  actorUsername?: string;
+  actorEmail?: string;
+  actorOrganization?: string;
+  scope?: string;
+  loungeName?: string;
+  targetName?: string;
+  targetType?: string;
+  detail?: string;
+  reasonCode?: string;
+  deviceId?: string;
+  roomId?: string;
+  bookingId?: string;
+  outputGroupId?: string;
   createdAt?: unknown;
 };
 
@@ -1215,6 +1236,73 @@ function portalActivityTime(value: unknown) {
         dateStyle: "short",
         timeStyle: "short",
       });
+}
+
+function portalActivityMillis(value: unknown) {
+  if (!value) return 0;
+  const timestamp = value as { toDate?: () => Date; seconds?: number };
+  const date =
+    typeof timestamp.toDate === "function"
+      ? timestamp.toDate()
+      : typeof timestamp.seconds === "number"
+        ? new Date(timestamp.seconds * 1000)
+        : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+const portalActivityLabels: Record<string, string> = {
+  CREATE_VISITOR: "Menambahkan visitor",
+  IMPORT_VISITOR: "Mengimpor visitor",
+  IMPORT_VISITOR_BUNDLE: "Mengunggah visitor bundle",
+  UPDATE_VISITOR: "Memperbarui data visitor",
+  DELETE_VISITOR: "Menghapus visitor",
+  ACCEPT_VISITOR: "Menerima visitor",
+  REJECT_VISITOR: "Menolak visitor",
+  ACCEPT_VISITOR_REJECTION: "Menerima hasil penolakan visitor",
+  LOUNGE_ACCESS_DENIED: "Menolak akses lounge",
+  LOUNGE_ACCESS_GRANTED: "Menyetujui akses lounge",
+  EXCEPTIONAL_ACCESS_REQUESTED: "Mengajukan exceptional access",
+  EXCEPTIONAL_ACCESS_GRANTED: "Memberikan provisional access",
+  NOTIFICATION_OPENED: "Membuka notifikasi",
+  CREATE_USER: "Membuat akun pengguna",
+  UPDATE_USER: "Memperbarui akun pengguna",
+  DEACTIVATE_USER: "Menonaktifkan akun pengguna",
+  DELETE_USER: "Menghapus akun pengguna",
+  RESET_USER_PASSWORD: "Mereset password pengguna",
+  ROOM_CONFIG_SAVED: "Menyimpan konfigurasi ruangan",
+  FLIGHT_DATA_SAVED: "Menyimpan data penerbangan",
+  MASTER_DATA_SAVED: "Menyimpan master data",
+  CREATE_ROOM_BOOKING: "Membuat pemesanan ruangan",
+  UPDATE_ROOM_BOOKING_DRAFT: "Memperbarui draft pemesanan",
+  UPDATE_SUBMITTED_ROOM_BOOKING: "Memperbarui pemesanan yang diajukan",
+  SUBMIT_ROOM_BOOKING: "Mengajukan pemesanan ruangan",
+  APPROVE_ROOM_BOOKING: "Menyetujui pemesanan ruangan",
+  REJECT_ROOM_BOOKING: "Menolak pemesanan ruangan",
+  CANCEL_ROOM_BOOKING: "Membatalkan pemesanan ruangan",
+  ROOM_CHECK_IN: "Check-in ruangan",
+  ROOM_CHECK_OUT: "Check-out ruangan",
+  ROOM_CLEANING_COMPLETED: "Menyelesaikan pembersihan ruangan",
+  ROOM_BOOKING_NO_SHOW: "Menandai booking no-show",
+  ROOM_MOVED: "Memindahkan ruangan",
+  ROOM_MAINTENANCE_STARTED: "Memulai maintenance ruangan",
+  ROOM_MAINTENANCE_COMPLETED: "Menyelesaikan maintenance ruangan",
+  ROOM_INCIDENT_REPORTED: "Melaporkan insiden ruangan",
+  DISPLAY_ENROLLMENT_CREATED: "Membuat enrollment display",
+  DISPLAY_ENROLLMENT_REVOKED: "Mencabut enrollment display",
+  DISPLAY_DEVICE_DELETED: "Menghapus display device",
+  DISPLAY_ANNOUNCEMENT_CREATED: "Menayangkan announcement",
+  DISPLAY_ANNOUNCEMENT_STOPPED: "Menghentikan announcement",
+  DISPLAY_SHARE_STARTED: "Memulai screen share",
+  DISPLAY_SHARE_STOPPED: "Menghentikan screen share",
+};
+
+function readableActivity(action = "ACTIVITY") {
+  if (portalActivityLabels[action]) return portalActivityLabels[action];
+  if (action.startsWith("DISPLAY_COMMAND_"))
+    return `Mengirim perintah display: ${action.replace("DISPLAY_COMMAND_", "").replaceAll("_", " ").toLowerCase()}`;
+  if (action.startsWith("DISPLAY_PLAYER_"))
+    return `Perubahan status display: ${action.replace("DISPLAY_PLAYER_", "").replaceAll("_", " ").toLowerCase()}`;
+  return action.replaceAll("_", " ").toLowerCase().replace(/^./, (letter) => letter.toUpperCase());
 }
 type Station = {
   code: string;
@@ -2281,12 +2369,21 @@ export default function Home() {
       PortalNotification[]
     >([]),
     [portalAuditLogs, setPortalAuditLogs] = useState<PortalAuditLog[]>([]),
+    [roomAuditLogs, setRoomAuditLogs] = useState<PortalAuditLog[]>([]),
+    [displayAuditLogs, setDisplayAuditLogs] = useState<PortalAuditLog[]>([]),
     [partnerships, setPartnerships] = useState<Partnership[]>([]),
     [airlines, setAirlines] = useState<Airline[]>([]),
     [stations, setStations] = useState<Station[]>([]),
     [masterQuery, setMasterQuery] = useState(""),
     [masterSelect, setMasterSelect] = useState("Semua"),
     [masterSelect2, setMasterSelect2] = useState("Semua");
+  const [visitorImportPreview, setVisitorImportPreview] = useState<
+      Array<Record<string, unknown>>
+    >([]),
+    [visitorImportFileName, setVisitorImportFileName] = useState(""),
+    [visitorImportNotice, setVisitorImportNotice] =
+      useState<InlineNotice | null>(null),
+    [visitorImportSaving, setVisitorImportSaving] = useState(false);
   const [roleProfiles, setRoleProfiles] =
       useState<RoleProfile[]>(roleProfileSeed),
     [integrations] = useState<IntegrationStatus[]>(integrationSeed),
@@ -2844,6 +2941,22 @@ export default function Home() {
             subscriptionError,
           )
         : () => undefined,
+      currentAccount && ["Super Admin", "Admin"].includes(currentAccount.role)
+        ? subscribeCollection<PortalAuditLog>(
+            "roomActivityLogs",
+            setRoomAuditLogs,
+            undefined,
+            subscriptionError,
+          )
+        : () => undefined,
+      currentAccount && ["Super Admin", "Admin"].includes(currentAccount.role)
+        ? subscribeCollection<PortalAuditLog>(
+            "displayActivityLogs",
+            setDisplayAuditLogs,
+            undefined,
+            subscriptionError,
+          )
+        : () => undefined,
       subscribeCollection<unknown>(
         "stations",
         (rows) =>
@@ -2973,6 +3086,7 @@ export default function Home() {
       "BO Admin",
       "Lounge Manager",
     ].includes(role),
+    canUploadVisitorBundle = ["Super Admin", "Admin", "Lounge Manager"].includes(role),
     canSeeDashboard = dashboardAllowedRoles.includes(role),
     canSeeFacility = roleCanUseFacility(role),
     canDeleteFlight = (f: Flight) =>
@@ -3594,6 +3708,20 @@ export default function Home() {
       setPass(emptyPass);
       setNotice(null);
       setRejected({ reason, origin, detail });
+      if (firebaseUser) {
+        void recordPortalActivity(firebaseUser, {
+          action: "LOUNGE_ACCESS_DENIED",
+          module: "Lounge/Tenant Access",
+          result: "Denied",
+          station: airport,
+          loungeId,
+          loungeName: lounges.find((item) => item.id === loungeId)?.name || "",
+          targetType: "Boarding Pass",
+          targetName: `${data.name || "Passenger"} · ${data.flight || "Flight unavailable"}`,
+          reasonCode: reason.toUpperCase(),
+          detail: detail || `Access validation stopped: ${reason}.`,
+        }).catch(() => undefined);
+      }
     };
     if (data.eligible !== "Y") {
       deny(data.eligible === "N" ? "N" : "missing");
@@ -3778,9 +3906,23 @@ export default function Home() {
     e.preventDefault();
     if (pass.eligible !== "Y") {
       setRejected({ reason: pass.eligible === "N" ? "N" : "missing" });
+      if (firebaseUser) {
+        void recordPortalActivity(firebaseUser, {
+          action: "LOUNGE_ACCESS_DENIED",
+          module: "Lounge/Tenant Access",
+          result: "Denied",
+          station: airport,
+          loungeId,
+          loungeName: lounges.find((item) => item.id === loungeId)?.name || "",
+          targetType: "Manual Access",
+          targetName: `${pass.name || "Passenger"} · ${pass.flight || "Flight unavailable"}`,
+          reasonCode: pass.eligible === "N" ? "N" : "MISSING_ELIGIBILITY_INDICATOR",
+          detail: "Eligibility indicator Y was not confirmed.",
+        }).catch(() => undefined);
+      }
       setActionDialog({
         kind: "error",
-        text: "Penumpang tidak eligible. Silakan coba scan ulang.",
+      text: "Indikator kelayakan akses belum memenuhi ketentuan. Pastikan boarding pass telah dipindai dengan benar atau lakukan verifikasi manual sesuai kewenangan.",
       });
       return;
     }
@@ -4070,13 +4212,26 @@ export default function Home() {
           .toLowerCase()
           .includes(masterQuery.toLowerCase()),
     ),
-    activityRows = portalAuditLogs.map((entry) => ({
-      id: entry.id,
-      time: portalActivityTime(entry.createdAt),
-      user: entry.actorName || entry.actorId || "System",
-      activity: `${entry.action || "ACTIVITY"}${entry.notificationType ? ` · ${entry.notificationType}` : ""}`,
-      scope: entry.station || entry.targetId || "Global",
-    })),
+    activityRows = [...portalAuditLogs, ...roomAuditLogs, ...displayAuditLogs].map((entry) => {
+      const account = accounts.find((item) => item.id === entry.actorId);
+      const actorName = entry.actorName || account?.name || "System";
+      const actorRole = entry.actorRole || account?.role || "";
+      const stationScope = entry.station && entry.station !== "ALL" ? `Station ${entry.station}` : entry.scope || "All Stations";
+      const locationScope = entry.loungeName ? `${stationScope} · ${entry.loungeName}` : stationScope;
+      return {
+        id: `${entry.module || "activity"}-${entry.id}`,
+        time: portalActivityTime(entry.createdAt),
+        timeValue: portalActivityMillis(entry.createdAt),
+        user: `${actorName}${actorRole ? ` · ${actorRole}` : ""}`,
+        activity: [
+          readableActivity(entry.action),
+          entry.targetName,
+          entry.result && entry.result !== "Success" ? entry.result : "",
+          entry.reasonCode ? `Reason ${entry.reasonCode}` : "",
+        ].filter(Boolean).join(" · "),
+        scope: locationScope,
+      };
+    }),
     filteredActivity = sortData(
       activityRows.filter(
         (a) =>
@@ -4088,7 +4243,7 @@ export default function Home() {
       ),
       activitySort,
       (a, key) =>
-        ({ time: a.time, user: a.user, activity: a.activity, scope: a.scope })[
+        ({ time: a.timeValue, user: a.user, activity: a.activity, scope: a.scope })[
           key
         ] || "",
     ),
@@ -4399,6 +4554,7 @@ export default function Home() {
       traffic[0],
     );
   const verificationQueue = shown.filter((v) => {
+      if (v.importStatus === "Needs Data Completion") return false;
       if (role === "Super Admin" || role === "Admin") return true;
       if (role === "BO Admin")
         return ["Business Class", "VIP/CIP/VVIP"].includes(v.category);
@@ -4779,6 +4935,119 @@ export default function Home() {
             ? error.message
             : "Seasonal schedule tidak dapat disimpan.",
       });
+    }
+  }
+  function downloadVisitorTemplate() {
+    const headers = [
+      "Date of Travel",
+      "Airport",
+      "Lounge/Tenant",
+      "Passenger Name",
+      "Flight Number",
+      "Route",
+      "Cabin Class",
+      "Seat Number",
+      "Check-in Sequence",
+      "Ticket Number",
+      "Access Category",
+      "Reference Number",
+      "Membership",
+      "Eligibility Indicator",
+      "Access Date",
+      "Access Time",
+      "Notes",
+    ];
+    const example = [
+      stationDate,
+      station === "ALL" ? "CGK" : station,
+      "",
+      "BUDI SANTOSO",
+      "GA204",
+      "CGK-JOG",
+      "C",
+      "7A",
+      "037",
+      "1260000000000",
+      "Business Class",
+      "",
+      "",
+      "Y",
+      stationDate,
+      "08:30",
+      "",
+    ];
+    const body = [headers, example]
+      .map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(","))
+      .join("\n");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([body], { type: "text/csv;charset=utf-8" }));
+    link.download = "template-upload-visitor.csv";
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+  async function prepareVisitorBundle(file: File) {
+    setVisitorImportNotice(null);
+    try {
+      if (!file.size) throw new Error("File kosong.");
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!sheet) throw new Error("Worksheet tidak ditemukan.");
+      const sourceRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+        defval: "",
+        raw: false,
+        dateNF: "yyyy-mm-dd",
+      });
+      const rows = sourceRows
+        .filter((row) => Object.values(row).some((value) => String(value || "").trim()))
+        .map((row) => ({
+          travelDate: normalizedText(row["Date of Travel"]),
+          airport: normalizedText(row.Airport).toUpperCase(),
+          lounge: normalizedText(row["Lounge/Tenant"]),
+          name: normalizedText(row["Passenger Name"]),
+          flight: normalizedText(row["Flight Number"]).toUpperCase(),
+          route: normalizedText(row.Route).toUpperCase(),
+          cabin: normalizedText(row["Cabin Class"]).toUpperCase(),
+          seat: normalizedText(row["Seat Number"]).toUpperCase(),
+          seq: normalizedText(row["Check-in Sequence"]),
+          ticket: normalizedText(row["Ticket Number"]),
+          category: normalizedText(row["Access Category"]),
+          reference: normalizedText(row["Reference Number"]),
+          membership: normalizedText(row.Membership),
+          eligible: normalizedText(row["Eligibility Indicator"]).toUpperCase(),
+          date: normalizedText(row["Access Date"]),
+          time: normalizedText(row["Access Time"]),
+          notes: normalizedText(row.Notes),
+        }));
+      if (!rows.length) throw new Error("Tidak ada baris visitor pada file.");
+      if (rows.length > 150) throw new Error("Maksimal 150 visitor dalam satu upload.");
+      setVisitorImportPreview(rows);
+      setVisitorImportFileName(file.name);
+    } catch (error) {
+      setVisitorImportNotice({
+        kind: "error",
+        text: error instanceof Error ? error.message : "File visitor tidak dapat dibaca.",
+      });
+    }
+  }
+  async function confirmVisitorBundle() {
+    if (!firebaseUser || !visitorImportPreview.length) return;
+    setVisitorImportSaving(true);
+    try {
+      const result = await importVisitorBundle(firebaseUser, visitorImportPreview);
+      setVisitorImportNotice({
+        kind: result.errors.length ? "warn" : "ok",
+        text: `${result.imported} visitor berhasil diimpor; ${result.needsCompletion} perlu pelengkapan data; ${result.duplicates} duplikat dilewati${result.errors.length ? `; ${result.errors.length} baris tidak diproses` : ""}.`,
+      });
+      setVisitorImportPreview([]);
+      setVisitorImportFileName("");
+    } catch (error) {
+      setVisitorImportNotice({
+        kind: "error",
+        text: error instanceof Error ? error.message : "Visitor bundle tidak dapat diimpor.",
+      });
+    } finally {
+      setVisitorImportSaving(false);
     }
   }
   function csv() {
@@ -7339,6 +7608,25 @@ export default function Home() {
                           Manage Table
                         </button>
                       )}
+                      {canUploadVisitorBundle && (
+                        <>
+                          <button onClick={downloadVisitorTemplate}>
+                            Unduh Template Visitor
+                          </button>
+                          <label className="uploadButton">
+                            Upload Visitor Bundle
+                            <input
+                              type="file"
+                              accept=".csv,.xlsx,.xls"
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (file) void prepareVisitorBundle(file);
+                                event.target.value = "";
+                              }}
+                            />
+                          </label>
+                        </>
+                      )}
                       <button onClick={csv}>Unduh CSV</button>
                       <button
                         className="primary"
@@ -7365,6 +7653,9 @@ export default function Home() {
                       </button>
                     </div>
                   </div>
+                  {visitorImportNotice && (
+                    <Notice n={visitorImportNotice} close={() => setVisitorImportNotice(null)} />
+                  )}
                   <article className="card trafficCard">
                     <div className="trafficHead">
                       <div>
@@ -7650,6 +7941,9 @@ export default function Home() {
                                 <td>
                                   {v.name}
                                   <small>{v.source}</small>
+                                  {v.importStatus === "Needs Data Completion" && (
+                                    <mark className="yellow">Perlu Pelengkapan Data</mark>
+                                  )}
                                 </td>
                                 <td>
                                   {v.flight}
@@ -7808,38 +8102,40 @@ export default function Home() {
                   acceptLabel="Terima"
                   rejectReasons={disputeCodes}
                   onDecision={async (ids, decision, reason) => {
-                    const updates = visitors
-                      .filter((item) => ids.includes(item.id))
-                      .map((item) => ({
-                        ...item,
-                        boStatus:
-                          decision === "accept"
-                            ? ("Accepted" as const)
-                            : ("Rejected" as const),
-                        boReason: decision === "accept" ? "" : reason,
-                        disputeCode:
-                          decision === "accept" ? "" : reason.split(" — ")[0],
-                        vendorStatus: "Pending" as const,
-                        reconciliationStatus:
-                          decision === "accept"
-                            ? ("Final" as const)
-                            : ("Open" as const),
-                      }));
-                    const result = await persistRecords("visitors", updates);
-                    if (!result.saved.length)
-                      throw new Error(
-                        "Keputusan verifikasi tidak dapat disimpan.",
-                      );
-                    setVisitors((rows) =>
-                      rows.map(
-                        (item) =>
-                          result.saved.find((saved) => saved.id === item.id) ||
-                          item,
+                    if (!firebaseUser) throw new Error("Sesi Firebase tidak aktif.");
+                    const selected = visitors.filter((item) => ids.includes(item.id));
+                    const results = await Promise.allSettled(
+                      selected.map((item) =>
+                        manageVisitor(firebaseUser, {
+                          action: "decision",
+                          id: item.id,
+                          decision,
+                          reason,
+                        }),
                       ),
                     );
-                    if (result.failed)
+                    const savedIds = selected
+                      .filter((_, index) => results[index].status === "fulfilled")
+                      .map((item) => item.id);
+                    if (!savedIds.length) throw new Error("Keputusan verifikasi tidak dapat disimpan.");
+                    setVisitors((rows) =>
+                      rows.map((item) =>
+                        savedIds.includes(item.id)
+                          ? {
+                              ...item,
+                              boStatus: decision === "accept" ? "Accepted" : "Rejected",
+                              boReason: decision === "accept" ? "" : reason,
+                              disputeCode: decision === "accept" ? "" : reason.split(" — ")[0],
+                              vendorStatus: "Pending",
+                              reconciliationStatus: decision === "accept" ? "Final" : "Open",
+                            }
+                          : item,
+                      ),
+                    );
+                    const failed = results.length - savedIds.length;
+                    if (failed)
                       throw new Error(
-                        `${result.saved.length} keputusan tersimpan, tetapi ${result.failed} gagal.`,
+                        `${savedIds.length} keputusan tersimpan, tetapi ${failed} gagal.`,
                       );
                   }}
                 />
@@ -7958,20 +8254,24 @@ export default function Home() {
                                         Koreksi &amp; Evidence
                                       </button>
                                       <button
-                                        onClick={() =>
-                                          setVisitors((xs) =>
-                                            xs.map((x) =>
-                                              x.id === v.id
-                                                ? {
-                                                    ...x,
-                                                    vendorStatus: "Confirmed",
-                                                    reconciliationStatus:
-                                                      "Final",
-                                                  }
-                                                : x,
-                                            ),
-                                          )
-                                        }
+                                        onClick={async () => {
+                                          try {
+                                            if (!firebaseUser) throw new Error("Sesi Firebase tidak aktif.");
+                                            await manageVisitor(firebaseUser, { action: "acceptrejection", id: v.id });
+                                            setVisitors((xs) =>
+                                              xs.map((x) =>
+                                                x.id === v.id
+                                                  ? { ...x, vendorStatus: "Confirmed", reconciliationStatus: "Final" }
+                                                  : x,
+                                              ),
+                                            );
+                                          } catch (error) {
+                                            setActionDialog({
+                                              kind: "error",
+                                              text: error instanceof Error ? error.message : "Hasil penolakan tidak dapat diproses.",
+                                            });
+                                          }
+                                        }}
                                       >
                                         Terima Penolakan
                                       </button>
@@ -10230,7 +10530,7 @@ export default function Home() {
             <article className="card tableCard">
               <div className="miniHead">
                 <h2>Activity Log</h2>
-                <span>Audit trail backend termasuk pembukaan notification</span>
+                <span>Audit trail operasional, visitor, ruangan, display, user, dan notification</span>
               </div>
               <MasterFilterBar
                 query={masterQuery}
@@ -13365,6 +13665,60 @@ export default function Home() {
           </form>
         </div>
       )}
+      {visitorImportPreview.length > 0 && (
+        <div className="back" onMouseDown={() => setVisitorImportPreview([])}>
+          <div className="modal visitorImportModal" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="modalHead">
+              <div>
+                <span>VISITOR BUNDLE PREVIEW</span>
+                <h2>Periksa Data Sebelum Upload</h2>
+                <small>{visitorImportFileName} · {visitorImportPreview.length} baris</small>
+              </div>
+              <button type="button" onClick={() => setVisitorImportPreview([])}>×</button>
+            </div>
+            <div className="trafficSummary importSummary">
+              <span>Total <b>{visitorImportPreview.length}</b></span>
+              <span>
+                Siap diverifikasi{" "}
+                <b>{visitorImportPreview.filter((row) => row.name && row.flight && row.seq && row.travelDate && row.lounge && row.eligible === "Y").length}</b>
+              </span>
+              <span>
+                Perlu dilengkapi{" "}
+                <b>{visitorImportPreview.filter((row) => !(row.name && row.flight && row.seq && row.travelDate && row.lounge && row.eligible === "Y")).length}</b>
+              </span>
+            </div>
+            <div className="tableWrap importPreviewTable">
+              <table>
+                <thead>
+                  <tr><th>No.</th><th>Passenger</th><th>DOT</th><th>Airport/Lounge</th><th>Flight</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                  {visitorImportPreview.slice(0, 25).map((row, index) => {
+                    const complete = Boolean(row.name && row.flight && row.seq && row.travelDate && row.lounge && row.eligible === "Y");
+                    return (
+                      <tr key={`${String(row.name)}-${index}`}>
+                        <td>{index + 1}</td>
+                        <td>{String(row.name || "Belum diisi")}</td>
+                        <td>{String(row.travelDate || "Belum diisi")}</td>
+                        <td>{String(row.airport || station)}<small>{String(row.lounge || "Lounge belum diisi")}</small></td>
+                        <td>{String(row.flight || "Belum diisi")}<small>Seq. {String(row.seq || "—")}</small></td>
+                        <td><mark className={complete ? "green" : "yellow"}>{complete ? "READY" : "NEEDS COMPLETION"}</mark></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {visitorImportPreview.length > 25 && <small>Preview menampilkan 25 baris pertama.</small>}
+            </div>
+            <div className="modalActions">
+              <button type="button" onClick={() => setVisitorImportPreview([])}>Batal</button>
+              <button className="primary" type="button" disabled={visitorImportSaving} onClick={() => void confirmVisitorBundle()}>
+                {visitorImportSaving ? "Mengunggah..." : "Konfirmasi Upload"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {rejected && (
         <div className="back">
           <div className="modal rejectModal">
@@ -13386,10 +13740,10 @@ export default function Home() {
             <p>
               {rejected.detail ||
                 (rejected.reason === "N"
-                  ? "Bagian akhir hasil scan tidak mengandung huruf Y. Penumpang dinyatakan tidak eligible."
+                  ? "Indikator kelayakan akses (Y) tidak ditemukan pada bagian akhir data boarding pass. Berdasarkan ketentuan akses yang berlaku, penumpang tidak memenuhi kriteria akses lounge. Pastikan boarding pass telah dipindai dengan benar atau lakukan verifikasi manual sesuai kewenangan."
                   : rejected.reason === "airport"
                     ? `Rute penerbangan dimulai dari ${rejected.origin}, sedangkan scan dilakukan di ${airport}. Akses lounge/tenant hanya berlaku di airport keberangkatan awal.`
-                    : "Huruf Y tidak ditemukan pada bagian akhir boarding pass. Akses otomatis ditolak.")}
+                    : "Indikator kelayakan akses (Y) tidak ditemukan pada bagian akhir data boarding pass. Berdasarkan ketentuan akses yang berlaku, penumpang tidak memenuhi kriteria akses lounge. Pastikan boarding pass telah dipindai dengan benar atau lakukan verifikasi manual sesuai kewenangan.")}
             </p>
             <div className="modalActions rejectActions">
               <button
@@ -13408,6 +13762,19 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => {
+                    if (firebaseUser) {
+                      void recordPortalActivity(firebaseUser, {
+                        action: "EXCEPTIONAL_ACCESS_REQUESTED",
+                        module: "Lounge/Tenant Access",
+                        station: airport,
+                        loungeId,
+                        loungeName: lounges.find((item) => item.id === loungeId)?.name || "",
+                        targetType: "Passenger Access",
+                        targetName: `${pass.name || "Passenger"} · ${pass.flight || "Flight unavailable"}`,
+                        result: "Pending Approval",
+                        detail: "Exceptional access requested after automated access denial.",
+                      }).catch(() => undefined);
+                    }
                     setRejected(null);
                     setNotice({
                       kind: "warn",
@@ -13423,6 +13790,19 @@ export default function Home() {
                   type="button"
                   className="primary"
                   onClick={() => {
+                    if (firebaseUser) {
+                      void recordPortalActivity(firebaseUser, {
+                        action: "EXCEPTIONAL_ACCESS_GRANTED",
+                        module: "Lounge/Tenant Access",
+                        station: airport,
+                        loungeId,
+                        loungeName: lounges.find((item) => item.id === loungeId)?.name || "",
+                        targetType: "Passenger Access",
+                        targetName: `${pass.name || "Passenger"} · ${pass.flight || "Flight unavailable"}`,
+                        result: "Provisional",
+                        detail: "Provisional access granted; final verification and evidence remain required.",
+                      }).catch(() => undefined);
+                    }
                     setPass((p) => ({ ...p, eligible: "Y" }));
                     setRejected(null);
                     setNotice({
@@ -13446,18 +13826,30 @@ export default function Home() {
             onSubmit={async (e) => {
               e.preventDefault();
               const normalized = normalizeVisitor(
-                edit as unknown as Record<string, unknown>,
+                {
+                  ...edit,
+                  importStatus:
+                    edit.importBatchId &&
+                    (!edit.flight || !edit.seq || !edit.travelDate || !edit.lounge || edit.eligible !== "Y")
+                      ? "Needs Data Completion"
+                      : edit.importStatus,
+                } as unknown as Record<string, unknown>,
               );
-              if (!normalized || !edit.seq.trim()) {
+              if (!normalized) {
                 setActionDialog({
                   kind: "warn",
-                  text: "Nama, flight, sequence, Date of Travel, dan airport harus valid. Data belum disimpan.",
+                  text: "Nama dan airport harus valid. Field lainnya dapat dilengkapi kemudian untuk data hasil bundle upload.",
                 });
                 return;
               }
               try {
                 const updated = normalized as Visitor;
-                await saveRecord("visitors", updated);
+                if (!firebaseUser) throw new Error("Sesi Firebase tidak aktif.");
+                await manageVisitor(firebaseUser, {
+                  action: "update",
+                  id: updated.id,
+                  visitor: updated,
+                });
                 setVisitors((rows) =>
                   rows.map((visitor) =>
                     visitor.id === updated.id ? updated : visitor,
@@ -13525,6 +13917,51 @@ export default function Home() {
                     })
                   }
                 />
+              </label>
+              <label>
+                Airport
+                <select value={edit.airport} onChange={(e) => setEdit({ ...edit, airport: e.target.value, lounge: "", loungeId: "" })}>
+                  {stations.map((item) => <option key={item.code} value={item.code}>{item.code} — {item.name}</option>)}
+                </select>
+              </label>
+              <label>
+                Lounge/Tenant
+                <select
+                  value={edit.loungeId || ""}
+                  onChange={(e) => {
+                    const selected = lounges.find((item) => item.id === e.target.value);
+                    setEdit({ ...edit, loungeId: e.target.value, lounge: selected?.name || "" });
+                  }}
+                >
+                  <option value="">Pilih lounge/tenant</option>
+                  {lounges.filter((item) => item.airport === edit.airport).map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Route
+                <input value={edit.route} onChange={(e) => setEdit({ ...edit, route: e.target.value.toUpperCase() })} />
+              </label>
+              <label>
+                Cabin Class
+                <select value={edit.cabin} onChange={(e) => setEdit({ ...edit, cabin: e.target.value })}>
+                  <option value="">Pilih kelas</option><option value="C">C — Business Class</option><option value="Y">Y — Economy Class</option>
+                </select>
+              </label>
+              <label>
+                Seat Number
+                <input value={edit.seat} onChange={(e) => setEdit({ ...edit, seat: e.target.value.toUpperCase() })} />
+              </label>
+              <label>
+                Ticket Number
+                <input value={edit.ticket} onChange={(e) => setEdit({ ...edit, ticket: e.target.value })} />
+              </label>
+              <label>
+                Eligibility Indicator
+                <select value={edit.eligible} onChange={(e) => setEdit({ ...edit, eligible: e.target.value as Eligibility })}>
+                  <option value="">Belum diverifikasi</option><option value="Y">Y — Eligible</option><option value="N">N — Not Eligible</option>
+                </select>
               </label>
               <label>
                 Kategori

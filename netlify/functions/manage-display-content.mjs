@@ -119,6 +119,9 @@ async function saveContent(db, actor, input) {
       ),
       status: input.status === "Inactive" ? "Inactive" : "Active",
       description: text(input.description, 1000),
+      orientation: ["Landscape", "Portrait"].includes(input.orientation)
+        ? input.orientation
+        : "Any",
       updatedAt: new Date(),
       updatedBy: actor.decoded.uid,
       ...(existing.exists

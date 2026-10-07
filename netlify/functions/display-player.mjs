@@ -489,6 +489,13 @@ async function heartbeat(db, input) {
       name: device.name,
       station: device.station,
       roomId: device.roomId,
+      orientation: ["Landscape", "Portrait"].includes(device.orientation)
+        ? device.orientation
+        : "Auto",
+      fitMode: ["Contain", "Stretch"].includes(device.fitMode)
+        ? device.fitMode
+        : "Cover",
+      targetResolution: text(device.targetResolution, 20) || "Auto",
     },
     schedule: await schedulePlan(db, device),
     announcements: await announcementPlan(db, device),

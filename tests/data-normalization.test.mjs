@@ -94,6 +94,15 @@ test("skips corrupt visitor documents instead of exposing them to the page", () 
     })?.airport,
     "CGK",
   );
+  const incompleteImport = normalizeVisitor({
+    id: "imported",
+    name: "Passenger Pending",
+    airport: "CGK",
+    date: "2026-10-07",
+    importStatus: "Needs Data Completion",
+  });
+  assert.equal(incompleteImport?.flight, "");
+  assert.equal(incompleteImport?.travelDate, "");
 });
 
 test("parses arbitrary IATA BCBP and labelled QR payloads", () => {

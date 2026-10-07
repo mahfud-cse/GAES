@@ -122,6 +122,72 @@ async function loadDevice(db, actor, deviceId) {
   return device;
 }
 
+async function saveDeviceInventory(db, actor, input) {
+  requireConfigurator(actor);
+  const device = input.device || input;
+  const id = text(device.id, 160) || randomUUID();
+  const station = text(device.station, 20).toUpperCase();
+  const name = text(device.name, 160);
+  if (!/^[A-Z]{3}$/.test(station) || !name)
+    throw httpError(400, "Station dan nama device wajib valid.");
+  requireStation(actor, station);
+  const reference = db.collection("displayDevices").doc(id);
+  const existing = await reference.get();
+  const approvalStatus = ["Approved", "Rejected"].includes(device.approvalStatus)
+    ? device.approvalStatus
+    : "Pending";
+  const orientation = ["Landscape", "Portrait"].includes(device.orientation)
+    ? device.orientation
+    : "Auto";
+  const fitMode = ["Contain", "Stretch"].includes(device.fitMode)
+    ? device.fitMode
+    : "Cover";
+  const targetResolution = ["1920x1080", "1080x1920", "3840x2160", "2160x3840"].includes(device.targetResolution)
+    ? device.targetResolution
+    : "Auto";
+  const batch = db.batch();
+  batch.set(
+    reference,
+    {
+      id,
+      station,
+      roomId: text(device.roomId, 160),
+      name,
+      platform: ["Android Signage Player", "Mini PC"].includes(device.platform)
+        ? device.platform
+        : "Smart TV Browser",
+      connectionType: device.connectionType === "Wi-Fi" ? "Wi-Fi" : "LAN",
+      approvalStatus,
+      orientation,
+      fitMode,
+      targetResolution,
+      status: existing.exists
+        ? existing.data()?.status || "Offline"
+        : "Unregistered",
+      updatedAt: new Date(),
+      updatedBy: actor.decoded.uid,
+      ...(approvalStatus === "Approved"
+        ? { approvedBy: text(actor.profile.name, 120), approvedAt: new Date() }
+        : {}),
+      ...(existing.exists ? {} : { createdAt: new Date(), createdBy: actor.decoded.uid }),
+    },
+    { merge: true },
+  );
+  batch.create(db.collection("displayActivityLogs").doc(), {
+    action: existing.exists ? "DISPLAY_DEVICE_UPDATED" : "DISPLAY_DEVICE_CREATED",
+    station,
+    deviceId: id,
+    targetName: name,
+    actorId: actor.decoded.uid,
+    actorName: text(actor.profile.name || actor.decoded.email, 120),
+    actorRole: text(actor.profile.role, 80),
+    detail: `${orientation} · ${fitMode} · ${targetResolution} · ${approvalStatus}`,
+    createdAt: new Date(),
+  });
+  await batch.commit();
+  return { id, status: "Saved" };
+}
+
 async function createEnrollment(db, actor, input) {
   const deviceId = text(input.deviceId, 160);
   const device = await loadDevice(db, actor, deviceId);
@@ -903,6 +969,8 @@ const handler = async (request) => {
     const input = await request.json();
     const action = text(input.action, 40).toLowerCase();
     const db = targetDb();
+    if (action === "savedevice")
+      return json(200, await saveDeviceInventory(db, actor, input));
     if (action === "createenrollment")
       return json(200, await createEnrollment(db, actor, input));
     if (action === "command")

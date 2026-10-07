@@ -5,6 +5,7 @@ import {
   targetAuth,
   targetDb,
 } from "./_firebase-admin.mjs";
+import { auditRecord, writeAudit } from "./_audit.mjs";
 
 const allowedRoles = new Set([
   "Super Admin",
@@ -58,10 +59,14 @@ export default async (request) => {
         { merge: true },
       );
       await db.collection("auditLogs").add({
-        action: "RESET_USER_PASSWORD",
-        targetId: uid,
-        actorId: actor.decoded.uid,
-        createdAt: new Date(),
+        ...auditRecord(actor, {
+          action: "RESET_USER_PASSWORD",
+          module: "User & Role",
+          station: before.station,
+          targetType: "User",
+          targetId: uid,
+          targetName: `${before.name || before.username} · ${before.role}`,
+        }),
       });
       return json(200, { uid });
     }
@@ -70,12 +75,13 @@ export default async (request) => {
       if (before.username)
         batch.delete(db.collection("usernames").doc(before.username));
       batch.delete(db.collection("users").doc(uid));
-      batch.set(db.collection("auditLogs").doc(), {
+      writeAudit(batch, db, actor, {
         action: "DELETE_USER",
+        module: "User & Role",
+        station: before.station,
+        targetType: "User",
         targetId: uid,
-        actorId: actor.decoded.uid,
-        before,
-        createdAt: new Date(),
+        targetName: `${before.name || before.username} · ${before.role}`,
       });
       await auth.updateUser(uid, { disabled: true });
       let firestoreDeleted = false;
@@ -149,12 +155,13 @@ export default async (request) => {
       },
       { merge: true },
     );
-    batch.set(db.collection("auditLogs").doc(), {
+    writeAudit(batch, db, actor, {
       action: active ? "UPDATE_USER" : "DEACTIVATE_USER",
+      module: "User & Role",
+      station: input.station,
+      targetType: "User",
       targetId: uid,
-      actorId: actor.decoded.uid,
-      before,
-      createdAt: new Date(),
+      targetName: `${input.name || before.name || before.username} · ${nextRole}`,
     });
     try {
       await batch.commit();

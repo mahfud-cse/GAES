@@ -120,6 +120,20 @@ export const createVisitor = (user: User, visitor: unknown) =>
 export const manageVisitor = (user: User, payload: Record<string, unknown>) =>
   call<{ id: string; status: string }>("manage-visitor", user, payload);
 
+export const importVisitorBundle = (user: User, visitors: unknown[]) =>
+  call<{
+    batchId: string;
+    imported: number;
+    needsCompletion: number;
+    duplicates: number;
+    errors: Array<{ row: number; error: string }>;
+  }>("import-visitors", user, { visitors });
+
+export const recordPortalActivity = (
+  user: User,
+  payload: Record<string, unknown>,
+) => call<{ id: string; status: string }>("manage-activity", user, payload);
+
 export const manageRoomBooking = (
   user: User,
   payload: Record<string, unknown>,

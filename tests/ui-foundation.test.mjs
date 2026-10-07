@@ -696,9 +696,46 @@ test("enforces scoped booking privacy and exports facility analytics", async () 
   assert.match(rules, /match \/roomBookings\/\{id\}[\s\S]*?Super Admin','Admin','BO Admin','Lounge Manager/);
   assert.match(visitorBackend, /UPDATE_VISITOR/);
   assert.match(visitorBackend, /DELETE_VISITOR/);
-  assert.match(module, /Planned vs Actual Usage/);
+  assert.match(module, /Room Usage Traffic/);
+  assert.doesNotMatch(module, /Planned vs Actual Usage/);
   assert.match(module, /downloadFacilityReport/);
   assert.match(module, /Room Usage XLSX/);
   assert.match(module, /TV &amp; Signage XLSX/);
-  assert.match(css, /\.facilityUsageChart/);
+  assert.match(css, /\.facilityTrafficChart/);
+});
+
+test("imports incomplete visitor bundles through audited verification workflow", async () => {
+  const [page, api, importer, visitorBackend, activityBackend] = await Promise.all([
+    read("../app/page.tsx"),
+    read("../lib/firebase/api.ts"),
+    read("../netlify/functions/import-visitors.mjs"),
+    read("../netlify/functions/manage-visitor.mjs"),
+    read("../netlify/functions/manage-activity.mjs"),
+  ]);
+  assert.match(page, /Upload Visitor Bundle/);
+  assert.match(page, /Unduh Template Visitor/);
+  assert.match(page, /Needs Data Completion/);
+  assert.match(api, /importVisitorBundle/);
+  assert.match(importer, /Lounge Manager/);
+  assert.match(importer, /IMPORT_VISITOR_BUNDLE/);
+  assert.match(visitorBackend, /ACCEPT_VISITOR/);
+  assert.match(visitorBackend, /REJECT_VISITOR/);
+  assert.match(activityBackend, /LOUNGE_ACCESS_DENIED/);
+});
+
+test("configures portrait signage and passes the display profile to the player", async () => {
+  const [facility, player, playerBackend, deviceBackend, css] = await Promise.all([
+    read("../app/facility-operations.tsx"),
+    read("../app/player/page.tsx"),
+    read("../netlify/functions/display-player.mjs"),
+    read("../netlify/functions/manage-display-device.mjs"),
+    read("../app/globals.css"),
+  ]);
+  assert.match(facility, /Screen Orientation/);
+  assert.match(facility, /1080x1920/);
+  assert.match(facility, /Material Orientation/);
+  assert.match(playerBackend, /targetResolution/);
+  assert.match(deviceBackend, /savedevice/);
+  assert.match(player, /fit-\$\{displayProfile\.fitMode\.toLowerCase\(\)\}/);
+  assert.match(css, /\.displayPlayer\.fit-contain/);
 });
