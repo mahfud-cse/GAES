@@ -2215,6 +2215,19 @@ const localDate = (timeZone = "Asia/Jakarta") =>
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
+
+function loungeCapacityForDate(lounge: Lounge, date: string) {
+  const history = (lounge.capacityHistory || [])
+    .filter(
+      (item) =>
+        item.capacity >= 0 &&
+        item.effectiveFrom &&
+        item.effectiveFrom <= date,
+    )
+    .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
+  return history[0]?.capacity ?? lounge.capacity ?? 0;
+}
+
 function localClock(timeZone: string, language: "ID" | "EN") {
   return new Intl.DateTimeFormat(language === "EN" ? "en-GB" : "id-ID", {
     timeZone,
@@ -4681,17 +4694,6 @@ export default function Home() {
       )
         return "Economy Class";
       return "";
-    },
-    loungeCapacityForDate = (lounge: Lounge, date: string) => {
-      const history = (lounge.capacityHistory || [])
-        .filter(
-          (item) =>
-            item.capacity >= 0 &&
-            item.effectiveFrom &&
-            item.effectiveFrom <= date,
-        )
-        .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
-      return history[0]?.capacity ?? lounge.capacity ?? 0;
     },
     loungePriceForVisitor = (visitor: Visitor) => {
       if (visitor.pricingDate || visitor.pricePeriodId || visitor.agreementId)
