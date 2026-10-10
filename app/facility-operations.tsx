@@ -4764,7 +4764,7 @@ export default function FacilityOperations({
                     setShowLayoutForm(true);
                   }}
                 >
-                  + New Lounge Layout
+                  + Upload Existing Lounge Layout
                 </button>
               )}
             </div>
@@ -4874,7 +4874,7 @@ export default function FacilityOperations({
                   })()}
                 </>
               ) : (
-                <EmptyState text="Buat layout lounge, unggah denah, lalu tempatkan area layanan secara interaktif." />
+                <EmptyState text="Unggah denah existing lounge sebagai latar, lalu tempatkan area layanan secara interaktif." />
               )}
             </article>
 
@@ -7792,7 +7792,7 @@ export default function FacilityOperations({
       {showLayoutForm && (
         <div className="back" onMouseDown={(event) => event.target === event.currentTarget && setShowLayoutForm(false)}>
           <div className="modal wideModal loungeLayoutModal">
-            <div className="modalHead"><div><small>LOUNGE WAYFINDING</small><h2>{loungeLayouts.some((row) => row.id === editingLayoutId) ? "Edit Lounge Layout" : "New Lounge Layout"}</h2></div><button type="button" onClick={() => setShowLayoutForm(false)}>×</button></div>
+            <div className="modalHead"><div><small>LOUNGE WAYFINDING</small><h2>{loungeLayouts.some((row) => row.id === editingLayoutId) ? "Edit Lounge Layout" : "Upload Existing Lounge Layout"}</h2></div><button type="button" onClick={() => setShowLayoutForm(false)}>×</button></div>
             <form className="form" onSubmit={(event) => void saveLoungeLayout(event)}>
               <label><span>Station</span><select value={layoutDraft.station} disabled={!globalScope} onChange={(event) => setLayoutDraft({ ...layoutDraft, station: event.target.value, loungeId: "", loungeName: "" })}>{activeStations.map((station) => <option key={station.code} value={station.code}>{station.code} — {station.name}</option>)}</select></label>
               <label><span>Lounge/Tenant</span><select value={layoutDraft.loungeId} onChange={(event) => { const lounge = lounges.find((row) => row.id === event.target.value); setLayoutDraft({ ...layoutDraft, loungeId: event.target.value, loungeName: lounge?.name || "" }); }} required><option value="">Select lounge</option>{lounges.filter((row) => row.airport === layoutDraft.station).map((lounge) => <option key={lounge.id} value={lounge.id}>{lounge.name} · {lounge.type}</option>)}</select></label>

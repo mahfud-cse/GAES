@@ -1345,13 +1345,62 @@ const portalActivityLabels: Record<string, string> = {
   DISPLAY_SHARE_STOPPED: "Menghentikan screen share",
 };
 
-function readableActivity(action = "ACTIVITY") {
+function readableActivity(value: unknown = "ACTIVITY") {
+  const action = normalizedText(value, "ACTIVITY").toUpperCase();
   if (portalActivityLabels[action]) return portalActivityLabels[action];
   if (action.startsWith("DISPLAY_COMMAND_"))
     return `Mengirim perintah display: ${action.replace("DISPLAY_COMMAND_", "").replaceAll("_", " ").toLowerCase()}`;
   if (action.startsWith("DISPLAY_PLAYER_"))
     return `Perubahan status display: ${action.replace("DISPLAY_PLAYER_", "").replaceAll("_", " ").toLowerCase()}`;
   return action.replaceAll("_", " ").toLowerCase().replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function normalizePortalNotification(row: Record<string, unknown>) {
+  const id = normalizedText(row.id);
+  const userId = normalizedText(row.userId);
+  if (!id || !userId) return null;
+  return {
+    id,
+    userId,
+    type: normalizedText(row.type, "INFO").toUpperCase(),
+    title: normalizedText(row.title, "Informasi"),
+    text: normalizedText(row.text, "Silakan buka halaman terkait untuk melihat detail."),
+    targetUid: normalizedText(row.targetUid) || undefined,
+    targetId: normalizedText(row.targetId) || undefined,
+    active: row.active !== false,
+  } satisfies PortalNotification;
+}
+
+function normalizePortalAuditLog(row: Record<string, unknown>) {
+  const id = normalizedText(row.id);
+  if (!id) return null;
+  const optionalText = (value: unknown) => normalizedText(value) || undefined;
+  return {
+    id,
+    action: normalizedText(row.action, "ACTIVITY").toUpperCase(),
+    actorName: optionalText(row.actorName),
+    actorId: optionalText(row.actorId),
+    station: optionalText(row.station),
+    targetId: optionalText(row.targetId),
+    notificationType: optionalText(row.notificationType),
+    module: optionalText(row.module),
+    result: optionalText(row.result),
+    actorRole: optionalText(row.actorRole),
+    actorUsername: optionalText(row.actorUsername),
+    actorEmail: optionalText(row.actorEmail),
+    actorOrganization: optionalText(row.actorOrganization),
+    scope: optionalText(row.scope),
+    loungeName: optionalText(row.loungeName),
+    targetName: optionalText(row.targetName),
+    targetType: optionalText(row.targetType),
+    detail: optionalText(row.detail),
+    reasonCode: optionalText(row.reasonCode),
+    deviceId: optionalText(row.deviceId),
+    roomId: optionalText(row.roomId),
+    bookingId: optionalText(row.bookingId),
+    outputGroupId: optionalText(row.outputGroupId),
+    createdAt: row.createdAt,
+  } satisfies PortalAuditLog;
 }
 type Station = {
   code: string;
@@ -2889,8 +2938,18 @@ export default function Home() {
         const account = {
           id: user.uid,
           password: "",
-          status: "Aktif",
-          ...data,
+          username: normalizedText(data.username, user.email || user.uid).toLowerCase(),
+          name: normalizedText(data.name, user.displayName || user.email || "User"),
+          email: normalizedText(data.email, user.email || ""),
+          role: normalizedText(data.role, "Report Viewer") as Account["role"],
+          station: normalizedText(data.station, "ALL").toUpperCase(),
+          scope: normalizedText(data.scope, "Configured authority"),
+          organization: normalizedText(data.organization),
+          verificationScopes: Array.isArray(data.verificationScopes)
+            ? data.verificationScopes.map((value) => normalizedText(value)).filter(Boolean)
+            : [],
+          status: "Aktif" as const,
+          mustChangePassword: data.mustChangePassword === true,
         } as Account;
         setCurrentAccount(account);
         setRole(account.role);
@@ -3038,32 +3097,51 @@ export default function Home() {
             subscriptionError,
           )
         : () => undefined,
-      subscribeUserNotifications<PortalNotification>(
+      subscribeUserNotifications<Record<string, unknown>>(
         firebaseUser.uid,
         (rows) =>
-          setPortalNotifications(rows.filter((item) => item.active !== false)),
+          setPortalNotifications(
+            rows
+              .map(normalizePortalNotification)
+              .flatMap((item) => (item?.active ? [item] : [])) as PortalNotification[],
+          ),
         subscriptionError,
       ),
       currentAccount && ["Super Admin", "Admin"].includes(currentAccount.role)
-        ? subscribeCollection<PortalAuditLog>(
+        ? subscribeCollection<Record<string, unknown>>(
             "auditLogs",
-            setPortalAuditLogs,
+            (rows) =>
+              setPortalAuditLogs(
+                rows
+                  .map(normalizePortalAuditLog)
+                  .flatMap((item) => (item ? [item] : [])) as PortalAuditLog[],
+              ),
             undefined,
             subscriptionError,
           )
         : () => undefined,
       currentAccount && ["Super Admin", "Admin"].includes(currentAccount.role)
-        ? subscribeCollection<PortalAuditLog>(
+        ? subscribeCollection<Record<string, unknown>>(
             "roomActivityLogs",
-            setRoomAuditLogs,
+            (rows) =>
+              setRoomAuditLogs(
+                rows
+                  .map(normalizePortalAuditLog)
+                  .flatMap((item) => (item ? [item] : [])) as PortalAuditLog[],
+              ),
             undefined,
             subscriptionError,
           )
         : () => undefined,
       currentAccount && ["Super Admin", "Admin"].includes(currentAccount.role)
-        ? subscribeCollection<PortalAuditLog>(
+        ? subscribeCollection<Record<string, unknown>>(
             "displayActivityLogs",
-            setDisplayAuditLogs,
+            (rows) =>
+              setDisplayAuditLogs(
+                rows
+                  .map(normalizePortalAuditLog)
+                  .flatMap((item) => (item ? [item] : [])) as PortalAuditLog[],
+              ),
             undefined,
             subscriptionError,
           )
@@ -3127,12 +3205,38 @@ export default function Home() {
         (rows) => {
           const dashboard = rows.find((item) => item.id === "dashboard");
           if (!dashboard) return;
-          if (Array.isArray(dashboard.allowedRoles))
-            setDashboardAllowedRoles(
-              dashboard.allowedRoles as Account["role"][],
+          if (Array.isArray(dashboard.allowedRoles)) {
+            const allowedRoles = dashboard.allowedRoles
+              .map((value) => normalizedText(value))
+              .filter(Boolean) as Account["role"][];
+            if (allowedRoles.length) setDashboardAllowedRoles(allowedRoles);
+          }
+          if (Array.isArray(dashboard.widgets)) {
+            const configured = new Map(
+              dashboard.widgets
+                .filter(
+                  (value): value is Record<string, unknown> =>
+                    Boolean(value) && typeof value === "object" && !Array.isArray(value),
+                )
+                .map((value) => [normalizedText(value.id), value]),
             );
-          if (Array.isArray(dashboard.widgets))
-            setDashboardWidgets(dashboard.widgets as DashboardWidget[]);
+            setDashboardWidgets(
+              dashboardWidgetSeed.map((fallback) => {
+                const value = configured.get(fallback.id);
+                if (!value) return fallback;
+                const roles = Array.isArray(value.roles)
+                  ? value.roles.map((role) => normalizedText(role)).filter(Boolean)
+                  : fallback.roles;
+                return {
+                  ...fallback,
+                  titleId: normalizedText(value.titleId, fallback.titleId),
+                  titleEn: normalizedText(value.titleEn, fallback.titleEn),
+                  visible: value.visible !== false,
+                  roles: roles.length ? (roles as Account["role"][]) : fallback.roles,
+                };
+              }),
+            );
+          }
         },
         undefined,
         subscriptionError,
