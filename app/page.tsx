@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import type { IScannerControls } from "@zxing/browser";
+import * as XLSX from "xlsx";
 import Link from "next/link";
 import FacilityOperations from "./facility-operations";
 import {
@@ -87,6 +88,7 @@ type Visitor = {
   name: string;
   flight: string;
   route: string;
+  finalDestination?: string;
   cabin: string;
   seat: string;
   seq: string;
@@ -129,6 +131,14 @@ type Visitor = {
   missingFields?: string[];
   membership?: string;
   notes?: string;
+  firstName?: string;
+  lastName?: string;
+  confirmationNumber?: string;
+  sourceIssuingConfirmation?: string;
+  accessGrantedBy?: string;
+  ffpAirlineCode?: string;
+  guestName?: string;
+  paymentId?: string;
 };
 type CustomColumn = {
   id: string;
@@ -352,6 +362,45 @@ const interfaceTranslations: Record<string, string> = {
   "Operasional Ruangan": "Room Operations",
   "Master & Konfigurasi": "Master & Configuration",
   "Log Aktivitas": "Activity Log",
+  "Denah Lounge": "Lounge Layout",
+  "Denah Lounge & Peta Layanan": "Lounge Layout & Service Map",
+  "Kelola denah interaktif, foto area, layanan, status, dan tautan publik per lounge.":
+    "Manage interactive maps, area photos, services, status, and public links for each lounge.",
+  "Denah Lounge Baru": "New Lounge Layout",
+  Editor: "Editor",
+  "Pratinjau Penumpang": "Passenger Preview",
+  "Daftar Denah": "Layout Directory",
+  "Akses Penumpang": "Passenger Access",
+  "Peta Arah Publik": "Public Wayfinding",
+  "Buka Tampilan Penumpang": "Open Passenger View",
+  "Salin Tautan Penumpang": "Copy Passenger Link",
+  "Lokasi QR": "QR Location",
+  "Pintu masuk lounge umum": "General lounge entrance",
+  "Edit Denah": "Edit Layout",
+  "Hapus Denah": "Delete Layout",
+  "Nama Denah": "Layout Title",
+  "Lantai / Zona": "Floor / Zone",
+  "Status Publikasi": "Publication Status",
+  "URL Gambar Denah": "Layout Image URL",
+  "Upload Gambar Denah": "Upload Layout Image",
+  "Simpan Denah": "Save Layout",
+  "Area Interaktif": "Interactive Area",
+  "Tambah Area": "Add Area",
+  "Edit Area": "Edit Area",
+  "Nama Area": "Area Name",
+  "Status Publik": "Public Status",
+  "Visibilitas Penumpang": "Passenger Visibility",
+  "Layanan (pisahkan dengan koma)": "Services (separate with commas)",
+  "Foto Area": "Area Photos",
+  "Simpan Area": "Save Area",
+  "Hapus Area": "Delete Area",
+  "Kontrol Grup": "Group Control",
+  "Kontrol Jarak Jauh Grup": "Group Remote Control",
+  "Kirim ke Grup": "Send to Group",
+  "Ambil Foto / Upload Gambar Barcode": "Capture Photo / Upload Barcode Image",
+  "Nyalakan Lampu": "Turn On Light",
+  "Matikan Lampu": "Turn Off Light",
+  "Final Destination": "Final Destination",
   "Total Ruangan": "Total Room",
   Tersedia: "Available",
   Digunakan: "Occupied",
@@ -2065,6 +2114,26 @@ function sortData<T>(
   });
 }
 
+type LoungeValidity =
+  | "Valid"
+  | "Expiring Soon"
+  | "Expired"
+  | "Not Yet Valid"
+  | "Invalid Data";
+
+function loungeValidity(lounge: Pick<Lounge, "start" | "end">, today = localDate()): LoungeValidity {
+  if (!lounge.start || !lounge.end || lounge.end < lounge.start)
+    return "Invalid Data";
+  if (today < lounge.start) return "Not Yet Valid";
+  if (today > lounge.end) return "Expired";
+  const days = Math.ceil(
+    (new Date(`${lounge.end}T23:59:59`).getTime() -
+      new Date(`${today}T00:00:00`).getTime()) /
+      86400000,
+  );
+  return days <= 90 ? "Expiring Soon" : "Valid";
+}
+
 function cabinCounts(value: unknown) {
   const result = { F: 0, C: 0, Y: 0 };
   const source = String(value ?? "").toUpperCase();
@@ -2290,6 +2359,32 @@ function flightOperatorCode(flightNumber: string) {
       .match(/^([A-Z0-9]{2})(?=\s*\d)/)?.[1] || ""
   );
 }
+function splitPassengerName(value: string) {
+  const parts = value.trim().replace(/\s+/g, " ").split(" ").filter(Boolean);
+  if (parts.length < 2) return { firstName: parts[0] || "", lastName: "" };
+  return {
+    firstName: parts.slice(0, -1).join(" "),
+    lastName: parts.at(-1) || "",
+  };
+}
+function visitorCell(
+  row: Record<string, unknown>,
+  ...aliases: string[]
+) {
+  const normalizedEntries = new Map(
+    Object.entries(row).map(([key, value]) => [
+      key.toLowerCase().replace(/[^a-z0-9]/g, ""),
+      value,
+    ]),
+  );
+  for (const alias of aliases) {
+    const value = normalizedEntries.get(
+      alias.toLowerCase().replace(/[^a-z0-9]/g, ""),
+    );
+    if (value != null && String(value).trim()) return value;
+  }
+  return "";
+}
 async function imageDataUrl(path: string) {
   const blob = await fetch(path).then((r) => r.blob());
   return await new Promise<string>((resolve, reject) => {
@@ -2451,6 +2546,18 @@ export default function Home() {
     [disputeSort, setDisputeSort] = useState<SortState>({
       key: "name",
       direction: "asc",
+    }),
+    [loungeSort, setLoungeSort] = useState<SortState>({
+      key: "name",
+      direction: "asc",
+    }),
+    [stationSort, setStationSort] = useState<SortState>({
+      key: "code",
+      direction: "asc",
+    }),
+    [airlineSort, setAirlineSort] = useState<SortState>({
+      key: "code",
+      direction: "asc",
     });
   const [flightNotice, setFlightNotice] = useState<InlineNotice | null>(null),
     [passengerImportNotice, setPassengerImportNotice] = useState(""),
@@ -2470,6 +2577,7 @@ export default function Home() {
     name: "",
     flight: "",
     route: "",
+    finalDestination: "",
     cabin: "",
     seat: "",
     seq: "",
@@ -2501,6 +2609,8 @@ export default function Home() {
     [reference, setReference] = useState(""),
     [notice, setNotice] = useState<{ kind: string; text: string } | null>(null),
     [camera, setCamera] = useState(false),
+    [cameraTorch, setCameraTorch] = useState(false),
+    [cameraZoom, setCameraZoom] = useState(1),
     [scanner, setScanner] = useState(false),
     [manualMode, setManualMode] = useState(false),
     [manualMember, setManualMember] = useState("Tidak Ada / Lainnya");
@@ -2510,6 +2620,7 @@ export default function Home() {
   const [showLoungeForm, setShowLoungeForm] = useState(false),
     [editingLounge, setEditingLounge] = useState<string | null>(null),
     [loungeNotice, setLoungeNotice] = useState<InlineNotice | null>(null),
+    [loungeTypeFilter, setLoungeTypeFilter] = useState("Semua"),
     [loungeDraft, setLoungeDraft] = useState<Omit<Lounge, "id">>({
       airport: "",
       name: "",
@@ -3238,7 +3349,6 @@ export default function Home() {
     try {
       if (!file.size)
         throw new Error("File kosong. Tidak ada data yang diproses.");
-      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), {
         type: "array",
         cellDates: true,
@@ -3835,6 +3945,8 @@ export default function Home() {
       stream.current = null;
       scanLock.current = false;
       setCamera(false);
+      setCameraTorch(false);
+      setCameraZoom(1);
       setScanStatus("");
       return;
     }
@@ -3863,8 +3975,9 @@ export default function Home() {
         {
           video: {
             facingMode: { ideal: "environment" },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: 1920, min: 1280 },
+            height: { ideal: 1080, min: 720 },
+            advanced: [{ focusMode: "continuous" }] as unknown as MediaTrackConstraintSet[],
           },
         },
         video.current,
@@ -3902,6 +4015,110 @@ export default function Home() {
       });
     }
   }
+
+  async function setScannerTorch(enabled: boolean) {
+    if (!controls.current?.switchTorch) {
+      setNotice({
+        kind: "warn",
+        text: "Perangkat atau browser ini tidak menyediakan kontrol lampu kamera.",
+      });
+      return;
+    }
+    try {
+      await controls.current.switchTorch(enabled);
+      setCameraTorch(enabled);
+    } catch {
+      setNotice({
+        kind: "warn",
+        text: "Lampu kamera tidak dapat diaktifkan pada perangkat ini.",
+      });
+    }
+  }
+
+  async function setScannerZoom(value: number) {
+    setCameraZoom(value);
+    try {
+      controls.current?.streamVideoConstraintsApply?.({
+        advanced: [{ zoom: value }] as unknown as MediaTrackConstraintSet[],
+      });
+    } catch {
+      // Some mobile browsers expose a zoom slider but reject the constraint.
+    }
+  }
+
+  async function scanBarcodeImage(file: File) {
+    if (!file.type.startsWith("image/")) {
+      setNotice({ kind: "error", text: "Pilih file gambar barcode atau boarding pass." });
+      return;
+    }
+    setScanStatus("Memproses gambar pada beberapa orientasi…");
+    setNotice(null);
+    try {
+      const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] =
+        await Promise.all([import("@zxing/browser"), import("@zxing/library")]);
+      const hints = new Map();
+      hints.set(DecodeHintType.TRY_HARDER, true);
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+        BarcodeFormat.QR_CODE,
+        BarcodeFormat.CODE_128,
+        BarcodeFormat.PDF_417,
+        BarcodeFormat.AZTEC,
+        BarcodeFormat.DATA_MATRIX,
+        BarcodeFormat.CODE_39,
+        BarcodeFormat.EAN_13,
+        BarcodeFormat.EAN_8,
+      ]);
+      const reader = new BrowserMultiFormatReader(hints);
+      const bitmap = await createImageBitmap(file);
+      let decoded = "";
+      for (const rotation of [0, 90, 180, 270]) {
+        const swap = rotation === 90 || rotation === 270;
+        const canvas = document.createElement("canvas");
+        canvas.width = swap ? bitmap.height : bitmap.width;
+        canvas.height = swap ? bitmap.width : bitmap.height;
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        if (!context) continue;
+        context.translate(canvas.width / 2, canvas.height / 2);
+        context.rotate((rotation * Math.PI) / 180);
+        context.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+        try {
+          decoded = reader.decodeFromCanvas(canvas).getText();
+        } catch {
+          const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+          for (let index = 0; index < pixels.data.length; index += 4) {
+            const grey =
+              pixels.data[index] * 0.299 +
+              pixels.data[index + 1] * 0.587 +
+              pixels.data[index + 2] * 0.114;
+            const contrasted = grey < 128 ? Math.max(0, grey - 28) : Math.min(255, grey + 28);
+            pixels.data[index] = contrasted;
+            pixels.data[index + 1] = contrasted;
+            pixels.data[index + 2] = contrasted;
+          }
+          context.putImageData(pixels, 0, 0);
+          try {
+            decoded = reader.decodeFromCanvas(canvas).getText();
+          } catch {
+            decoded = "";
+          }
+        }
+        if (decoded) break;
+      }
+      bitmap.close();
+      if (!decoded) throw new Error("Barcode belum dapat dikenali dari gambar ini.");
+      setScanStatus("");
+      read(decoded, "gambar boarding pass");
+    } catch (error) {
+      setScanStatus("");
+      setNotice({
+        kind: "warn",
+        text:
+          error instanceof Error
+            ? `${error.message} Ambil gambar lebih lurus, terang, dan pastikan seluruh barcode terlihat.`
+            : "Gambar barcode tidak dapat diproses.",
+      });
+    }
+  }
   async function save(e: FormEvent) {
     e.preventDefault();
     if (pass.eligible !== "Y") {
@@ -3930,6 +4147,7 @@ export default function Home() {
     const missing = [
       !pass.name.trim() && "Nama",
       !pass.flight.trim() && "Flight",
+      !pass.finalDestination.trim() && "Final Destination",
       !travelDate && "Date of Travel",
       !pass.seq.trim() && "Sequence",
       !airport && "Airport",
@@ -4033,6 +4251,7 @@ export default function Home() {
       name: pass.name,
       flight: pass.flight,
       route: pass.route,
+      finalDestination: pass.finalDestination,
       cabin: pass.cabin,
       seat: pass.seat,
       seq: pass.seq,
@@ -4167,20 +4386,35 @@ export default function Home() {
     query,
     visitorSort,
   ]);
-  const filteredLounges = lounges.filter(
-      (l) =>
-        (masterSelect === "Semua" || l.airport === masterSelect) &&
-        (masterSelect2 === "Semua" ||
-          l.type === masterSelect2 ||
-          l.status === masterSelect2) &&
-        `${l.airport} ${l.name} ${l.type} ${l.currency}`
-          .toLowerCase()
-          .includes(
-            (masterQuery === "Semua Lounge / Provider"
-              ? ""
-              : masterQuery
-            ).toLowerCase(),
-          ),
+  const filteredLounges = sortData(
+      lounges.filter(
+        (l) =>
+          (masterSelect === "Semua" || l.airport === masterSelect) &&
+          (masterSelect2 === "Semua" ||
+            loungeValidity(l) === masterSelect2) &&
+          (loungeTypeFilter === "Semua" || l.type === loungeTypeFilter) &&
+          `${l.airport} ${l.name} ${l.type} ${l.currency} ${l.status}`
+            .toLowerCase()
+            .includes(
+              (masterQuery === "Semua Lounge / Provider"
+                ? ""
+                : masterQuery
+              ).toLowerCase(),
+            ),
+      ),
+      loungeSort,
+      (l, key) =>
+        ({
+          airport: l.airport,
+          name: l.name,
+          type: l.type,
+          period: l.end,
+          validity: loungeValidity(l),
+          operational: l.status,
+          capacity: loungeCapacityForDate(l, localDate()),
+          price: l.price,
+          source: l.dataOrigin || "MANUAL",
+        })[key] || "",
     ),
     filteredAccounts = sortData(
       accounts.filter(
@@ -4638,7 +4872,6 @@ export default function Home() {
     try {
       if (!file.size)
         throw new Error("File kosong. Tidak ada data yang diproses.");
-      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), {
         type: "array",
         cellDates: true,
@@ -4698,7 +4931,6 @@ export default function Home() {
   }
   async function previewPassengerList(file: File) {
     try {
-      const XLSX = await import("xlsx");
       const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
         workbook.Sheets[workbook.SheetNames[0]],
@@ -4939,42 +5171,64 @@ export default function Home() {
   }
   function downloadVisitorTemplate() {
     const headers = [
-      "Date of Travel",
-      "Airport",
-      "Lounge/Tenant",
-      "Passenger Name",
+      "Date Of Access",
+      "Time Of Access",
+      "First Name",
+      "Last Name",
+      "Confirmation Number",
+      "Source Issuing Confirmation",
+      "Access Granted By",
+      "E-Ticket Number",
+      "Operating Airline Code",
       "Flight Number",
-      "Route",
       "Cabin Class",
-      "Seat Number",
+      "Departure Date",
+      "Flight Origin",
+      "Flight Destination",
+      "Number of Guests",
+      "FFP Airline Code",
+      "FFP Number",
+      "FFP Tier Level",
+      "Airport Code",
+      "Override Reason",
+      "Remarks",
+      "Payment Id",
+      "Guest Name",
+      "Total Passengers",
+      "Lounge/Tenant",
       "Check-in Sequence",
-      "Ticket Number",
-      "Access Category",
-      "Reference Number",
-      "Membership",
+      "Seat Number",
       "Eligibility Indicator",
-      "Access Date",
-      "Access Time",
-      "Notes",
     ];
     const example = [
       stationDate,
-      station === "ALL" ? "CGK" : station,
-      "",
-      "BUDI SANTOSO",
-      "GA204",
-      "CGK-JOG",
-      "C",
-      "7A",
-      "037",
-      "1260000000000",
-      "Business Class",
-      "",
-      "",
-      "Y",
-      stationDate,
       "08:30",
+      "BUDI",
+      "SANTOSO",
       "",
+      "Visitor Bundle Upload",
+      "",
+      "1260000000000",
+      "GA",
+      "GA204",
+      "C",
+      stationDate,
+      "CGK",
+      "JOG",
+      "0",
+      "GA",
+      "",
+      "Business Class",
+      station === "ALL" ? "CGK" : station,
+      "Y",
+      "",
+      "",
+      "",
+      "1",
+      "",
+      "037",
+      "7A",
+      "Y",
     ];
     const body = [headers, example]
       .map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(","))
@@ -4989,7 +5243,6 @@ export default function Home() {
     setVisitorImportNotice(null);
     try {
       if (!file.size) throw new Error("File kosong.");
-      const XLSX = await import("xlsx");
       const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       if (!sheet) throw new Error("Worksheet tidak ditemukan.");
@@ -5000,25 +5253,69 @@ export default function Home() {
       });
       const rows = sourceRows
         .filter((row) => Object.values(row).some((value) => String(value || "").trim()))
-        .map((row) => ({
-          travelDate: normalizedText(row["Date of Travel"]),
-          airport: normalizedText(row.Airport).toUpperCase(),
-          lounge: normalizedText(row["Lounge/Tenant"]),
-          name: normalizedText(row["Passenger Name"]),
-          flight: normalizedText(row["Flight Number"]).toUpperCase(),
-          route: normalizedText(row.Route).toUpperCase(),
-          cabin: normalizedText(row["Cabin Class"]).toUpperCase(),
-          seat: normalizedText(row["Seat Number"]).toUpperCase(),
-          seq: normalizedText(row["Check-in Sequence"]),
-          ticket: normalizedText(row["Ticket Number"]),
-          category: normalizedText(row["Access Category"]),
-          reference: normalizedText(row["Reference Number"]),
-          membership: normalizedText(row.Membership),
-          eligible: normalizedText(row["Eligibility Indicator"]).toUpperCase(),
-          date: normalizedText(row["Access Date"]),
-          time: normalizedText(row["Access Time"]),
-          notes: normalizedText(row.Notes),
-        }));
+        .map((row) => {
+          const firstName = normalizedText(visitorCell(row, "First Name"));
+          const lastName = normalizedText(visitorCell(row, "Last Name"));
+          const name =
+            normalizedText(visitorCell(row, "Passenger Name", "Name")) ||
+            [firstName, lastName].filter(Boolean).join(" ");
+          const origin = normalizedText(
+            visitorCell(row, "Flight Origin", "Origin", "Origin (ORG)"),
+          ).toUpperCase();
+          const finalDestination = normalizedText(
+            visitorCell(
+              row,
+              "Flight Destination",
+              "Final Destination",
+              "Destination",
+              "Destination (DEST)",
+            ),
+          ).toUpperCase();
+          const route =
+            normalizedText(visitorCell(row, "Route")).toUpperCase() ||
+            [origin, finalDestination].filter(Boolean).join("–");
+          return {
+            travelDate: normalizedText(
+              visitorCell(row, "Departure Date", "Date of Travel", "DOT"),
+            ),
+            airport: normalizedText(
+              visitorCell(row, "Airport Code", "Airport", "Station"),
+            ).toUpperCase(),
+            lounge: normalizedText(visitorCell(row, "Lounge/Tenant", "Lounge")),
+            firstName,
+            lastName,
+            name,
+            confirmationNumber: normalizedText(
+              visitorCell(row, "Confirmation Number", "Reference Number"),
+            ),
+            sourceIssuingConfirmation: normalizedText(
+              visitorCell(row, "Source Issuing Confirmation"),
+            ),
+            accessGrantedBy: normalizedText(visitorCell(row, "Access Granted By")),
+            flight: normalizedText(visitorCell(row, "Flight Number", "Flight")).toUpperCase(),
+            route,
+            finalDestination,
+            cabin: normalizedText(visitorCell(row, "Cabin Class")).toUpperCase(),
+            seat: normalizedText(visitorCell(row, "Seat Number", "Seat")).toUpperCase(),
+            seq: normalizedText(visitorCell(row, "Check-in Sequence", "Sequence", "Seq")),
+            ticket: normalizedText(visitorCell(row, "E-Ticket Number", "Ticket Number")),
+            category: normalizedText(
+              visitorCell(row, "Access Category", "FFP Tier Level", "Category"),
+            ),
+            reference: normalizedText(
+              visitorCell(row, "FFP Number", "Reference Number", "Membership"),
+            ),
+            membership: normalizedText(visitorCell(row, "Membership", "FFP Number")),
+            ffpAirlineCode: normalizedText(visitorCell(row, "FFP Airline Code")).toUpperCase(),
+            eligible: normalizedText(visitorCell(row, "Eligibility Indicator", "Eligible")).toUpperCase(),
+            date: normalizedText(visitorCell(row, "Date Of Access", "Access Date")),
+            time: normalizedText(visitorCell(row, "Time Of Access", "Access Time")),
+            companionCount: normalizedNumber(visitorCell(row, "Number of Guests", "Companion Count")),
+            guestName: normalizedText(visitorCell(row, "Guest Name")),
+            notes: normalizedText(visitorCell(row, "Remarks", "Notes")),
+            paymentId: normalizedText(visitorCell(row, "Payment Id", "Payment ID")),
+          };
+        });
       if (!rows.length) throw new Error("Tidak ada baris visitor pada file.");
       if (rows.length > 150) throw new Error("Maksimal 150 visitor dalam satu upload.");
       setVisitorImportPreview(rows);
@@ -5054,7 +5351,8 @@ export default function Home() {
     const head = [
         "Date Of Access",
         "Time Of Access",
-        "Passenger Name",
+        "First Name",
+        "Last Name",
         "Confirmation Number",
         "Source Issuing Confirmation",
         "Access Granted By",
@@ -5063,8 +5361,8 @@ export default function Home() {
         "Flight Number",
         "Cabin Class",
         "Departure Date",
-        "Origin (ORG)",
-        "Destination (DEST)",
+        "Flight Origin",
+        "Flight Destination",
         "Number of Guests",
         "FFP Airline Code",
         "FFP Number",
@@ -5073,41 +5371,40 @@ export default function Home() {
         "Override Reason",
         "Remarks",
         "Payment Id",
-        "Guest Category",
+        "Guest Name",
         "Total Passengers",
-        "Verification Status",
-        ...customColumns.filter((c) => c.visible).map((c) => c.label),
       ],
       rows = shown.map((v) => {
         const route = splitRoute(v.route);
+        const passenger =
+          v.firstName || v.lastName
+            ? { firstName: v.firstName || "", lastName: v.lastName || "" }
+            : splitPassengerName(v.name);
         return [
           v.date,
           v.time,
-          v.name,
-          v.id,
-          v.source,
-          v.verifier || "",
+          passenger.firstName,
+          passenger.lastName,
+          v.confirmationNumber || v.id,
+          v.sourceIssuingConfirmation || v.source,
+          v.accessGrantedBy || v.verifier || "",
           v.ticket,
           flightOperatorCode(v.flight),
           v.flight,
           v.cabin,
           v.travelDate || v.date,
           route.origin,
-          route.destination,
+          v.finalDestination || route.destination,
           v.companionCount || 0,
-          v.category.includes("Partner") ? v.reference.slice(0, 2) : "",
+          v.ffpAirlineCode || (v.category.includes("Partner") ? v.reference.slice(0, 2) : ""),
           ["Platinum", "Elite Plus"].includes(v.category) ? v.reference : "",
           v.category,
           v.airport,
           v.boReason,
-          v.evidenceName || "",
-          "",
-          v.companionCategory || "",
+          v.notes || v.evidenceName || "",
+          v.paymentId || "",
+          v.guestName || "",
           1 + (v.companionCount || 0),
-          v.boStatus,
-          ...customColumns
-            .filter((c) => c.visible)
-            .map((c) => customValue(v, c)),
         ];
       });
     const body = [head, ...rows]
@@ -5361,11 +5658,136 @@ export default function Home() {
     a.click();
     URL.revokeObjectURL(a.href);
   }
+  function downloadRowsCsv(
+    filename: string,
+    headers: string[],
+    rows: Array<Array<string | number>>,
+  ) {
+    const body = [headers, ...rows]
+      .map((row) =>
+        row
+          .map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`)
+          .join(","),
+      )
+      .join("\n");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(
+      new Blob([`\uFEFF${body}`], { type: "text/csv;charset=utf-8" }),
+    );
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+  function downloadLoungeData() {
+    downloadRowsCsv(
+      `master-lounge-tenant-${stationDate}.csv`,
+      [
+        "Airport",
+        "Name",
+        "Facility Type",
+        "Operational Status",
+        "Agreement Start",
+        "Agreement End",
+        "Agreement Validity",
+        "Currency",
+        "Price per Pax",
+        "Capacity",
+        "Data Source",
+      ],
+      filteredLounges.map((row) => [
+        row.airport,
+        row.name,
+        row.type,
+        row.status,
+        row.start,
+        row.end,
+        loungeValidity(row),
+        row.currency,
+        row.price,
+        loungeCapacityForDate(row, localDate()),
+        row.dataOrigin || "MANUAL",
+      ]),
+    );
+  }
+  function downloadStationData() {
+    downloadRowsCsv(
+      `master-station-${stationDate}.csv`,
+      ["Code", "Name", "Time Zone", "UTC", "Status", "Data Source"],
+      stations.map((row) => [
+        row.code,
+        row.name,
+        row.timeZone,
+        row.utcLabel,
+        row.status,
+        row.dataOrigin || "MANUAL",
+      ]),
+    );
+  }
+  function downloadAirlineData() {
+    downloadRowsCsv(
+      `master-airline-${stationDate}.csv`,
+      ["Code", "Name", "Verifier Organization", "Status"],
+      airlines.map((row) => [
+        row.code,
+        row.name,
+        row.verifierOrganization,
+        row.status,
+      ]),
+    );
+  }
+  function downloadUserData() {
+    downloadRowsCsv(
+      `master-user-role-${stationDate}.csv`,
+      ["Name", "Username", "Email", "Role", "Station", "Scope", "Organization", "Status"],
+      filteredAccounts.map((row) => [
+        row.name,
+        row.username,
+        row.email || "",
+        row.role,
+        row.station,
+        row.scope,
+        row.organization,
+        row.status,
+      ]),
+    );
+  }
+  function downloadEntitlementData() {
+    downloadRowsCsv(
+      `master-access-entitlement-${stationDate}.csv`,
+      [
+        "Type",
+        "Name",
+        "Reference",
+        "Status",
+        "Verifier Organization",
+        "Eligible Tier",
+        "Effective Start",
+        "Effective End",
+        "Station Scope",
+        "Payer",
+        "Price Rule",
+        "Companion Rule",
+      ],
+      partnerships.map((row) => [
+        row.type,
+        row.name,
+        row.reference,
+        row.status,
+        row.verifierOrganization,
+        row.eligibleTiers,
+        row.effectiveStart,
+        row.effectiveEnd,
+        row.stationScope,
+        row.payer,
+        row.priceRule,
+        row.companionRule,
+      ]),
+    );
+  }
   async function uploadLounges(file: File) {
     try {
       if (!file.size)
         throw new Error("File kosong. Tidak ada data yang diproses.");
-      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), {
         type: "array",
         cellDates: true,
@@ -5630,7 +6052,6 @@ export default function Home() {
     let rows: Record<string, unknown>[];
     try {
       if (!file.size) throw new Error("File kosong.");
-      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const firstSheet = wb.Sheets[wb.SheetNames[0]];
       if (!firstSheet) throw new Error("Worksheet tidak ditemukan.");
@@ -5742,7 +6163,6 @@ export default function Home() {
     try {
       if (!file.size)
         throw new Error("File kosong. Tidak ada data yang diproses.");
-      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       if (!sheet) throw new Error("Worksheet tidak ditemukan.");
@@ -5873,7 +6293,6 @@ export default function Home() {
     try {
       if (!file.size)
         throw new Error("File kosong. Tidak ada data yang diproses.");
-      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       if (!sheet) throw new Error("Worksheet tidak ditemukan.");
@@ -5976,7 +6395,6 @@ export default function Home() {
     try {
       if (!file.size)
         throw new Error("File kosong. Tidak ada data yang diproses.");
-      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       if (!sheet) throw new Error("Worksheet tidak ditemukan.");
@@ -7183,6 +7601,43 @@ export default function Home() {
                         : "Aktifkan Device Scanner"}
                     </button>
                   </div>
+                  {camera && (
+                    <div className="cameraAssist" aria-label="Camera controls">
+                      <button
+                        type="button"
+                        className={cameraTorch ? "primary" : "secondary"}
+                        onClick={() => void setScannerTorch(!cameraTorch)}
+                      >
+                        {cameraTorch ? "Matikan Lampu" : "Nyalakan Lampu"}
+                      </button>
+                      <label>
+                        Zoom {cameraZoom.toFixed(1)}×
+                        <input
+                          type="range"
+                          min="1"
+                          max="4"
+                          step="0.25"
+                          value={cameraZoom}
+                          onChange={(event) =>
+                            void setScannerZoom(Number(event.target.value))
+                          }
+                        />
+                      </label>
+                    </div>
+                  )}
+                  <label className="uploadButton scanImageUpload">
+                    Ambil Foto / Upload Gambar Barcode
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) void scanBarcodeImage(file);
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
                   <div className="or">ATAU INPUT STRING</div>
                   <label>
                     Hasil scan / string boarding pass
@@ -7258,19 +7713,41 @@ export default function Home() {
                       />
                     </label>
                     <label>
-                      Rute
+                      Final Destination
                       <input
                         readOnly={!manualMode}
                         className={!manualMode ? "autoField" : ""}
-                        value={pass.route}
-                        onChange={(e) =>
+                        list={manualMode ? "access-destination-options" : undefined}
+                        value={pass.finalDestination}
+                        onChange={(e) => {
+                          const finalDestination = e.target.value
+                            .toUpperCase()
+                            .replace(/[^A-Z]/g, "")
+                            .slice(0, 3);
                           setPass({
                             ...pass,
-                            route: e.target.value.toUpperCase(),
-                          })
-                        }
-                        placeholder="DJB–CGK"
+                            finalDestination,
+                            route: finalDestination
+                              ? `${airport}–${finalDestination}`
+                              : "",
+                          });
+                        }}
+                        placeholder="Cari kode atau nama airport"
                       />
+                      {manualMode && (
+                        <datalist id="access-destination-options">
+                          {stations.map((item) => (
+                            <option key={item.code} value={item.code}>
+                              {item.name}
+                            </option>
+                          ))}
+                        </datalist>
+                      )}
+                      <small>
+                        {manualMode
+                          ? "Cari berdasarkan kode atau nama airport."
+                          : "Destinasi terakhir yang tersedia pada hasil scan."}
+                      </small>
                     </label>
                     <label>
                       Nomor Penerbangan
@@ -8616,6 +9093,12 @@ export default function Home() {
                   name: item.name,
                   timeZone: item.timeZone,
                 }))}
+                lounges={lounges.map((item) => ({
+                  id: item.id,
+                  airport: item.airport,
+                  name: item.name,
+                  type: item.type,
+                }))}
               />
             )}
           {tab === "master" && (
@@ -8642,6 +9125,7 @@ export default function Home() {
                   setMasterQuery("");
                   setMasterSelect("Semua");
                   setMasterSelect2("Semua");
+                  setLoungeTypeFilter("Semua");
                 }}
               />
             </>
@@ -8671,6 +9155,7 @@ export default function Home() {
                     <button onClick={downloadLoungeTemplate}>
                       Unduh Template CSV
                     </button>
+                    <button onClick={downloadLoungeData}>Unduh Data</button>
                     <label className="uploadButton">
                       Upload Data
                       <input
@@ -8721,14 +9206,15 @@ export default function Home() {
                 value2={masterSelect2}
                 setValue2={setMasterSelect2}
                 options2={[
-                  ...new Set([
-                    ...lounges.map((x) => x.type),
-                    ...lounges.map((x) => x.status),
-                  ]),
+                  "Valid",
+                  "Expiring Soon",
+                  "Expired",
+                  "Not Yet Valid",
+                  "Invalid Data",
                 ]}
                 placeholder="Nama Lounge / Provider"
                 label1="Station"
-                label2="Lounge Type / Status"
+                label2="Agreement Validity"
                 searchLabel="Lounge / Provider"
                 queryOptions={[
                   "Semua Lounge / Provider",
@@ -8736,150 +9222,80 @@ export default function Home() {
                 ]}
                 count={filteredLounges.length}
               />
-              <div className="loungeGrid">
-                {filteredLounges.map((l) => {
-                  const endTime = l.end
-                    ? new Date(`${l.end}T23:59:59`).getTime()
-                    : NaN;
-                  const d = Number.isFinite(endTime)
-                    ? Math.ceil((endTime - Date.now()) / 86400000)
-                    : NaN;
-                  return (
-                    <article className="card lounge" key={l.id}>
-                      <div className="code">{l.airport}</div>
-                      <div>
-                        <div className="originBadges">
-                          <span className="type">{l.type}</span>
-                          <span
-                            className={
-                              l.dataOrigin === "SYNC"
-                                ? "originBadge synced"
-                                : "originBadge manual"
-                            }
-                          >
-                            {l.dataOrigin === "SYNC"
-                              ? "Portal Sync · Read-only"
-                              : "Manual Entry"}
-                          </span>
-                          {l.sourceStatus === "SOURCE_NOT_FOUND" && (
-                            <span className="originBadge missing">
-                              Source tidak ditemukan
-                            </span>
-                          )}
-                        </div>
-                        <h3>{l.name}</h3>
-                        <p>
-                          Periode kerja sama
-                          <br />
-                          <b>
-                            {l.start} — {l.end}
-                          </b>
-                        </p>
-                        <p>
-                          Harga per pax
-                          <br />
-                          <b>{cash(l.price, l.currency)}</b>
-                        </p>
-                        <p>
-                          Kapasitas lounge
-                          <br />
-                          <b>
-                            {loungeCapacityForDate(
-                              l,
-                              localDate(),
-                            ).toLocaleString("id-ID")}{" "}
-                            pax
-                          </b>
-                        </p>
-                        {l.pricePeriods && l.pricePeriods.length > 1 && (
-                          <p>
-                            <b>{l.pricePeriods.length} periode harga</b>
-                          </p>
-                        )}
-                        {canManageMaster && !l.readOnly && (
-                          <div className="rowAct">
-                            <button
-                              className="loungeEdit"
-                              onClick={() => {
-                                setEditingLounge(l.id);
-                                setLoungeDraft({
-                                  airport: l.airport,
-                                  name: l.name,
-                                  type: l.type,
-                                  currency: l.currency,
-                                  price: l.price,
-                                  start: l.start,
-                                  end: l.end,
-                                  status: l.status,
-                                  capacity: l.capacity || 0,
-                                  capacityEffectiveFrom:
-                                    l.capacityEffectiveFrom ||
-                                    l.capacityHistory
-                                      ?.slice()
-                                      .sort((a, b) =>
-                                        b.effectiveFrom.localeCompare(
-                                          a.effectiveFrom,
-                                        ),
-                                      )[0]?.effectiveFrom ||
-                                    localDate(),
-                                  capacityHistory: l.capacityHistory || [],
-                                  pricePeriods: l.pricePeriods?.length
-                                    ? l.pricePeriods
-                                    : [
-                                        {
-                                          id: `${l.id}-default`,
-                                          currency: l.currency,
-                                          price: l.price,
-                                          start: l.start,
-                                          end: l.end,
-                                        },
-                                      ],
-                                });
-                                setShowLoungeForm(true);
-                              }}
-                            >
-                              Update
-                            </button>
-                            <button
-                              className="del"
-                              onClick={() =>
-                                askDelete(
-                                  "Hapus lounge/tenant?",
-                                  `${l.airport} · ${l.name}`,
-                                  async () => {
+              <div className="loungeTypeFilter">
+                <label>
+                  Facility Type
+                  <select
+                    value={loungeTypeFilter}
+                    onChange={(event) => setLoungeTypeFilter(event.target.value)}
+                  >
+                    <option>Semua</option>
+                    {[...new Set(lounges.map((row) => row.type))].map((type) => (
+                      <option key={type}>{type}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="tableWrap loungeMasterTable">
+                <table>
+                  <thead>
+                    <tr>
+                      <SortTh label="Station" sortKey="airport" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Lounge/Tenant" sortKey="name" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Type" sortKey="type" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Agreement Period" sortKey="period" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Validity" sortKey="validity" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Operational" sortKey="operational" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Capacity" sortKey="capacity" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Price/Pax" sortKey="price" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Source" sortKey="source" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredLounges.map((l) => {
+                      const validity = loungeValidity(l);
+                      return (
+                        <tr key={l.id}>
+                          <td><b>{l.airport}</b></td>
+                          <td><b>{l.name}</b><small>{l.pricePeriods?.length || 1} agreement/price period</small></td>
+                          <td>{l.type}</td>
+                          <td>{l.start}<small>to {l.end}</small></td>
+                          <td><mark className={validity === "Valid" ? "green" : validity === "Expiring Soon" || validity === "Not Yet Valid" ? "yellow" : "red"}>{validity}</mark></td>
+                          <td>{l.status}</td>
+                          <td>{loungeCapacityForDate(l, localDate()).toLocaleString("id-ID")} pax</td>
+                          <td>{cash(l.price, l.currency)}</td>
+                          <td>{l.dataOrigin === "SYNC" ? "Portal Sync" : "Manual Entry"}</td>
+                          <td>
+                            <div className="rowAct">
+                              {canManageMaster && !l.readOnly && (
+                                <>
+                                  <button onClick={() => {
+                                    setEditingLounge(l.id);
+                                    setLoungeDraft({
+                                      airport: l.airport, name: l.name, type: l.type,
+                                      currency: l.currency, price: l.price, start: l.start,
+                                      end: l.end, status: l.status, capacity: l.capacity || 0,
+                                      capacityEffectiveFrom: l.capacityEffectiveFrom || localDate(),
+                                      capacityHistory: l.capacityHistory || [],
+                                      pricePeriods: l.pricePeriods?.length ? l.pricePeriods : [{ id: `${l.id}-default`, currency: l.currency, price: l.price, start: l.start, end: l.end }],
+                                    });
+                                    setShowLoungeForm(true);
+                                  }}>Edit</button>
+                                  <button className="del" onClick={() => askDelete("Hapus lounge/tenant?", `${l.airport} · ${l.name}`, async () => {
                                     await removeRecord("lounges", l.id);
-                                    setLounges((xs) =>
-                                      xs.filter((x) => x.id !== l.id),
-                                    );
-                                  },
-                                )
-                              }
-                            >
-                              Hapus
-                            </button>
-                          </div>
-                        )}
-                        {canManageMaster && l.readOnly && (
-                          <small className="readOnlyHint">
-                            Perubahan dilakukan pada Ground Experience Portal,
-                            lalu jalankan sinkronisasi ulang.
-                          </small>
-                        )}
-                      </div>
-                      <mark
-                        className={
-                          d < 90 ? "red" : d < 150 ? "yellow" : "green"
-                        }
-                      >
-                        {!Number.isFinite(d)
-                          ? "Periode tidak valid"
-                          : d < 0
-                            ? "Kedaluwarsa"
-                            : `${d} hari tersisa`}
-                      </mark>
-                    </article>
-                  );
-                })}
+                                    setLounges((rows) => rows.filter((row) => row.id !== l.id));
+                                  })}>Hapus</button>
+                                </>
+                              )}
+                              {l.readOnly && <small className="readOnlyHint">Read-only</small>}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
               <div className="info">
                 <b>Hak pengelolaan</b>
@@ -8919,6 +9335,7 @@ export default function Home() {
                     <button onClick={downloadStationTemplate}>
                       Unduh Template
                     </button>
+                    <button onClick={downloadStationData}>Unduh Data</button>
                     <label className="uploadButton">
                       Upload Data
                       <input
@@ -8985,18 +9402,18 @@ export default function Home() {
                 <table>
                   <thead>
                     <tr>
-                      <th>Kode</th>
-                      <th>Nama Station</th>
-                      <th>Time Zone</th>
-                      <th>UTC</th>
-                      <th>Status</th>
-                      <th>Sumber</th>
+                      <SortTh label="Kode" sortKey="code" current={stationSort} onSort={(key) => setStationSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Nama Station" sortKey="name" current={stationSort} onSort={(key) => setStationSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Time Zone" sortKey="timeZone" current={stationSort} onSort={(key) => setStationSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="UTC" sortKey="utc" current={stationSort} onSort={(key) => setStationSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Status" sortKey="status" current={stationSort} onSort={(key) => setStationSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Sumber" sortKey="source" current={stationSort} onSort={(key) => setStationSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
                       <th>Aksi</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {stations
-                      .filter(
+                    {sortData(
+                      stations.filter(
                         (s) =>
                           `${s.code} ${s.name}`
                             .toLowerCase()
@@ -9005,7 +9422,10 @@ export default function Home() {
                             s.utcLabel === masterSelect) &&
                           (masterSelect2 === "Semua" ||
                             s.status === masterSelect2),
-                      )
+                      ),
+                      stationSort,
+                      (item, key) => ({ code: item.code, name: item.name, timeZone: item.timeZone, utc: item.utcLabel, status: item.status, source: item.dataOrigin || "MANUAL" })[key] || "",
+                    )
                       .map((s) => (
                         <tr key={s.code}>
                           <td>
@@ -9123,6 +9543,7 @@ export default function Home() {
                     <button onClick={downloadAirlineTemplate}>
                       Unduh Template
                     </button>
+                    <button onClick={downloadAirlineData}>Unduh Data</button>
                     <label className="uploadButton">
                       Upload Data
                       <input
@@ -9191,16 +9612,16 @@ export default function Home() {
                 <table>
                   <thead>
                     <tr>
-                      <th>2-Letter Code</th>
-                      <th>Airline</th>
-                      <th>Verifier Organization</th>
-                      <th>Status</th>
+                      <SortTh label="2-Letter Code" sortKey="code" current={airlineSort} onSort={(key) => setAirlineSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Airline" sortKey="name" current={airlineSort} onSort={(key) => setAirlineSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Verifier Organization" sortKey="verifier" current={airlineSort} onSort={(key) => setAirlineSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Status" sortKey="status" current={airlineSort} onSort={(key) => setAirlineSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
                       <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {airlines
-                      .filter(
+                    {sortData(
+                      airlines.filter(
                         (item) =>
                           `${item.code} ${item.name}`
                             .toLowerCase()
@@ -9209,7 +9630,10 @@ export default function Home() {
                             item.verifierOrganization === masterSelect) &&
                           (masterSelect2 === "Semua" ||
                             item.status === masterSelect2),
-                      )
+                      ),
+                      airlineSort,
+                      (item, key) => ({ code: item.code, name: item.name, verifier: item.verifierOrganization, status: item.status })[key] || "",
+                    )
                       .map((airline) => (
                         <tr key={`${airline.code}-${airline.name}`}>
                           <td>
@@ -9338,6 +9762,7 @@ export default function Home() {
                     <button onClick={downloadUserTemplate}>
                       Unduh Template
                     </button>
+                    <button onClick={downloadUserData}>Unduh Data</button>
                     <label className="uploadButton">
                       Upload Data
                       <input
@@ -9585,6 +10010,7 @@ export default function Home() {
                   <button onClick={downloadEntitlementTemplate}>
                     Unduh Template
                   </button>
+                  <button onClick={downloadEntitlementData}>Unduh Data</button>
                   <label className="uploadButton">
                     Upload Data
                     <input
@@ -13735,15 +14161,15 @@ export default function Home() {
                       ? "Di Luar Waktu Akses"
                       : rejected.reason === "lounge"
                         ? "Jenis Lounge Tidak Sesuai"
-                        : "Tidak Eligible Lounge"}
+                        : "Kriteria Akses Belum Terpenuhi"}
             </h2>
             <p>
               {rejected.detail ||
                 (rejected.reason === "N"
-                  ? "Indikator kelayakan akses (Y) tidak ditemukan pada bagian akhir data boarding pass. Berdasarkan ketentuan akses yang berlaku, penumpang tidak memenuhi kriteria akses lounge. Pastikan boarding pass telah dipindai dengan benar atau lakukan verifikasi manual sesuai kewenangan."
+                  ? "Berdasarkan hasil validasi boarding pass dan ketentuan layanan yang berlaku, akses lounge belum dapat diberikan. Silakan periksa kembali data perjalanan atau lakukan verifikasi manual sesuai kewenangan petugas."
                   : rejected.reason === "airport"
                     ? `Rute penerbangan dimulai dari ${rejected.origin}, sedangkan scan dilakukan di ${airport}. Akses lounge/tenant hanya berlaku di airport keberangkatan awal.`
-                    : "Indikator kelayakan akses (Y) tidak ditemukan pada bagian akhir data boarding pass. Berdasarkan ketentuan akses yang berlaku, penumpang tidak memenuhi kriteria akses lounge. Pastikan boarding pass telah dipindai dengan benar atau lakukan verifikasi manual sesuai kewenangan.")}
+                    : "Status kelayakan akses belum dapat dikonfirmasi dari data yang tersedia. Silakan pindai ulang boarding pass atau lakukan verifikasi manual sesuai kewenangan petugas.")}
             </p>
             <div className="modalActions rejectActions">
               <button

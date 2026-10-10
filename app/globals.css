@@ -6054,3 +6054,634 @@ td small {
   fill: currentColor;
   stroke: currentColor;
 }
+
+/* Lounge layout and passenger wayfinding */
+.layoutViewSwitch,
+.cameraAssist {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.layoutViewSwitch {
+  margin-top: 16px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 14px;
+}
+.layoutViewSwitch button {
+  min-height: 40px;
+  border-radius: 10px;
+}
+.loungeLayoutWorkspace {
+  display: grid;
+  grid-template-columns: minmax(190px, 240px) minmax(0, 1fr) minmax(190px, 240px);
+  gap: 16px;
+  align-items: start;
+}
+.layoutDirectory,
+.layoutPublishPanel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+.layoutDirectory > div,
+.layoutPublishPanel {
+  color: var(--color-navy-900);
+}
+.layoutDirectory > button {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--color-text);
+  text-align: left;
+}
+.layoutDirectory > button:hover,
+.layoutDirectory > button.active {
+  background: var(--color-navy-900);
+  border-color: var(--color-navy-900);
+  color: #fff;
+}
+.layoutDirectory > button :where(b, span, small) {
+  color: inherit;
+}
+.loungeLayoutCanvasCard {
+  min-width: 0;
+  padding: 18px;
+}
+.layoutActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.interactiveLoungeMap {
+  position: relative;
+  width: 100%;
+  min-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: #eef3f8;
+  touch-action: pan-x pan-y pinch-zoom;
+}
+.interactiveLoungeMap.editing {
+  cursor: crosshair;
+}
+.interactiveLoungeMap > img {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 320px;
+  object-fit: contain;
+}
+.layoutMarker,
+.publicMapCanvas > button {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  max-width: 180px;
+  padding: 5px 9px 5px 5px;
+  border: 2px solid #fff;
+  border-radius: 20px;
+  background: var(--color-navy-900);
+  color: #fff;
+  box-shadow: 0 4px 14px #062b5c40;
+  white-space: nowrap;
+}
+.layoutMarker > span,
+.publicMapCanvas > button > span {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  flex: 0 0 23px;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--color-navy-900);
+  font-weight: 800;
+}
+.layoutMarker.selected,
+.publicMapCanvas > button.selected {
+  outline: 4px solid #ffcd58aa;
+}
+.layoutMarker.status-temporarily-closed,
+.publicMapCanvas > button.status-temporarily-closed {
+  background: #8a3030;
+}
+.layoutMarker.status-in-use,
+.publicMapCanvas > button.status-in-use {
+  background: #8a6117;
+}
+.layoutEditorHint {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+.layoutAreaDetail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.8fr);
+  gap: 18px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: #f8fafc;
+}
+.layoutAreaDetail h3,
+.layoutPublishPanel h3 {
+  margin: 4px 0 8px;
+  color: var(--color-navy-900);
+}
+.layoutServiceTags,
+.publicServiceTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.layoutServiceTags span,
+.publicServiceTags span {
+  padding: 5px 8px;
+  border-radius: 20px;
+  background: #e7eef6;
+  color: var(--color-navy-900);
+  font-size: 10px;
+  font-weight: 700;
+}
+.layoutPhotoGallery,
+.publicPhotoGallery {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.layoutPhotoGallery > div {
+  position: relative;
+}
+.layoutPhotoGallery img,
+.publicPhotoGallery img,
+.layoutUploadPreview img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 10px;
+}
+.layoutPhotoGallery > div > button {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  min-width: 30px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  background: #fff;
+  color: #8a3030;
+}
+.layoutPublishPanel > img {
+  width: min(100%, 210px);
+  margin: 0 auto;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+.layoutPublishPanel a {
+  display: block;
+  padding: 10px;
+  border-radius: 9px;
+  background: var(--color-navy-900);
+  color: #fff;
+  text-align: center;
+  text-decoration: none;
+  font-weight: 700;
+}
+.layoutUploadDrop {
+  padding: 14px;
+  border: 1px dashed #9fb3c8;
+  border-radius: 12px;
+  background: #f7fafc;
+}
+.layoutUploadPreview {
+  max-height: 300px;
+  overflow: auto;
+}
+.inlineUrlAdd {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+.cameraAssist {
+  justify-content: space-between;
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #f7fafc;
+}
+.cameraAssist label {
+  display: grid;
+  grid-template-columns: auto minmax(100px, 180px);
+  gap: 8px;
+  align-items: center;
+}
+.scanImageUpload {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin: 10px 0;
+}
+.loungeTypeFilter {
+  display: flex;
+  justify-content: flex-end;
+  margin: -6px 0 12px;
+}
+.loungeTypeFilter label {
+  width: min(260px, 100%);
+}
+.loungeMasterTable mark {
+  display: inline-block;
+  white-space: nowrap;
+  border-radius: 20px;
+  padding: 5px 8px;
+}
+
+/* Public passenger view */
+.publicLoungeMap {
+  min-height: 100dvh;
+  padding: 20px;
+  background: #eef3f8;
+  color: #17324d;
+}
+.publicLoungeMap > header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 16px;
+  align-items: center;
+  max-width: 1400px;
+  margin: 0 auto 16px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: var(--shadow-card);
+}
+.publicLoungeMap > header img,
+.publicMapState > img {
+  width: 160px;
+  height: auto;
+}
+.publicLoungeMap h1,
+.publicLoungeMap h2,
+.publicLoungeMap p {
+  margin: 0;
+}
+.publicLoungeMap > header h1 {
+  margin: 3px 0;
+  color: var(--color-navy-900);
+  font-size: clamp(22px, 3vw, 34px);
+}
+.publicMapFilters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 280px);
+  gap: 12px;
+  max-width: 1400px;
+  margin: 0 auto 16px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #fff;
+}
+.publicMapFilters label {
+  display: grid;
+  gap: 6px;
+}
+.publicMapGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+  gap: 16px;
+  max-width: 1400px;
+  margin: auto;
+}
+.publicCurrentLocation {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 1400px;
+  margin: 0 auto 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--color-navy-900);
+  color: #fff;
+}
+.publicCurrentLocation > span {
+  font-size: 24px;
+}
+.publicCurrentLocation > div {
+  display: grid;
+  gap: 2px;
+}
+.publicMapCanvas > button.current {
+  background: #1f6ca7;
+  outline: 5px solid #64b5f680;
+}
+.publicWayfindingLine {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.publicWayfindingLine line {
+  stroke: #1f6ca7;
+  stroke-width: 0.8;
+  stroke-dasharray: 2 1;
+  vector-effect: non-scaling-stroke;
+}
+.publicMapCanvas {
+  position: relative;
+  min-width: 0;
+  overflow: auto;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: var(--shadow-card);
+  touch-action: pan-x pan-y pinch-zoom;
+}
+.publicMapCanvas > img {
+  display: block;
+  width: 100%;
+  min-height: 420px;
+  object-fit: contain;
+}
+.publicAreaList {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: var(--shadow-card);
+}
+.publicAreaList > button {
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  gap: 9px;
+  align-items: center;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #fff;
+  color: #17324d;
+  text-align: left;
+}
+.publicAreaList > button:hover,
+.publicAreaList > button.selected {
+  background: var(--color-navy-900);
+  color: #fff;
+}
+.publicAreaList > button :where(b, small, span) {
+  color: inherit;
+}
+.publicAreaList > button > span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #e7eef6;
+  color: var(--color-navy-900);
+}
+.publicAreaList > button > div {
+  display: grid;
+  gap: 3px;
+}
+.publicAreaSheet {
+  position: fixed;
+  z-index: var(--z-modal);
+  right: 18px;
+  bottom: 18px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1fr);
+  gap: 18px;
+  width: min(820px, calc(100vw - 36px));
+  max-height: min(70dvh, 640px);
+  overflow: auto;
+  padding: 22px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 22px 60px #062b5c4d;
+}
+.publicAreaClose {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+}
+.publicAreaSheet h2 {
+  margin: 5px 0 8px;
+  color: var(--color-navy-900);
+}
+.publicAreaSheet p {
+  margin: 14px 0;
+  line-height: 1.6;
+}
+.publicAreaStatus {
+  display: inline-block;
+  padding: 6px 9px;
+  border-radius: 20px;
+  background: #e4f5ec;
+  color: #28755e;
+  font-size: 11px;
+  font-weight: 800;
+}
+.publicAreaStatus.status-in-use {
+  background: #fff1c9;
+  color: #87621a;
+}
+.publicAreaStatus.status-temporarily-closed {
+  background: #f8e2e2;
+  color: #8a3030;
+}
+.publicLoungeMap > footer {
+  max-width: 1400px;
+  margin: 18px auto 0;
+  color: #64748b;
+  text-align: center;
+  font-size: 11px;
+}
+.publicMapState {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 14px;
+  text-align: center;
+}
+
+@media (max-width: 1100px) {
+  .loungeLayoutWorkspace {
+    grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  }
+  .layoutPublishPanel {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(160px, 220px) 1fr;
+    align-items: center;
+  }
+}
+
+@media (max-width: 720px) {
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  .facilityModule,
+  .displayManagementPage,
+  .loungeLayoutPage,
+  .loungeLayoutWorkspace,
+  .loungeLayoutCanvasCard,
+  .facilitySectionCard {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .facilityTitle,
+  .facilitySectionHeader,
+  .cardHeading,
+  .facilityActionHeading,
+  .announcementQueueHeading,
+  .activeShareDockHead {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .facilityHeaderActions,
+  .layoutActions,
+  .contentCardActions,
+  .tableActions,
+  .rowAct {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .facilityHeaderActions > button,
+  .layoutActions > button {
+    flex: 1 1 140px;
+  }
+  .facilityTabs,
+  .displaySubTabs,
+  .layoutViewSwitch {
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+  .facilityTabs > button,
+  .displaySubTabs > button,
+  .layoutViewSwitch > button {
+    flex: 0 0 auto;
+    min-height: var(--touch-target);
+  }
+  .loungeLayoutWorkspace,
+  .layoutAreaDetail,
+  .layoutPublishPanel,
+  .publicMapGrid,
+  .publicMapFilters,
+  .publicAreaSheet {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .layoutDirectory {
+    display: flex;
+    overflow-x: auto;
+  }
+  .layoutDirectory > div {
+    flex: 0 0 130px;
+  }
+  .layoutDirectory > button {
+    flex: 0 0 min(240px, 78vw);
+  }
+  .layoutPublishPanel {
+    grid-column: auto;
+  }
+  .interactiveLoungeMap,
+  .interactiveLoungeMap > img,
+  .publicMapCanvas > img {
+    min-height: 280px;
+  }
+  .layoutMarker b,
+  .publicMapCanvas > button b {
+    display: none;
+  }
+  .layoutMarker,
+  .publicMapCanvas > button {
+    min-width: 38px;
+    min-height: 38px;
+    padding: 5px;
+  }
+  .cameraAssist,
+  .cameraAssist label {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+  .loungeTypeFilter {
+    justify-content: stretch;
+  }
+  .loungeTypeFilter label {
+    width: 100%;
+  }
+  .publicLoungeMap {
+    padding: 10px;
+  }
+  .publicLoungeMap > header {
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    padding: 13px;
+  }
+  .publicLoungeMap > header > img {
+    grid-column: 1 / -1;
+    width: 135px;
+  }
+  .publicMapCanvas {
+    min-height: 300px;
+  }
+  .publicAreaList {
+    max-height: 300px;
+    overflow: auto;
+  }
+  .publicAreaSheet {
+    right: 8px;
+    bottom: 8px;
+    width: calc(100vw - 16px);
+    max-height: 82dvh;
+    padding: 18px;
+  }
+  .layoutPhotoGallery,
+  .publicPhotoGallery {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .tableWrap {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+  .tableWrap table {
+    min-width: 720px;
+  }
+  .outputGroupGrid,
+  .contentCardGrid,
+  .deviceHealthKpis,
+  .facilityKpis,
+  .roomStateGrid,
+  .operationGrid,
+  .bookingCalendarGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

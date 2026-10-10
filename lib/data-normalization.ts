@@ -291,6 +291,14 @@ export function normalizeVisitor(row: Row) {
     airport,
     lounge: text(row.lounge),
     route: text(row.route),
+    finalDestination:
+      upper(row.finalDestination ?? row["Final Destination"] ?? row["Flight Destination"]) ||
+      text(row.route)
+        .toUpperCase()
+        .split(/\s*(?:–|—|-|\/|>)\s*/)
+        .filter(Boolean)
+        .at(-1) ||
+      "",
     cabin: upper(row.cabin),
     seat: text(row.seat),
     seq: text(row.seq),

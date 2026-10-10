@@ -1,130 +1,33 @@
-# GAES — Next Revision Delta
+# Patch Notes
 
-## Basis
+## Scope
 
-Delta ini dibuat terhadap baseline package GAES yang digunakan pada workspace saat revisi dimulai. Nama dan struktur file source dipertahankan. Tidak ada perubahan nomor versi aplikasi dan tidak ada file source berakhiran `clean`, `final`, atau nomor revisi.
-
-## Perubahan
-
-### 1. Visitor Bundle Upload
-
-- Menambahkan tombol **Unduh Template Visitor** dan **Upload Visitor Bundle** pada Visitor List.
-- Mendukung CSV, XLS, dan XLSX.
-- Upload hanya tersedia untuk Super Admin, Admin, dan Lounge Manager.
-- Lounge Manager dibatasi pada station akun.
-- Menampilkan preview 25 baris pertama, jumlah data siap diverifikasi, dan jumlah data yang masih perlu dilengkapi.
-- Maksimal 150 visitor per batch.
-- Passenger Name wajib tersedia. Data lain dapat dilengkapi setelah upload.
-- Data belum lengkap masuk dengan status `Needs Data Completion` dan tidak masuk antrean keputusan verifier sebelum lengkap.
-- Data lengkap masuk dengan status `Ready for Verification`.
-- Pemeriksaan duplikat tetap dijalankan apabila Name, Flight, Sequence, dan Date of Travel tersedia.
-- Setiap data dan ringkasan batch tercatat pada Activity Log.
-
-### 2. Eligibility Statement
-
-- Mengganti pernyataan penolakan menjadi bahasa operasional yang profesional.
-- Ketika indikator Y tidak ditemukan, sistem menjelaskan bahwa penumpang tidak memenuhi kriteria akses berdasarkan ketentuan yang berlaku.
-- Pengguna diarahkan untuk memastikan hasil scan atau melakukan verifikasi manual sesuai kewenangan.
-- Penolakan hasil scan dan input manual dicatat pada Activity Log tanpa menyimpan raw boarding-pass string.
-
-### 3. Room Usage Analytics
-
-- Menghapus grafik Planned vs Actual Usage.
-- Mengganti grafik menjadi **Room Usage Traffic** dengan pola 24 jam seperti grafik trafik visitor.
-- Grafik menggunakan actual completed usage/check-in data.
-- Menampilkan average duration, peak hour, peak traffic, jumlah usage session, most-used rooms, actual usage hours, dan room utilization.
-- Daily/Weekly/Monthly tidak diubah dari perbaikan manual sebelumnya.
-
-### 4. Dashboard Bilingual
-
-- Menambahkan mapping tepat `Ringkasan Penggunaan` menjadi `Usage Overview`.
-- Tidak mengubah label Daily/Weekly/Monthly.
-
-### 5. Vertical Signage
-
-- Menambahkan Screen Orientation: Auto, Landscape, dan Portrait.
-- Menambahkan Content Fit: Contain, Cover, dan Stretch.
-- Menambahkan target resolution: Auto, 1920×1080, 1080×1920, 3840×2160, dan 2160×3840.
-- Menambahkan preview orientasi dan panduan materi 16:9/9:16.
-- Menambahkan Material Orientation pada Content Library.
-- Menampilkan peringatan bila orientasi materi tidak sesuai dengan sebagian device.
-- Menampilkan peringatan bila satu Output Group mencampur device landscape dan portrait.
-- Profil display dikirim melalui heartbeat dan diterapkan oleh browser player.
-- Pengaturan OS/perangkat fisik tetap harus disetel portrait untuk layar vertikal.
-
-### 6. Activity Log Consolidation
-
-- Menggabungkan log portal, room operation, dan display operation pada Activity Log utama.
-- Menampilkan nama user dan role; UID lama dipetakan ke profil user bila tersedia.
-- Menampilkan station, lounge, dan scope yang mudah dibaca tanpa menggunakan target document ID sebagai scope.
-- Mengubah action code menjadi kalimat aktivitas yang mudah dipahami.
-- Menambahkan detail actor, role, username, organization, station, scope, module, target, result, dan reason code untuk log baru.
-- Penambahan, pembaruan, penghapusan, penerimaan, dan penolakan visitor melalui backend audit.
-- Keputusan Terima/Tolak visitor kini diproses melalui backend dan tercatat atomik bersama perubahan status.
-- Penerimaan hasil penolakan pada Dispute & Correction kini tersimpan di backend dan tercatat pada audit.
-- Exceptional access request/grant dicatat.
-- Device inventory save/approval dipindahkan melalui backend serta tercatat pada display activity.
-- Room configuration save dicatat melalui backend activity endpoint.
-
-## File yang Berubah
-
-- `app/facility-operations.tsx`
-- `app/globals.css`
-- `app/page.tsx`
-- `app/player/page.tsx`
-- `lib/data-normalization.ts`
-- `lib/firebase/api.ts`
-- `netlify/functions/_audit.mjs`
-- `netlify/functions/create-user.mjs`
-- `netlify/functions/create-visitor.mjs`
-- `netlify/functions/display-player.mjs`
-- `netlify/functions/import-visitors.mjs`
-- `netlify/functions/manage-activity.mjs`
-- `netlify/functions/manage-display-content.mjs`
-- `netlify/functions/manage-display-device.mjs`
-- `netlify/functions/manage-user.mjs`
-- `netlify/functions/manage-visitor.mjs`
-- `tests/data-normalization.test.mjs`
-- `tests/ui-foundation.test.mjs`
-
-## Cara Menerapkan
-
-1. Pastikan repository GitHub berada pada baseline package yang sama.
-2. Ekstrak ZIP delta pada root repository.
-3. Izinkan file di dalam delta menggantikan file dengan path yang sama.
-4. Commit perubahan ke branch yang digunakan Netlify.
-5. Jalankan deployment Netlify agar frontend dan Functions baru ikut dipublikasikan.
-6. Pastikan deployment Production menggunakan commit terbaru.
+- Lounge/Tenant Access now displays **Final Destination** in Steps 2–3. Scan results remain read-only; manual entry uses the airport reference list.
+- Multi-leg data keeps the active flight segment for schedule validation while storing the last encoded destination separately.
+- Eligibility wildcard follows the operational rule: a final indicator beginning with `Y` is eligible (`Y`, `YS`, `Y1`, and similar values).
+- Access-denial messages use professional service language and no longer expose the technical `Y` indicator rule to passengers or officers.
+- Camera scan requests higher resolution and continuous focus, provides torch/zoom controls when supported, and adds still-image decoding at 0°, 90°, 180°, and 270° with a contrast-enhanced retry.
+- Visitor upload accepts the official report headers, the previous template headers, and common aliases.
+- Visitor export uses the official header order: separate First/Last Name, Flight Origin/Destination, Guest Name, and the remaining reconciliation fields.
+- Spreadsheet support is loaded statically to avoid an upload-only dynamic chunk failure. The application error page now identifies stale deployment chunks and offers **Muat Versi Terbaru**.
+- Output Groups now provide group-level remote commands. Commands fan out to enrolled devices and retain per-device Pending/Executed/Failed/Expired acknowledgement monitoring.
+- Master Lounge/Tenant now separates Facility Type, Operational Status, and computed Agreement Validity (Valid, Expiring Soon, Expired, Not Yet Valid, Invalid Data).
+- Master Lounge/Tenant, Station, and Airline tables support column sorting. Existing data can be downloaded separately from upload templates for Lounge/Tenant, Station, Airline, User & Role, and Access Entitlement.
+- Added **Lounge Layout & Service Map** with layout upload/URL fallback, interactive service points, operational status, service tags, area photo galleries, passenger preview, publication control, location-specific QR codes, and a public mobile passenger page.
+- Passenger QR links can identify the current zone (`You are here`). Selecting another facility draws a simple visual direction line and opens its service/photo information.
+- Responsive rules were consolidated for facility tabs, display controls, output groups, dialogs, tables, layout editor, photo galleries, and the public passenger map.
 
 ## Deployment
 
-- **Netlify frontend:** wajib deploy.
-- **Netlify Functions:** wajib deploy karena terdapat function baru dan perubahan backend.
-- **Firestore Rules:** tidak berubah; tidak perlu deploy ulang untuk delta ini.
-- **Firebase indexes:** tidak berubah.
-- **Environment variables:** tidak ada key baru. Pastikan `NEXT_PUBLIC_FIREBASE_PROJECT_ID` dan `FIREBASE_PROJECT_ID` pada Production mengarah ke project yang benar. Jika Deploy Preview dan Production diharapkan memakai data yang sama, scope environment variable keduanya harus konsisten.
+1. Upload the delta files to the same repository paths.
+2. Deploy `firestore.rules` and `storage.rules` because the patch adds the `loungeLayouts` collection and `lounge-layouts/` storage path.
+3. Ensure Firebase Storage is enabled to upload denah and photos through the webapp. Before Storage is enabled, local UAT assets can be placed under `public/lounge-layouts/` and referenced as `/lounge-layouts/file-name.png`.
+4. Keep the existing Netlify Firebase environment variables. The public passenger view is served through `/.netlify/functions/public-lounge-layout` and only returns layouts marked **Published**.
+5. No new Firestore composite index is required.
 
-## Verifikasi
+## Verification
 
-- Logic tests: 10 passed.
-- UI/regression tests: 31 passed.
-- ESLint: 0 error; 24 warning baseline yang sudah ada sebelumnya.
-- Production Next.js build: passed.
-- Netlify function syntax check: passed.
-- CSS `!important`: 0.
-
-## UAT Minimum
-
-1. Upload template visitor sebagai Lounge Manager dan pastikan station di luar scope ditolak.
-2. Upload visitor tidak lengkap dan pastikan tampil pada Visitor List dengan status Perlu Pelengkapan Data.
-3. Lengkapi data visitor lalu pastikan masuk ke Verifier Review.
-4. Terima dan tolak visitor; pastikan Activity Log menampilkan nama user, role, station, target visitor, dan hasil.
-5. Scan boarding pass tanpa indikator Y; pastikan pernyataan baru tampil dan aktivitas penolakan masuk ke log.
-6. Buka Usage Analytics dan pastikan grafik Room Usage Traffic tampil tanpa Plan vs Actual.
-7. Atur device menjadi Portrait 1080×1920, enroll/restart player, lalu pastikan profile dan fit mode diterapkan.
-8. Buat Output Group campuran landscape/portrait dan pastikan peringatan tampil.
-9. Bandingkan Deploy Preview dan Production untuk memastikan keduanya menggunakan deployment dan Firebase project yang dimaksud.
-
-## Rollback
-
-Gunakan fitur revert commit pada GitHub atau deploy ulang commit production sebelumnya. Delta ini tidak mengubah Firestore Rules maupun menghapus collection. Dokumen yang sudah dibuat oleh Visitor Bundle tetap berada di Firestore dan dapat dikelola melalui Visitor List sesuai kewenangan.
+- Logic tests cover normalization, visitor data, room operations, display health, and the `Y*` eligibility wildcard.
+- UI regression tests cover the canonical UI foundation, mobile dialogs, hover contrast, booking, display player, output routing, quick announcements, visitor bundle upload, and portrait signage.
+- ESLint completes with zero errors; existing baseline warnings remain unchanged.
+- The production Next.js build completes successfully, including `/lounge-map/[id]`.

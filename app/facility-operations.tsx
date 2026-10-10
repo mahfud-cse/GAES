@@ -1,7 +1,9 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import {
   FormEvent,
+  MouseEvent as ReactMouseEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -9,6 +11,8 @@ import {
   useState,
 } from "react";
 import type { User } from "firebase/auth";
+import * as XLSX from "xlsx";
+import QRCode from "qrcode";
 import {
   manageDisplayContent,
   manageDisplayDevice,
@@ -17,7 +21,7 @@ import {
   manageRoomOperation,
   recordPortalActivity,
 } from "../lib/firebase/api";
-import { uploadDisplayMedia } from "../lib/firebase/evidence";
+import { uploadDisplayMedia, uploadLoungeLayoutAsset } from "../lib/firebase/evidence";
 import {
   removeRecord,
   saveRecord,
@@ -46,6 +50,34 @@ type FacilityAccount = {
 };
 
 type StationOption = { code: string; name: string; timeZone: string };
+type LoungeOption = { id: string; airport: string; name: string; type: string };
+
+type LoungeMapArea = {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  services: string[];
+  x: number;
+  y: number;
+  status: "Available" | "In Use" | "Temporarily Closed";
+  publicVisible: boolean;
+  photoUrls: string[];
+};
+
+type LoungeLayout = {
+  id: string;
+  station: string;
+  loungeId: string;
+  loungeName: string;
+  title: string;
+  floorName: string;
+  layoutUrl: string;
+  layoutStoragePath?: string;
+  status: "Draft" | "Published";
+  areas: LoungeMapArea[];
+  updatedAt?: unknown;
+};
 
 type RoomState =
   "Available" | "Reserved" | "Occupied" | "Cleaning" | "Maintenance";
@@ -406,6 +438,7 @@ type ModuleTab =
   | "Room Booking"
   | "Room Operations"
   | "TV & Digital Signage"
+  | "Lounge Layout"
   | "Master & Configuration"
   | "Activity Log";
 
@@ -621,6 +654,31 @@ const EMPTY_OUTPUT_GROUP: Omit<DisplayOutputGroup, "id"> = {
   sourceMode: "Managed Channel",
 };
 
+const EMPTY_LOUNGE_LAYOUT: Omit<LoungeLayout, "id"> = {
+  station: "CGK",
+  loungeId: "",
+  loungeName: "",
+  title: "Lounge Layout",
+  floorName: "Main Floor",
+  layoutUrl: "",
+  layoutStoragePath: "",
+  status: "Draft",
+  areas: [],
+};
+
+const EMPTY_LOUNGE_AREA: LoungeMapArea = {
+  id: "",
+  name: "",
+  category: "Seating Area",
+  description: "",
+  services: [],
+  x: 50,
+  y: 50,
+  status: "Available",
+  publicVisible: true,
+  photoUrls: [],
+};
+
 const EMPTY_SCHEDULE: Omit<DisplaySchedule, "id" | "channelName"> = {
   station: "CGK",
   title: "",
@@ -789,11 +847,13 @@ function localDateTimeToIso(
 export default function FacilityOperations({
   account,
   stations,
+  lounges,
   user,
   route,
 }: {
   account: FacilityAccount;
   stations: StationOption[];
+  lounges: LoungeOption[];
   user: User;
   route?: {
     tab: "Room Booking" | "TV & Digital Signage";
@@ -904,6 +964,7 @@ export default function FacilityOperations({
   const [displayMediaFile, setDisplayMediaFile] = useState<File | null>(null);
   const [savingDisplay, setSavingDisplay] = useState(false);
   const [remoteDevice, setRemoteDevice] = useState<DeviceRecord | null>(null);
+  const [remoteGroup, setRemoteGroup] = useState<DisplayOutputGroup | null>(null);
   const [remoteMode, setRemoteMode] = useState<"enroll" | "command">("command");
   const [remoteType, setRemoteType] = useState("PLAY_CHANNEL");
   const [remoteChannelId, setRemoteChannelId] = useState("");
@@ -942,6 +1003,23 @@ export default function FacilityOperations({
   const [pilotNote, setPilotNote] = useState("");
   const [savingPilot, setSavingPilot] = useState(false);
   const [pilotFeedback, setPilotFeedback] = useState<Notice | null>(null);
+  const [loungeLayouts, setLoungeLayouts] = useState<LoungeLayout[]>([]);
+  const [selectedLayoutId, setSelectedLayoutId] = useState("");
+  const [layoutDraft, setLayoutDraft] = useState<Omit<LoungeLayout, "id">>(
+    EMPTY_LOUNGE_LAYOUT,
+  );
+  const [editingLayoutId, setEditingLayoutId] = useState<string | null>(null);
+  const [showLayoutForm, setShowLayoutForm] = useState(false);
+  const [layoutAreaDraft, setLayoutAreaDraft] = useState<LoungeMapArea>(
+    EMPTY_LOUNGE_AREA,
+  );
+  const [showLayoutAreaForm, setShowLayoutAreaForm] = useState(false);
+  const [layoutServicesInput, setLayoutServicesInput] = useState("");
+  const [layoutAssetUploading, setLayoutAssetUploading] = useState(false);
+  const [layoutView, setLayoutView] = useState<"Editor" | "Passenger Preview">("Editor");
+  const [selectedPublicAreaId, setSelectedPublicAreaId] = useState("");
+  const [layoutQrDataUrl, setLayoutQrDataUrl] = useState("");
+  const [layoutQrAreaId, setLayoutQrAreaId] = useState("");
   const handledRouteNonce = useRef<number | null>(null);
 
   useEffect(() => {
@@ -967,6 +1045,8 @@ export default function FacilityOperations({
   const globalScope = GLOBAL_ROLES.includes(account.role);
   const canConfigure = CONFIG_ROLES.includes(account.role);
   const canControl = CONTROL_ROLES.includes(account.role);
+  const canManageLayout =
+    canConfigure || ["BO Admin", "Lounge Manager"].includes(account.role);
   const activeShareKey = Object.keys(activeShares).sort().join("|");
   const permittedStation = useCallback(
     (value: string) => globalScope || value === account.station,
@@ -994,6 +1074,12 @@ export default function FacilityOperations({
         "rooms",
         globalScope ? "ALL" : account.station,
         setRooms,
+        onError,
+      ),
+      subscribeStationCollection<LoungeLayout>(
+        "loungeLayouts",
+        globalScope ? "ALL" : account.station,
+        setLoungeLayouts,
         onError,
       ),
       subscribeStationCollection<DeviceRecord>(
@@ -1243,6 +1329,33 @@ export default function FacilityOperations({
       ),
     [displayOutputGroups, permittedStation, stationFilter],
   );
+  const scopedLoungeLayouts = useMemo(
+    () =>
+      loungeLayouts.filter(
+        (row) =>
+          permittedStation(row.station) &&
+          (stationFilter === "ALL" || row.station === stationFilter),
+      ),
+    [loungeLayouts, permittedStation, stationFilter],
+  );
+  const selectedLoungeLayout =
+    scopedLoungeLayouts.find((row) => row.id === selectedLayoutId) ||
+    scopedLoungeLayouts[0] ||
+    null;
+
+  useEffect(() => {
+    if (!selectedLoungeLayout || typeof window === "undefined") {
+      const timer = window.setTimeout(() => setLayoutQrDataUrl(""), 0);
+      return () => window.clearTimeout(timer);
+    }
+    const url = `${window.location.origin}/lounge-map/${selectedLoungeLayout.id}${layoutQrAreaId ? `?from=${encodeURIComponent(layoutQrAreaId)}` : ""}`;
+    void QRCode.toDataURL(url, {
+      width: 240,
+      margin: 2,
+      color: { dark: "#062b5c", light: "#ffffff" },
+      errorCorrectionLevel: "M",
+    }).then(setLayoutQrDataUrl, () => setLayoutQrDataUrl(""));
+  }, [layoutQrAreaId, selectedLoungeLayout]);
   const scopedBookings = useMemo(
     () =>
       bookings
@@ -1476,6 +1589,129 @@ export default function FacilityOperations({
     setRoomFacilitiesInput("");
     setEditingRoom(null);
     setShowRoomForm(false);
+  }
+
+  async function saveLoungeLayout(event: FormEvent) {
+    event.preventDefault();
+    if (!canManageLayout || !permittedStation(layoutDraft.station)) return;
+    if (!layoutDraft.loungeId || !layoutDraft.title.trim() || !layoutDraft.layoutUrl.trim()) {
+      setNotice({
+        kind: "warn",
+        text: "Lounge, nama layout, dan gambar denah wajib tersedia.",
+      });
+      return;
+    }
+    const selectedLounge = lounges.find((row) => row.id === layoutDraft.loungeId);
+    const id = editingLayoutId || recordId("lounge-layout");
+    const record: LoungeLayout = {
+      id,
+      ...layoutDraft,
+      loungeName: selectedLounge?.name || layoutDraft.loungeName,
+      updatedAt: new Date().toISOString(),
+    };
+    await saveRecord("loungeLayouts", record);
+    await recordPortalActivity(user, {
+      action: "LOUNGE_LAYOUT_SAVED",
+      module: "Facility & Room Operations",
+      station: record.station,
+      targetType: "Lounge Layout",
+      targetId: id,
+      targetName: `${record.loungeName} · ${record.floorName}`,
+      result: record.status,
+      detail: `${record.areas.length} public/operational area configured.`,
+    });
+    setSelectedLayoutId(id);
+    setShowLayoutForm(false);
+    setEditingLayoutId(null);
+    setNotice({ kind: "ok", text: `Layout ${record.title} berhasil disimpan.` });
+  }
+
+  async function uploadLayoutBackground(file: File) {
+    const layoutId = editingLayoutId || recordId("lounge-layout");
+    if (!editingLayoutId) setEditingLayoutId(layoutId);
+    setLayoutAssetUploading(true);
+    try {
+      const result = await uploadLoungeLayoutAsset(
+        layoutDraft.station,
+        layoutId,
+        file,
+        "layout",
+      );
+      setLayoutDraft((current) => ({
+        ...current,
+        layoutUrl: result.url,
+        layoutStoragePath: result.storagePath,
+      }));
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text: error instanceof Error ? error.message : "Denah tidak dapat diunggah.",
+      });
+    } finally {
+      setLayoutAssetUploading(false);
+    }
+  }
+
+  function openLayoutAreaAt(event: ReactMouseEvent<HTMLDivElement>) {
+    if (!selectedLoungeLayout || !canManageLayout || layoutView !== "Editor") return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(100, ((event.clientX - bounds.left) / bounds.width) * 100));
+    const y = Math.max(0, Math.min(100, ((event.clientY - bounds.top) / bounds.height) * 100));
+    setLayoutAreaDraft({ ...EMPTY_LOUNGE_AREA, id: recordId("area"), x, y });
+    setLayoutServicesInput("");
+    setShowLayoutAreaForm(true);
+  }
+
+  async function saveLayoutArea(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedLoungeLayout || !layoutAreaDraft.name.trim()) return;
+    const services = layoutServicesInput
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const area = { ...layoutAreaDraft, services };
+    const areas = selectedLoungeLayout.areas.some((row) => row.id === area.id)
+      ? selectedLoungeLayout.areas.map((row) => (row.id === area.id ? area : row))
+      : [...selectedLoungeLayout.areas, area];
+    await saveRecord("loungeLayouts", {
+      ...selectedLoungeLayout,
+      areas,
+      updatedAt: new Date().toISOString(),
+    });
+    setShowLayoutAreaForm(false);
+    setSelectedPublicAreaId(area.id);
+    setNotice({ kind: "ok", text: `Area ${area.name} berhasil ditempatkan pada denah.` });
+  }
+
+  async function uploadLayoutAreaPhoto(file: File) {
+    if (!selectedLoungeLayout) return;
+    setLayoutAssetUploading(true);
+    try {
+      const result = await uploadLoungeLayoutAsset(
+        selectedLoungeLayout.station,
+        selectedLoungeLayout.id,
+        file,
+        "area-photo",
+      );
+      setLayoutAreaDraft((current) => ({
+        ...current,
+        photoUrls: [...current.photoUrls, result.url],
+      }));
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text: error instanceof Error ? error.message : "Foto area tidak dapat diunggah.",
+      });
+    } finally {
+      setLayoutAssetUploading(false);
+    }
+  }
+
+  async function deleteLoungeLayout(layout: LoungeLayout) {
+    if (!canManageLayout || !window.confirm(`Hapus layout ${layout.title}?`)) return;
+    await removeRecord("loungeLayouts", layout.id);
+    setSelectedLayoutId("");
+    setNotice({ kind: "ok", text: `Layout ${layout.title} berhasil dihapus.` });
   }
 
   async function saveDevice(event: FormEvent) {
@@ -2176,6 +2412,41 @@ export default function FacilityOperations({
     }
   }
 
+  async function submitGroupControl(event: FormEvent) {
+    event.preventDefault();
+    if (!remoteGroup) return;
+    setSavingRemote(true);
+    try {
+      const result = await manageDisplayDevice(user, {
+        action: "groupcommand",
+        outputGroupId: remoteGroup.id,
+        type: remoteType,
+        channelId: remoteChannelId,
+        overlayText: remoteOverlayText,
+        durationMinutes: remoteDuration,
+      });
+      const devices = result.devices || [];
+      const failed = devices.filter((item) => item.status === "Failed").length;
+      setNotice({
+        kind: failed ? "warn" : "ok",
+        text: failed
+          ? `Command diterima sebagian: ${devices.length - failed} device menunggu eksekusi, ${failed} gagal menerima command.`
+          : `Command dikirim ke ${devices.length} device. Status eksekusi dapat dipantau pada Monitor.`,
+      });
+      setRemoteGroup(null);
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Group command tidak dapat diproses.",
+      });
+    } finally {
+      setSavingRemote(false);
+    }
+  }
+
   async function revokeDevice(device: DeviceRecord) {
     if (
       !window.confirm(
@@ -2578,7 +2849,6 @@ export default function FacilityOperations({
   async function downloadFacilityReport(
     kind: "usage" | "rooms" | "displays",
   ) {
-    const XLSX = await import("xlsx");
     const rows =
       kind === "usage"
         ? usageBookings.map((booking) => {
@@ -2665,6 +2935,7 @@ export default function FacilityOperations({
     "Room Booking",
     "Room Operations",
     "TV & Digital Signage",
+    "Lounge Layout",
     "Master & Configuration",
     "Activity Log",
   ];
@@ -4066,6 +4337,25 @@ export default function FacilityOperations({
                                 ? "View / Recover Share"
                                 : "Start Screen Share"}
                           </button>
+                          <button
+                            type="button"
+                            disabled={
+                              !canControl ||
+                              group.status !== "Active" ||
+                              groupDevices.length === 0
+                            }
+                            onClick={() => {
+                              setRemoteGroup(group);
+                              setRemoteType("PLAY_CHANNEL");
+                              setRemoteChannelId(
+                                displayChannels.find((row) => row.status === "Active")?.id || "",
+                              );
+                              setRemoteOverlayText("");
+                              setRemoteDuration(60);
+                            }}
+                          >
+                            Group Control
+                          </button>
                           {canConfigure && (
                             <>
                               <button
@@ -4442,6 +4732,173 @@ export default function FacilityOperations({
               </div>
             </article>
           )}
+        </div>
+      )}
+
+      {activeTab === "Lounge Layout" && (
+        <div className="loungeLayoutPage">
+          <article className="card facilitySectionCard">
+            <div className="facilitySectionHeader">
+              <div>
+                <small>PASSENGER WAYFINDING</small>
+                <h2>Lounge Layout &amp; Service Map</h2>
+                <p>
+                  Kelola denah interaktif, foto area, layanan, status, dan tautan publik per lounge.
+                </p>
+              </div>
+              {canManageLayout && (
+                <button
+                  className="primary"
+                  type="button"
+                  onClick={() => {
+                    const station = stationFilter === "ALL" ? activeStations[0]?.code || account.station : stationFilter;
+                    const lounge = lounges.find((row) => row.airport === station);
+                    const id = recordId("lounge-layout");
+                    setEditingLayoutId(id);
+                    setLayoutDraft({
+                      ...EMPTY_LOUNGE_LAYOUT,
+                      station,
+                      loungeId: lounge?.id || "",
+                      loungeName: lounge?.name || "",
+                    });
+                    setShowLayoutForm(true);
+                  }}
+                >
+                  + New Lounge Layout
+                </button>
+              )}
+            </div>
+            <div className="layoutViewSwitch" role="tablist" aria-label="Layout view">
+              {(["Editor", "Passenger Preview"] as const).map((item) => (
+                <button key={item} type="button" role="tab" aria-selected={layoutView === item} className={layoutView === item ? "active" : ""} onClick={() => setLayoutView(item)}>{item}</button>
+              ))}
+            </div>
+          </article>
+
+          <div className="loungeLayoutWorkspace">
+            <aside className="layoutDirectory card">
+              <div><small>LAYOUT DIRECTORY</small><b>{scopedLoungeLayouts.length} layout</b></div>
+              {scopedLoungeLayouts.map((layout) => (
+                <button key={layout.id} type="button" className={selectedLoungeLayout?.id === layout.id ? "active" : ""} onClick={() => { setSelectedLayoutId(layout.id); setSelectedPublicAreaId(""); }}>
+                  <b>{layout.loungeName}</b>
+                  <span>{layout.floorName} · {layout.station}</span>
+                  <small>{layout.status} · {layout.areas.filter((area) => area.publicVisible).length} public area</small>
+                </button>
+              ))}
+              {!scopedLoungeLayouts.length && <p>Belum ada denah lounge pada scope ini.</p>}
+            </aside>
+
+            <article className="card loungeLayoutCanvasCard">
+              {selectedLoungeLayout ? (
+                <>
+                  <div className="facilitySectionHeader compact">
+                    <div>
+                      <small>{selectedLoungeLayout.station} · {selectedLoungeLayout.floorName}</small>
+                      <h2>{selectedLoungeLayout.title}</h2>
+                      <p>{selectedLoungeLayout.loungeName}</p>
+                    </div>
+                    <div className="layoutActions">
+                      <span className="scopeBadge">{selectedLoungeLayout.status}</span>
+                      {canManageLayout && (
+                        <>
+                          <button type="button" onClick={() => {
+                            setEditingLayoutId(selectedLoungeLayout.id);
+                            setLayoutDraft({
+                              station: selectedLoungeLayout.station,
+                              loungeId: selectedLoungeLayout.loungeId,
+                              loungeName: selectedLoungeLayout.loungeName,
+                              title: selectedLoungeLayout.title,
+                              floorName: selectedLoungeLayout.floorName,
+                              layoutUrl: selectedLoungeLayout.layoutUrl,
+                              layoutStoragePath: selectedLoungeLayout.layoutStoragePath,
+                              status: selectedLoungeLayout.status,
+                              areas: selectedLoungeLayout.areas,
+                            });
+                            setShowLayoutForm(true);
+                          }}>Edit Layout</button>
+                          <button className="danger" type="button" onClick={() => void deleteLoungeLayout(selectedLoungeLayout)}>Delete</button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className={`interactiveLoungeMap ${layoutView === "Editor" ? "editing" : "passenger"}`} onClick={openLayoutAreaAt} role="application" aria-label="Interactive lounge layout">
+                    {/* External URLs are intentionally supported for local UAT assets. */}
+                    <img src={selectedLoungeLayout.layoutUrl} alt={`Denah ${selectedLoungeLayout.loungeName} ${selectedLoungeLayout.floorName}`} />
+                    {selectedLoungeLayout.areas
+                      .filter((area) => layoutView === "Editor" || area.publicVisible)
+                      .map((area, index) => (
+                        <button
+                          key={area.id}
+                          type="button"
+                          className={`layoutMarker status-${area.status.toLowerCase().replaceAll(" ", "-")} ${selectedPublicAreaId === area.id ? "selected" : ""}`}
+                          style={{ left: `${area.x}%`, top: `${area.y}%` }}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedPublicAreaId(area.id);
+                            if (layoutView === "Editor" && canManageLayout) {
+                              setLayoutAreaDraft(area);
+                              setLayoutServicesInput(area.services.join(", "));
+                              setShowLayoutAreaForm(true);
+                            }
+                          }}
+                          aria-label={`${area.name}, ${area.status}`}
+                        >
+                          <span>{index + 1}</span>
+                          <b>{area.name}</b>
+                        </button>
+                      ))}
+                  </div>
+                  {layoutView === "Editor" && canManageLayout && (
+                    <p className="layoutEditorHint">Klik area kosong pada denah untuk menambahkan titik layanan. Klik marker untuk mengubah informasi dan foto.</p>
+                  )}
+                  {selectedPublicAreaId && (() => {
+                    const area = selectedLoungeLayout.areas.find((row) => row.id === selectedPublicAreaId);
+                    if (!area) return null;
+                    return (
+                      <section className="layoutAreaDetail">
+                        <div>
+                          <small>{area.category}</small>
+                          <h3>{area.name}</h3>
+                          <span className={`bookingStatus status-${area.status.toLowerCase().replaceAll(" ", "-")}`}>{area.status}</span>
+                          <p>{area.description || "Informasi area belum tersedia."}</p>
+                          <div className="layoutServiceTags">{area.services.map((service) => <span key={service}>{service}</span>)}</div>
+                        </div>
+                        <div className="layoutPhotoGallery">
+                          {area.photoUrls.map((url) => (
+                            <img key={url} src={url} alt={`${area.name} lounge`} />
+                          ))}
+                          {!area.photoUrls.length && <span>Foto area belum tersedia.</span>}
+                        </div>
+                      </section>
+                    );
+                  })()}
+                </>
+              ) : (
+                <EmptyState text="Buat layout lounge, unggah denah, lalu tempatkan area layanan secara interaktif." />
+              )}
+            </article>
+
+            {selectedLoungeLayout && (
+              <aside className="layoutPublishPanel card">
+                <small>PASSENGER ACCESS</small>
+                <h3>Public Wayfinding</h3>
+                <p>Gunakan QR atau tautan ini pada reception, kiosk, dan signage lounge.</p>
+                {layoutQrDataUrl && (
+                  <img src={layoutQrDataUrl} alt="QR passenger lounge map" />
+                )}
+                <label>
+                  QR Location
+                  <select value={layoutQrAreaId} onChange={(event) => setLayoutQrAreaId(event.target.value)}>
+                    <option value="">General lounge entrance</option>
+                    {selectedLoungeLayout.areas.filter((area) => area.publicVisible).map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
+                  </select>
+                </label>
+                <a href={`/lounge-map/${selectedLoungeLayout.id}`} target="_blank" rel="noreferrer">Open Passenger View</a>
+                <button type="button" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}/lounge-map/${selectedLoungeLayout.id}${layoutQrAreaId ? `?from=${encodeURIComponent(layoutQrAreaId)}` : ""}`)}>Copy Passenger Link</button>
+                <small>Hanya layout berstatus Published yang dapat dibuka tanpa login.</small>
+              </aside>
+            )}
+          </div>
         </div>
       )}
 
@@ -5685,6 +6142,70 @@ export default function FacilityOperations({
                 >
                   {savingAnnouncement ? "Sending..." : "Send Now"}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {remoteGroup && (
+        <div
+          className="back"
+          onMouseDown={(event) =>
+            event.target === event.currentTarget && setRemoteGroup(null)
+          }
+        >
+          <div className="modal remoteControlModal">
+            <div className="modalHead">
+              <div>
+                <small>OUTPUT GROUP</small>
+                <h2>Group Remote Control</h2>
+              </div>
+              <button type="button" onClick={() => setRemoteGroup(null)}>×</button>
+            </div>
+            <form className="form" onSubmit={(event) => void submitGroupControl(event)}>
+              <div className="operationContext full">
+                <div><span>Group</span><b>{remoteGroup.name}</b></div>
+                <div><span>Station</span><b>{remoteGroup.station}</b></div>
+                <div><span>Targets</span><b>{stringArray(remoteGroup.deviceIds).length} devices</b></div>
+              </div>
+              <label className="full">
+                <span>Command</span>
+                <select value={remoteType} onChange={(event) => setRemoteType(event.target.value)}>
+                  <option value="PLAY_CHANNEL">Play Channel Now</option>
+                  <option value="SET_OVERLAY">Set Running Text</option>
+                  <option value="CLEAR_OVERLAY">Clear Running Text</option>
+                  <option value="STOP_PLAYBACK">Stop &amp; Standby</option>
+                  <option value="PAUSE">Pause Screen</option>
+                  <option value="RESUME">Resume Screen</option>
+                  <option value="REFRESH">Refresh Player</option>
+                </select>
+              </label>
+              {remoteType === "PLAY_CHANNEL" && (
+                <>
+                  <label>
+                    <span>Channel</span>
+                    <select value={remoteChannelId} onChange={(event) => setRemoteChannelId(event.target.value)} required>
+                      <option value="">Select channel</option>
+                      {displayChannels.filter((row) => row.status === "Active").map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+                    </select>
+                  </label>
+                  <label><span>Override Duration</span><select value={remoteDuration} onChange={(event) => setRemoteDuration(Number(event.target.value))}>{[15, 30, 60, 120, 240, 480].map((value) => <option key={value} value={value}>{value} minutes</option>)}</select></label>
+                </>
+              )}
+              {remoteType === "SET_OVERLAY" && (
+                <>
+                  <label className="full"><span>Running Text</span><textarea value={remoteOverlayText} onChange={(event) => setRemoteOverlayText(event.target.value)} required /></label>
+                  <label><span>Display Duration</span><select value={remoteDuration} onChange={(event) => setRemoteDuration(Number(event.target.value))}>{[5, 10, 15, 30, 60, 120].map((value) => <option key={value} value={value}>{value} minutes</option>)}</select></label>
+                </>
+              )}
+              {remoteType === "STOP_PLAYBACK" && (
+                <label><span>Standby Duration</span><select value={remoteDuration} onChange={(event) => setRemoteDuration(Number(event.target.value))}>{[15, 30, 60, 120, 240, 480].map((value) => <option key={value} value={value}>{value} minutes</option>)}</select></label>
+              )}
+              <div className="notice warn full"><span>Command dikirim ke setiap Player di dalam group. Status Pending, Executed, Failed, atau Expired dapat dipantau per device pada Monitor.</span></div>
+              <div className="modalActions full">
+                <button type="button" onClick={() => setRemoteGroup(null)}>Cancel</button>
+                <button className="primary" type="submit" disabled={savingRemote}>{savingRemote ? "Sending..." : "Send to Group"}</button>
               </div>
             </form>
           </div>
@@ -7264,6 +7785,50 @@ export default function FacilityOperations({
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showLayoutForm && (
+        <div className="back" onMouseDown={(event) => event.target === event.currentTarget && setShowLayoutForm(false)}>
+          <div className="modal wideModal loungeLayoutModal">
+            <div className="modalHead"><div><small>LOUNGE WAYFINDING</small><h2>{loungeLayouts.some((row) => row.id === editingLayoutId) ? "Edit Lounge Layout" : "New Lounge Layout"}</h2></div><button type="button" onClick={() => setShowLayoutForm(false)}>×</button></div>
+            <form className="form" onSubmit={(event) => void saveLoungeLayout(event)}>
+              <label><span>Station</span><select value={layoutDraft.station} disabled={!globalScope} onChange={(event) => setLayoutDraft({ ...layoutDraft, station: event.target.value, loungeId: "", loungeName: "" })}>{activeStations.map((station) => <option key={station.code} value={station.code}>{station.code} — {station.name}</option>)}</select></label>
+              <label><span>Lounge/Tenant</span><select value={layoutDraft.loungeId} onChange={(event) => { const lounge = lounges.find((row) => row.id === event.target.value); setLayoutDraft({ ...layoutDraft, loungeId: event.target.value, loungeName: lounge?.name || "" }); }} required><option value="">Select lounge</option>{lounges.filter((row) => row.airport === layoutDraft.station).map((lounge) => <option key={lounge.id} value={lounge.id}>{lounge.name} · {lounge.type}</option>)}</select></label>
+              <label><span>Layout Title</span><input value={layoutDraft.title} onChange={(event) => setLayoutDraft({ ...layoutDraft, title: event.target.value })} required /></label>
+              <label><span>Floor / Zone</span><input value={layoutDraft.floorName} onChange={(event) => setLayoutDraft({ ...layoutDraft, floorName: event.target.value })} placeholder="Main Floor / Mezzanine" required /></label>
+              <label><span>Publication Status</span><select value={layoutDraft.status} onChange={(event) => setLayoutDraft({ ...layoutDraft, status: event.target.value as LoungeLayout["status"] })}><option>Draft</option><option>Published</option></select></label>
+              <label className="full"><span>Layout Image URL</span><input type="url" value={layoutDraft.layoutUrl} onChange={(event) => setLayoutDraft({ ...layoutDraft, layoutUrl: event.target.value })} placeholder="/lounge-layouts/cgk-layout.png atau Firebase Storage URL" /></label>
+              <label className="full layoutUploadDrop"><span>Upload Layout Image</span><input type="file" accept="image/jpeg,image/png,image/webp,image/svg+xml" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadLayoutBackground(file); event.target.value = ""; }} /><small>{layoutAssetUploading ? "Uploading…" : "PNG, JPG, WEBP, atau SVG · maksimum 15 MB. Untuk demo lokal, URL /lounge-layouts/nama-file.png dapat digunakan."}</small></label>
+              {layoutDraft.layoutUrl && <div className="layoutUploadPreview full"><img src={layoutDraft.layoutUrl} alt="Layout preview" /></div>}
+              <div className="modalActions full"><button type="button" onClick={() => setShowLayoutForm(false)}>Cancel</button><button className="primary" type="submit" disabled={layoutAssetUploading}>Save Layout</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showLayoutAreaForm && selectedLoungeLayout && (
+        <div className="back" onMouseDown={(event) => event.target === event.currentTarget && setShowLayoutAreaForm(false)}>
+          <div className="modal wideModal loungeAreaModal">
+            <div className="modalHead"><div><small>INTERACTIVE AREA</small><h2>{selectedLoungeLayout.areas.some((row) => row.id === layoutAreaDraft.id) ? "Edit Area" : "Add Area"}</h2></div><button type="button" onClick={() => setShowLayoutAreaForm(false)}>×</button></div>
+            <form className="form" onSubmit={(event) => void saveLayoutArea(event)}>
+              <label><span>Area Name</span><input value={layoutAreaDraft.name} onChange={(event) => setLayoutAreaDraft({ ...layoutAreaDraft, name: event.target.value })} required /></label>
+              <label><span>Category</span><select value={layoutAreaDraft.category} onChange={(event) => setLayoutAreaDraft({ ...layoutAreaDraft, category: event.target.value })}>{["Reception", "Seating Area", "Dining & Buffet", "Coffee Bar", "Quiet Zone", "Business Area", "Meeting Room", "Family & Kids", "Shower Room", "Toilet", "Prayer Room", "Smoking Room", "Charging Station", "TV Area", "Nursing Room", "Emergency Exit", "Accessibility"].map((item) => <option key={item}>{item}</option>)}</select></label>
+              <label><span>Public Status</span><select value={layoutAreaDraft.status} onChange={(event) => setLayoutAreaDraft({ ...layoutAreaDraft, status: event.target.value as LoungeMapArea["status"] })}><option>Available</option><option>In Use</option><option>Temporarily Closed</option></select></label>
+              <label><span>Passenger Visibility</span><select value={layoutAreaDraft.publicVisible ? "Visible" : "Internal Only"} onChange={(event) => setLayoutAreaDraft({ ...layoutAreaDraft, publicVisible: event.target.value === "Visible" })}><option>Visible</option><option>Internal Only</option></select></label>
+              <label className="full"><span>Description</span><textarea value={layoutAreaDraft.description} onChange={(event) => setLayoutAreaDraft({ ...layoutAreaDraft, description: event.target.value })} placeholder="Apa yang dapat diharapkan penumpang di area ini?" /></label>
+              <label className="full"><span>Services (separate with commas)</span><input value={layoutServicesInput} onChange={(event) => setLayoutServicesInput(event.target.value)} placeholder="Wi-Fi, charging, buffet, wheelchair access" /></label>
+              <label><span>Position X (%)</span><input type="number" min="0" max="100" step="0.1" value={layoutAreaDraft.x} onChange={(event) => setLayoutAreaDraft({ ...layoutAreaDraft, x: Number(event.target.value) })} /></label>
+              <label><span>Position Y (%)</span><input type="number" min="0" max="100" step="0.1" value={layoutAreaDraft.y} onChange={(event) => setLayoutAreaDraft({ ...layoutAreaDraft, y: Number(event.target.value) })} /></label>
+              <label className="full layoutUploadDrop"><span>Area Photos</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { const files = [...(event.target.files || [])]; files.forEach((file) => void uploadLayoutAreaPhoto(file)); event.target.value = ""; }} /><small>Tambahkan foto agar penumpang dapat melihat suasana dan fasilitas sebelum menuju area.</small></label>
+              <label className="full"><span>Photo URL (optional for local demo)</span><div className="inlineUrlAdd"><input id="area-photo-url" type="url" placeholder="/lounge-layouts/dining-area.jpg" /><button type="button" onClick={() => { const input = document.getElementById("area-photo-url") as HTMLInputElement | null; if (input?.value) { setLayoutAreaDraft((current) => ({ ...current, photoUrls: [...current.photoUrls, input.value] })); input.value = ""; } }}>Add URL</button></div></label>
+              <div className="layoutPhotoGallery full">{layoutAreaDraft.photoUrls.map((url) => <div key={url}><img src={url} alt="Area upload" /><button type="button" onClick={() => setLayoutAreaDraft((current) => ({ ...current, photoUrls: current.photoUrls.filter((item) => item !== url) }))}>×</button></div>)}</div>
+              <div className="modalActions full">
+                {selectedLoungeLayout.areas.some((row) => row.id === layoutAreaDraft.id) && <button className="danger" type="button" onClick={() => { if (!window.confirm(`Hapus area ${layoutAreaDraft.name}?`)) return; void saveRecord("loungeLayouts", { ...selectedLoungeLayout, areas: selectedLoungeLayout.areas.filter((row) => row.id !== layoutAreaDraft.id), updatedAt: new Date().toISOString() }).then(() => setShowLayoutAreaForm(false)); }}>Delete Area</button>}
+                <button type="button" onClick={() => setShowLayoutAreaForm(false)}>Cancel</button><button className="primary" type="submit" disabled={layoutAssetUploading}>Save Area</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

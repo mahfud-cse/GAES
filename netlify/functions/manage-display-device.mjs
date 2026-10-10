@@ -298,6 +298,60 @@ async function sendCommand(db, actor, input) {
   };
 }
 
+async function sendGroupCommand(db, actor, input) {
+  const outputGroupId = text(input.outputGroupId, 160);
+  const groupSnapshot = await db
+    .collection("displayOutputGroups")
+    .doc(outputGroupId)
+    .get();
+  if (!groupSnapshot.exists)
+    throw httpError(404, "Output Group tidak ditemukan.");
+  const group = groupSnapshot.data();
+  requireStation(actor, group.station);
+  if (group.status !== "Active")
+    throw httpError(409, "Output Group sedang tidak aktif.");
+  const deviceIds = [...new Set(Array.isArray(group.deviceIds) ? group.deviceIds : [])]
+    .map((value) => text(value, 160))
+    .filter(Boolean)
+    .slice(0, 50);
+  if (!deviceIds.length)
+    throw httpError(409, "Output Group belum memiliki device.");
+
+  const results = await Promise.all(
+    deviceIds.map(async (deviceId) => {
+      try {
+        const result = await sendCommand(db, actor, { ...input, deviceId });
+        return { deviceId, status: result.status, commandId: result.id };
+      } catch (error) {
+        return {
+          deviceId,
+          status: "Failed",
+          message: text(error?.message || "Command tidak dapat dikirim.", 240),
+        };
+      }
+    }),
+  );
+  await db.collection("displayActivityLogs").add({
+    action: `DISPLAY_GROUP_COMMAND_${text(input.type, 40).toUpperCase()}`,
+    station: group.station,
+    outputGroupId,
+    outputGroupName: text(group.name, 120),
+    deviceCount: deviceIds.length,
+    acceptedCount: results.filter((row) => row.status !== "Failed").length,
+    failedCount: results.filter((row) => row.status === "Failed").length,
+    actorId: actor.decoded.uid,
+    actorName: text(actor.profile.name, 120),
+    createdAt: new Date(),
+  });
+  return {
+    id: outputGroupId,
+    status: results.some((row) => row.status === "Failed")
+      ? "Partially Accepted"
+      : "Pending",
+    devices: results,
+  };
+}
+
 function announcementMessage(template, input) {
   const values = {
     flight: text(input.flightNumber, 24).toUpperCase(),
@@ -975,6 +1029,8 @@ const handler = async (request) => {
       return json(200, await createEnrollment(db, actor, input));
     if (action === "command")
       return json(200, await sendCommand(db, actor, input));
+    if (action === "groupcommand")
+      return json(200, await sendGroupCommand(db, actor, input));
     if (action === "revoke") return json(200, await revoke(db, actor, input));
     if (action === "delete")
       return json(200, await deleteDevice(db, actor, input));

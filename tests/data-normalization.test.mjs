@@ -117,6 +117,21 @@ test("parses arbitrary IATA BCBP and labelled QR payloads", () => {
   assert.equal(unknown.recognized, false);
 });
 
+test("eligibility wildcard accepts any final indicator beginning with Y", () => {
+  for (const indicator of ["Y", "YS", "Y1", "YAA"]) {
+    const parsed = parseBoardingPass(
+      `name=DOE/JOHN;flight=GA204;route=CGK-JOG;seq=001;cabin=Y;${indicator}`,
+    );
+    assert.equal(parsed.eligible, "Y");
+  }
+  assert.equal(
+    parseBoardingPass(
+      "name=DOE/JOHN;flight=GA204;route=CGK-JOG;seq=001;cabin=Y;N",
+    ).eligible,
+    "N",
+  );
+});
+
 test("recognizes legacy synchronized lounge metadata and deduplicates its card", () => {
   const legacy = normalizeLounge({
     id: "legacy-lounge",

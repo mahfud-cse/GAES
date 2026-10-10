@@ -739,3 +739,33 @@ test("configures portrait signage and passes the display profile to the player",
   assert.match(player, /fit-\$\{displayProfile\.fitMode\.toLowerCase\(\)\}/);
   assert.match(css, /\.displayPlayer\.fit-contain/);
 });
+
+test("consolidates visitor output, group remote control, and lounge wayfinding", async () => {
+  const [page, facility, groupBackend, publicMap, publicBackend, rules, storageRules, css] =
+    await Promise.all([
+      read("../app/page.tsx"),
+      read("../app/facility-operations.tsx"),
+      read("../netlify/functions/manage-display-device.mjs"),
+      read("../app/lounge-map/[id]/page.tsx"),
+      read("../netlify/functions/public-lounge-layout.mjs"),
+      read("../firestore.rules"),
+      read("../storage.rules"),
+      read("../app/globals.css"),
+    ]);
+  assert.match(page, /Final Destination/);
+  assert.match(page, /"First Name"/);
+  assert.match(page, /"Flight Origin"/);
+  assert.match(page, /Berdasarkan hasil validasi boarding pass/);
+  assert.match(facility, /Lounge Layout &amp; Service Map/);
+  assert.match(facility, /Group Control/);
+  assert.match(facility, /QR Location/);
+  assert.match(groupBackend, /groupcommand/);
+  assert.match(groupBackend, /sendGroupCommand/);
+  assert.match(publicMap, /YOU ARE HERE/);
+  assert.match(publicMap, /publicWayfindingLine/);
+  assert.match(publicBackend, /status !== "Published"/);
+  assert.match(rules, /match \/loungeLayouts\/\{id\}/);
+  assert.match(storageRules, /match \/lounge-layouts\/\{station\}/);
+  assert.match(css, /\.publicLoungeMap/);
+  assert.match(css, /@media \(max-width: 720px\)/);
+});

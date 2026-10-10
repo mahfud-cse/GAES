@@ -16,5 +16,14 @@ service firebase.storage {
         && request.resource.size < 200 * 1024 * 1024
         && request.resource.contentType.matches('(image/jpeg|image/png|image/webp|video/mp4|video/webm)');
     }
+    match /lounge-layouts/{station}/{layoutId}/{kind}/{fileName} {
+      allow read: if true;
+      allow write: if active()
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['Super Admin','Admin','HO Admin','BO Admin','Lounge Manager']
+        && (firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['Super Admin','Admin','HO Admin']
+          || firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.station == station)
+        && request.resource.size < 15 * 1024 * 1024
+        && request.resource.contentType.matches('(image/jpeg|image/png|image/webp|image/svg\\+xml)');
+    }
   }
 }

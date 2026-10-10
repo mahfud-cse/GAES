@@ -14,7 +14,11 @@ export default async (request) => {
       return json(400, { error: "Nama, flight, sequence, dan Date of Travel wajib diisi." });
     }
     if (visitor.eligible !== "Y") {
-      return json(422, { code: "INELIGIBLE", error: "Indikator kelayakan akses (Y) tidak ditemukan. Berdasarkan ketentuan yang berlaku, penumpang tidak memenuhi kriteria akses lounge. Pastikan boarding pass telah dipindai dengan benar atau lakukan verifikasi manual sesuai kewenangan." });
+      return json(422, {
+        code: "INELIGIBLE",
+        error:
+          "Berdasarkan hasil validasi dan ketentuan layanan yang berlaku, akses lounge belum dapat diberikan. Silakan periksa kembali data perjalanan atau lakukan verifikasi manual sesuai kewenangan petugas.",
+      });
     }
 
     const duplicateKey = createHash("sha256").update(identity.join("|")).digest("hex");

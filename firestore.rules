@@ -74,6 +74,19 @@ service cloud.firestore {
       allow update: if roleIs(['Super Admin','Admin']) && sameStation(resource.data) && sameStation(request.resource.data);
       allow delete: if roleIs(['Super Admin','Admin']) && sameStation(resource.data);
     }
+    match /loungeLayouts/{id} {
+      allow read: if active() &&
+        (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow create: if active() &&
+        (roleIs(['Super Admin','Admin','HO Admin']) ||
+          (roleIs(['BO Admin','Lounge Manager']) && sameStation(request.resource.data)));
+      allow update: if active() &&
+        (roleIs(['Super Admin','Admin','HO Admin']) ||
+          (roleIs(['BO Admin','Lounge Manager']) && sameStation(resource.data) && sameStation(request.resource.data)));
+      allow delete: if active() &&
+        (roleIs(['Super Admin','Admin']) ||
+          (roleIs(['BO Admin','Lounge Manager']) && sameStation(resource.data)));
+    }
     match /roomBookings/{id} {
       allow read: if roleIs(['Super Admin','Admin','BO Admin','Lounge Manager'])
         && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
