@@ -16,6 +16,7 @@
 - Added **Lounge Layout & Service Map** for uploading an existing lounge floor plan as the map background, with URL fallback, interactive service points, operational status, service tags, area photo galleries, passenger preview, publication control, location-specific QR codes, and a public mobile passenger page.
 - Passenger QR links can identify the current zone (`You are here`). Selecting another facility draws a simple visual direction line and opens its service/photo information.
 - Login data recovery now sanitizes user profiles, notifications, activity logs, and dashboard configuration before rendering. A malformed legacy record is skipped or given a safe fallback instead of taking down the whole page.
+- The recovery page now exposes a safe copyable diagnostic code and the actual client-render error message. It no longer labels every application failure as a Firebase data-format problem.
 - Responsive rules were consolidated for facility tabs, display controls, output groups, dialogs, tables, layout editor, photo galleries, and the public passenger map.
 
 ## Deployment

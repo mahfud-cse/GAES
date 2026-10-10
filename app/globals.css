@@ -3906,6 +3906,22 @@ textarea.autoField {
   gap: 14px;
   color: #0b3e75;
 }
+
+.recoveryDiagnostic {
+  width: 100%;
+  max-height: 160px;
+  overflow: auto;
+  margin: 4px 0 8px;
+  padding: 12px;
+  border: 1px solid #cad6e2;
+  border-radius: 10px;
+  background: #f5f8fb;
+  color: #16324f;
+  font: 600 12px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .recoveryCard img {
   width: min(260px, 80%);
   height: 64px;
