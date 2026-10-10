@@ -1,5 +1,25 @@
 type Row = Record<string, unknown>;
 
+/**
+ * Treat every record carrying source-system metadata as synchronized. This is
+ * intentionally broader than checking `readOnly` alone so a partial/legacy
+ * sync record can never become editable in the UI.
+ */
+export function isSynchronizedRecord(row: Row | null | undefined) {
+  if (!row) return false;
+  return (
+    upper(row.dataOrigin) === "SYNC" ||
+    row.readOnly === true ||
+    Boolean(
+      text(row.sourceProject) ||
+        text(row.sourceRecordId) ||
+        text(row.sourcePath) ||
+        text(row.sourceIdentityKey) ||
+        text(row.sourceStatus),
+    )
+  );
+}
+
 export const text = (value: unknown, fallback = "") =>
   value == null ? fallback : String(value).trim();
 
@@ -122,7 +142,9 @@ export function normalizeLounge(row: Row) {
   const airport = upper(row.airport ?? row.Airport);
   const name = text(row.name ?? row["Nama Lounge/Tenant"]);
   if (!/^[A-Z]{3}$/.test(airport) || !name) return null;
+  const synchronized = isSynchronizedRecord(row);
   return {
+    ...row,
     id:
       text(row.id) ||
       `lounge-${airport}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
@@ -134,19 +156,38 @@ export function normalizeLounge(row: Row) {
     start: isoDate(row.start ?? row["Tanggal Mulai"]),
     end: isoDate(row.end ?? row["Tanggal Berakhir"]),
     status: text(row.status ?? row.Status, "Aktif"),
+    dataOrigin: synchronized ? "SYNC" : "MANUAL",
+    readOnly: synchronized,
+    sourceProject: text(row.sourceProject),
+    sourceRecordId: text(row.sourceRecordId),
+    sourcePath: text(row.sourcePath),
+    sourceIdentityKey: text(row.sourceIdentityKey),
+    sourceStatus: text(row.sourceStatus),
+    lastSyncedAt: text(row.lastSyncedAt),
     capacity: numberValue(row.capacity ?? row.Capacity),
     capacityEffectiveFrom: isoDate(row.capacityEffectiveFrom),
-    capacityHistory: Array.isArray(row.capacityHistory) ? row.capacityHistory : [],
+    capacityHistory: Array.isArray(row.capacityHistory)
+      ? row.capacityHistory
+      : [],
     pricePeriods: Array.isArray(row.pricePeriods)
       ? row.pricePeriods
           .map((period) => {
             const item = period as Record<string, unknown>;
             return {
               id: text(item.id) || crypto.randomUUID(),
-              currency: upper(item.currency, upper(row.currency ?? row.Currency, "IDR")),
+              currency: upper(
+                item.currency,
+                upper(row.currency ?? row.Currency, "IDR"),
+              ),
               price: numberValue(item.price),
               start: isoDate(item.start),
               end: isoDate(item.end),
+              agreementId: text(item.agreementId),
+              agreementType: text(item.agreementType),
+              documentNumber: text(item.documentNumber),
+              status: text(item.status, "Aktif"),
+              sourceRecordId: text(item.sourceRecordId),
+              sourceStatus: text(item.sourceStatus, "ACTIVE"),
             };
           })
           .filter((period) => period.start && period.end)
@@ -154,29 +195,115 @@ export function normalizeLounge(row: Row) {
   };
 }
 
+const loungeIdentity = (row: NonNullable<ReturnType<typeof normalizeLounge>>) =>
+  `${row.airport}|${text(row.name)
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")}|${text(row.type, "Lounge")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")}`;
+
+/**
+ * Prevents the same business lounge from appearing twice when a legacy/manual
+ * row and its synchronized replacement are briefly present together. The
+ * synchronized row wins, while unique historical price periods are retained.
+ */
+export function deduplicateLounges(
+  rows: Array<NonNullable<ReturnType<typeof normalizeLounge>>>,
+) {
+  const grouped = new Map<
+    string,
+    NonNullable<ReturnType<typeof normalizeLounge>>
+  >();
+
+  for (const row of rows) {
+    const key = loungeIdentity(row);
+    const current = grouped.get(key);
+    if (!current) {
+      grouped.set(key, row);
+      continue;
+    }
+
+    const rowIsSync = row.dataOrigin === "SYNC" || row.readOnly === true;
+    const currentIsSync =
+      current.dataOrigin === "SYNC" || current.readOnly === true;
+    const priority = (item: NonNullable<ReturnType<typeof normalizeLounge>>) =>
+      (item.dataOrigin === "SYNC" || item.readOnly === true ? 10 : 0) +
+      (text(item.sourceStatus) !== "SOURCE_NOT_FOUND" ? 4 : 0) +
+      (text(item.id).startsWith("sync-lounge-") ? 2 : 0) +
+      (item.pricePeriods?.length ? 1 : 0);
+    const preferred = priority(row) > priority(current) ? row : current;
+    const secondary = preferred === row ? current : row;
+    const periods = new Map<string, (typeof row.pricePeriods)[number]>();
+
+    for (const period of [
+      ...(secondary.pricePeriods || []),
+      ...(preferred.pricePeriods || []),
+    ]) {
+      const periodKey =
+        text(period.sourceRecordId) ||
+        text(period.id) ||
+        `${period.start}|${period.end}|${period.currency}|${period.price}`;
+      periods.set(periodKey, period);
+    }
+
+    grouped.set(key, {
+      ...secondary,
+      ...preferred,
+      dataOrigin: rowIsSync || currentIsSync ? "SYNC" : "MANUAL",
+      readOnly: rowIsSync || currentIsSync,
+      pricePeriods: [...periods.values()].sort((a, b) =>
+        a.start.localeCompare(b.start),
+      ),
+    });
+  }
+
+  return [...grouped.values()];
+}
+
 export function normalizeVisitor(row: Row) {
   const id = text(row.id);
   const name = text(row.name);
   const flight = upper(row.flight).replace(/\s/g, "");
-  const travelDate = isoDate(row.travelDate, isoDate(row.date));
+  const incompleteImport = text(row.importStatus) === "Needs Data Completion";
+  const explicitTravelDate = isoDate(row.travelDate);
+  const travelDate = explicitTravelDate || (incompleteImport ? "" : isoDate(row.date));
+  const accessDate = isoDate(row.date, travelDate);
   const airport = upper(row.airport);
-  if (!id || !name || !flight || !travelDate || !/^[A-Z]{3}$/.test(airport))
+  if (
+    !id ||
+    !name ||
+    !/^[A-Z]{3}$/.test(airport) ||
+    (!incompleteImport && (!flight || !travelDate))
+  )
     return null;
   return {
     ...row,
     id,
     name,
     flight,
-    date: isoDate(row.date, travelDate),
+    date: accessDate,
     travelDate,
     time: timeValue(row.time, "00:00"),
     airport,
     lounge: text(row.lounge),
     route: text(row.route),
+    finalDestination:
+      upper(row.finalDestination ?? row["Final Destination"] ?? row["Flight Destination"]) ||
+      text(row.route)
+        .toUpperCase()
+        .split(/\s*(?:–|—|-|\/|>)\s*/)
+        .filter(Boolean)
+        .at(-1) ||
+      "",
     cabin: upper(row.cabin),
     seat: text(row.seat),
     seq: text(row.seq),
     ticket: text(row.ticket),
+    eligible: upper(row.eligible) === "Y" ? "Y" : upper(row.eligible) === "N" ? "N" : "",
     category: text(row.category, "Lainnya"),
     reference: text(row.reference),
     currency: upper(row.currency, "IDR"),
@@ -190,12 +317,16 @@ export function normalizeStation(row: Row) {
   const code = upper(row.code ?? row.id);
   const name = text(row.name);
   if (!/^[A-Z]{3}$/.test(code) || !name) return null;
+  const synchronized = isSynchronizedRecord(row);
   return {
+    ...row,
     code,
     name,
     timeZone: text(row.timeZone, "Asia/Jakarta"),
     utcLabel: text(row.utcLabel, "UTC+7"),
     status: text(row.status, "Aktif"),
+    dataOrigin: synchronized ? "SYNC" : "MANUAL",
+    readOnly: synchronized,
   };
 }
 
@@ -285,5 +416,51 @@ export function normalizeMonitoring(row: Row) {
     other: numberValue(row.other),
     unitPrice: numberValue(row.unitPrice),
     source: text(row.source, "Manual"),
+  };
+}
+
+export function normalizePassengerVolume(row: Row) {
+  const flightDate = isoDate(row.flightDate ?? row.Date ?? row.date);
+  const flight = upper(row.flight ?? row.Flight).replace(/\s/g, "");
+  const station = upper(row.station ?? row.origin ?? row.From);
+  const destination = upper(row.destination ?? row.To);
+  if (
+    !flightDate ||
+    !/^[A-Z0-9]{2,3}\d{1,5}$/.test(flight) ||
+    !/^[A-Z]{3}$/.test(station) ||
+    !/^[A-Z]{3}$/.test(destination)
+  )
+    return null;
+  const status = upper(row.status ?? row["Flight Status"], "UNKNOWN");
+  const passengerF = Math.max(0, numberValue(row.passengerF ?? row["F Class"]));
+  const passengerC = Math.max(0, numberValue(row.passengerC ?? row["C Class"]));
+  const passengerY = Math.max(0, numberValue(row.passengerY ?? row["Y Class"]));
+  return {
+    ...row,
+    id:
+      text(row.id) ||
+      `pax-${flightDate}-${flight}-${station}-${destination}`.toLowerCase(),
+    flightDate,
+    period: flightDate.slice(0, 7),
+    flight,
+    station,
+    origin: station,
+    destination,
+    time: text(row.time ?? row.Time),
+    gate: text(row.gate ?? row.Gate),
+    location: text(row.location ?? row.Location),
+    status,
+    aircraft: upper(row.aircraft ?? row.Aircraft),
+    capacityF: Math.max(0, numberValue(row.capacityF)),
+    capacityC: Math.max(0, numberValue(row.capacityC)),
+    capacityY: Math.max(0, numberValue(row.capacityY)),
+    passengerF,
+    passengerC,
+    passengerY,
+    totalPassengers: passengerF + passengerC + passengerY,
+    source: text(row.source, "BO Import"),
+    sourceFile: text(row.sourceFile),
+    uploadedBy: text(row.uploadedBy, "System"),
+    uploadedAt: text(row.uploadedAt, "—"),
   };
 }

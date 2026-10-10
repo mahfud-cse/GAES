@@ -18,6 +18,21 @@ For the source project, create a dedicated service account with read-only access
 
 `portalData/lounges/records/{documentId}`
 
+and the Airport/Station master collection. The synchronization function checks
+these default paths in order:
+
+- `portalData/airports/records/{documentId}`
+- `portalData/stations/records/{documentId}`
+- `portalData/network-stations/records/{documentId}`
+
+If the source portal uses another path, add this optional Netlify variable:
+
+`SOURCE_FIREBASE_STATIONS_PATH=your/source/collection/path`
+
+The lounge path can also be overridden when needed:
+
+`SOURCE_FIREBASE_LOUNGES_PATH=your/source/collection/path`
+
 Never commit either service-account JSON file.
 
 ## 4. Initial Super Admin
@@ -38,7 +53,13 @@ Super Admin creates users in GAES. Firebase Authentication accounts are created 
 
 ## 6. Lounge/Tenant synchronization
 
-Run `sync-source-lounges` from an authenticated Super Admin/Admin action. It reads the source project server-side and writes a read-only cache into GAES collection `lounges`. Source credentials never reach the browser.
+Run `sync-source-lounges` from an authenticated Super Admin/Admin action. It reads Lounge/Tenant and Airport/Station data from the source project server-side and writes read-only records into GAES collections `lounges` and `stations`. Manual GAES records remain editable. Source records that disappear are retained with `SOURCE_NOT_FOUND` and `Nonaktif` status for audit history. Source credentials never reach the browser.
+
+Multiple source agreements for the same Airport + Lounge Name + Service Type
+are consolidated into one Lounge master with multiple `pricePeriods`. The DOT
+selects the applicable period. The chosen price, currency, agreement, and price
+period are copied into the visitor transaction so future agreement changes do
+not alter historical reconciliation values.
 
 ## 7. Production checklist
 

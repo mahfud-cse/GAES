@@ -103,7 +103,97 @@ export const importManagedUsers = (user: User, users: unknown[]) =>
   );
 
 export const syncSourceLounges = (user: User) =>
-  call<{ imported: number; skipped: number }>("sync-source-lounges", user, {});
+  call<{
+    imported: number;
+    skipped: number;
+    deactivated: number;
+    stationsImported: number;
+    stationsSkipped: number;
+    stationsDeactivated: number;
+    loungeSourcePath: string;
+    stationSourcePath: string;
+  }>("sync-source-lounges", user, {});
 
 export const createVisitor = (user: User, visitor: unknown) =>
   call<{ id: string; lateScan: boolean }>("create-visitor", user, { visitor });
+
+export const manageVisitor = (user: User, payload: Record<string, unknown>) =>
+  call<{ id: string; status: string }>("manage-visitor", user, payload);
+
+export const importVisitorBundle = (user: User, visitors: unknown[]) =>
+  call<{
+    batchId: string;
+    imported: number;
+    needsCompletion: number;
+    duplicates: number;
+    errors: Array<{ row: number; error: string }>;
+  }>("import-visitors", user, { visitors });
+
+export const recordPortalActivity = (
+  user: User,
+  payload: Record<string, unknown>,
+) => call<{ id: string; status: string }>("manage-activity", user, payload);
+
+export const manageRoomBooking = (
+  user: User,
+  payload: Record<string, unknown>,
+) =>
+  call<{
+    id?: string;
+    ids?: string[];
+    status?: string;
+    bookings?: Array<Record<string, unknown>>;
+  }>(
+    "manage-room-booking",
+    user,
+    payload,
+  );
+
+export const manageRoomOperation = (
+  user: User,
+  payload: Record<string, unknown>,
+) =>
+  call<{ id: string; status: string; roomId?: string; replayed?: boolean }>(
+    "manage-room-operation",
+    user,
+    payload,
+  );
+
+export const manageDisplayContent = (
+  user: User,
+  payload: Record<string, unknown>,
+) =>
+  call<{ id: string; status: string }>("manage-display-content", user, payload);
+
+export const manageDisplayDevice = (
+  user: User,
+  payload: Record<string, unknown>,
+) =>
+  call<{
+    id?: string;
+    deviceId?: string;
+    code?: string;
+    status: string;
+    expiresAt?: string;
+    sessionId?: string;
+    deviceIds?: string[];
+    devices?: Array<{
+      deviceId: string;
+      status: string;
+      answerSdp?: string;
+    }>;
+  }>("manage-display-device", user, payload);
+
+export const displayPlayerRequest = (payload: Record<string, unknown>) =>
+  call<Record<string, unknown>>("display-player", null, payload);
+
+export const manageDisplayPilot = (
+  user: User,
+  payload: Record<string, unknown>,
+) =>
+  call<{ id: string; status: string }>("manage-display-pilot", user, payload);
+
+export const manageNotification = (
+  user: User,
+  payload: Record<string, unknown>,
+) => call<{ id: string; status: string }>("manage-notification", user, payload);

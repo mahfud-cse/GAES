@@ -9,7 +9,9 @@ import {
   useState,
 } from "react";
 import type { IScannerControls } from "@zxing/browser";
+import * as XLSX from "xlsx";
 import Link from "next/link";
+import FacilityOperations from "./facility-operations";
 import {
   browserLocalPersistence,
   EmailAuthProvider,
@@ -29,6 +31,10 @@ import {
   createVisitor,
   deleteManagedUser,
   importManagedUsers,
+  importVisitorBundle,
+  manageNotification,
+  manageVisitor,
+  recordPortalActivity,
   requestPasswordReset,
   resetManagedUserPassword,
   resolveUsername,
@@ -46,6 +52,8 @@ import {
 import { uploadEvidence } from "../lib/firebase/evidence";
 import { parseBoardingPass } from "../lib/boarding-pass";
 import {
+  deduplicateLounges,
+  isSynchronizedRecord,
   isoDate,
   normalizeAccount,
   normalizeAirline,
@@ -53,6 +61,7 @@ import {
   normalizeFlight,
   normalizeLounge,
   normalizeMonitoring,
+  normalizePassengerVolume,
   normalizeStation,
   normalizeVisitor,
   numberValue as normalizedNumber,
@@ -67,6 +76,7 @@ type MainTab =
   | "access"
   | "reconciliation"
   | "flights"
+  | "facility"
   | "master";
 type InlineNotice = { kind: "ok" | "warn" | "error"; text: string };
 type Visitor = {
@@ -78,15 +88,21 @@ type Visitor = {
   name: string;
   flight: string;
   route: string;
+  finalDestination?: string;
   cabin: string;
   seat: string;
   seq: string;
   ticket: string;
-  eligible: "Y" | "N";
+  eligible: "Y" | "N" | "";
   category: string;
   reference: string;
   currency: string;
   price: number;
+  loungeId?: string;
+  agreementId?: string;
+  pricePeriodId?: string;
+  priceSource?: "SYNC" | "MANUAL";
+  pricingDate?: string;
   source: string;
   boStatus: "Pending" | "Accepted" | "Rejected";
   boReason: string;
@@ -110,6 +126,19 @@ type Visitor = {
   evidenceType?: "Boarding Pass" | "Membership Card" | "Other";
   evidenceUploadedAt?: string;
   reportRevision?: number;
+  importBatchId?: string;
+  importStatus?: "Needs Data Completion" | "Ready for Verification" | "";
+  missingFields?: string[];
+  membership?: string;
+  notes?: string;
+  firstName?: string;
+  lastName?: string;
+  confirmationNumber?: string;
+  sourceIssuingConfirmation?: string;
+  accessGrantedBy?: string;
+  ffpAirlineCode?: string;
+  guestName?: string;
+  paymentId?: string;
 };
 type CustomColumn = {
   id: string;
@@ -282,6 +311,328 @@ const builderSeed: BuilderItem[] = [
 ];
 
 const interfaceTranslations: Record<string, string> = {
+  "Semua Periode": "All Periods",
+  "Fasilitas & Operasional Ruangan": "Facility & Room Operations",
+  Ringkasan: "Overview",
+  "Ringkasan Penggunaan": "Usage Overview",
+  "Siap digunakan": "Ready to use",
+  "Dalam operasional": "In operation",
+  "Perlu perhatian": "Need attention",
+  "menunggu persetujuan": "pending approval",
+  "Belum ada perangkat. Tambahkan inventaris perangkat atau lakukan enrollment pada tahap integrasi player.":
+    "There are no devices yet. Add device inventory or complete enrollment during the player integration phase.",
+  "Tersedia setelah command service aktif":
+    "Available after the command service is active",
+  "Kalender Pemesanan": "Booking Calendar",
+  "Pemesanan Baru": "New Booking",
+  "Booking yang diajukan langsung mengunci waktu room termasuk preparation dan cleaning buffer.":
+    "Requested booking immediately locks the room time including preparation and cleaning buffers.",
+  Hari: "Day",
+  Minggu: "Week",
+  Bulan: "Month",
+  Daftar: "List",
+  "Hari Ini": "Today",
+  "Semua Ruangan": "All Rooms",
+  "Booking Baru": "New Room Booking",
+  "Ubah Draft Booking": "Edit Draft Booking",
+  "Pilih room": "Select room",
+  "Judul Booking": "Booking Title",
+  Tujuan: "Purpose",
+  Penyelenggara: "Organizer",
+  Kontak: "Contact",
+  Peserta: "Attendees",
+  "Waktu Mulai": "Start Time",
+  "Waktu Selesai": "End Time",
+  "Buffer Persiapan": "Preparation Buffer",
+  "Buffer Pembersihan": "Cleaning Buffer",
+  Pengulangan: "Recurrence",
+  "Jumlah Pengulangan": "Occurrences",
+  "Referensi Visitor / Flight (opsional)":
+    "Visitor / Flight Reference (optional)",
+  Catatan: "Notes",
+  "Simpan Draft": "Save Draft",
+  "Kirim untuk Persetujuan": "Submit for Approval",
+  "Booking yang diajukan akan menahan seluruh slot waktu termasuk buffer. Sistem menolak booking yang berbenturan.":
+    "Requested booking will reserve all time slots including buffers. The system rejects conflicting bookings.",
+  Sebelumnya: "Previous period",
+  Berikutnya: "Next period",
+  "Kesiapan ruangan, fondasi pemesanan, serta monitoring TV dan digital signage sesuai scope akun.":
+    "Room readiness, booking foundation, and TV and digital signage monitoring based on account scope.",
+  "Pemesanan Ruangan": "Room Booking",
+  "Operasional Ruangan": "Room Operations",
+  "Master & Konfigurasi": "Master & Configuration",
+  "Log Aktivitas": "Activity Log",
+  "Denah Lounge": "Lounge Layout",
+  "Denah Lounge & Peta Layanan": "Lounge Layout & Service Map",
+  "Kelola denah interaktif, foto area, layanan, status, dan tautan publik per lounge.":
+    "Manage interactive maps, area photos, services, status, and public links for each lounge.",
+  "Denah Lounge Baru": "New Lounge Layout",
+  Editor: "Editor",
+  "Pratinjau Penumpang": "Passenger Preview",
+  "Daftar Denah": "Layout Directory",
+  "Akses Penumpang": "Passenger Access",
+  "Peta Arah Publik": "Public Wayfinding",
+  "Buka Tampilan Penumpang": "Open Passenger View",
+  "Salin Tautan Penumpang": "Copy Passenger Link",
+  "Lokasi QR": "QR Location",
+  "Pintu masuk lounge umum": "General lounge entrance",
+  "Edit Denah": "Edit Layout",
+  "Hapus Denah": "Delete Layout",
+  "Nama Denah": "Layout Title",
+  "Lantai / Zona": "Floor / Zone",
+  "Status Publikasi": "Publication Status",
+  "URL Gambar Denah": "Layout Image URL",
+  "Upload Gambar Denah": "Upload Layout Image",
+  "Simpan Denah": "Save Layout",
+  "Area Interaktif": "Interactive Area",
+  "Tambah Area": "Add Area",
+  "Edit Area": "Edit Area",
+  "Nama Area": "Area Name",
+  "Status Publik": "Public Status",
+  "Visibilitas Penumpang": "Passenger Visibility",
+  "Layanan (pisahkan dengan koma)": "Services (separate with commas)",
+  "Foto Area": "Area Photos",
+  "Simpan Area": "Save Area",
+  "Hapus Area": "Delete Area",
+  "Kontrol Grup": "Group Control",
+  "Kontrol Jarak Jauh Grup": "Group Remote Control",
+  "Kirim ke Grup": "Send to Group",
+  "Ambil Foto / Upload Gambar Barcode": "Capture Photo / Upload Barcode Image",
+  "Nyalakan Lampu": "Turn On Light",
+  "Matikan Lampu": "Turn Off Light",
+  "Final Destination": "Final Destination",
+  "Total Ruangan": "Total Room",
+  Tersedia: "Available",
+  Digunakan: "Occupied",
+  "Pembersihan / Pemeliharaan": "Cleaning / Maintenance",
+  "Layar Online": "Display Online",
+  "Booking Hari Ini": "Today's Booking",
+  "Pada seluruh room yang terlihat": "Across visible rooms",
+  "Status Ruangan Saat Ini": "Current Room Status",
+  "Daftar fasilitas belum diisi": "Facility list has not been provided",
+  "Belum ada tayangan": "No content is playing",
+  "Belum ada display device yang terdaftar.":
+    "No display device has been registered.",
+  "Belum ada ruangan pada station ini. Tambahkan melalui Master & Konfigurasi.":
+    "There are no rooms at this station. Add one through Master & Configuration.",
+  "Pusat Kontrol Perangkat": "Device Control Center",
+  "Monitoring Layar": "Display Monitoring",
+  "Monitoring tersedia sekarang. Remote command diaktifkan setelah command service dan player tervalidasi.":
+    "Monitoring is available now. Remote commands will be enabled after the command service and player are validated.",
+  "Tambah Inventaris Perangkat": "Add Device Inventory",
+  "Nama Perangkat": "Device Name",
+  Lokasi: "Location",
+  "Sedang Ditayangkan": "Now Playing",
+  "Teks Berjalan": "Running Text",
+  "Heartbeat Terakhir": "Last Heartbeat",
+  Setujui: "Approve",
+  "Minta Screenshot": "Request Screenshot",
+  "Inventaris Ruangan & Perangkat": "Room & Device Inventory",
+  "Konfigurasi Master": "Master Configuration",
+  "Perubahan konfigurasi dibatasi untuk administrator HO yang berwenang.":
+    "Configuration changes are limited to authorized HO administrators.",
+  "Tambah Ruangan": "Add Room",
+  "Tambah Perangkat": "Add Device",
+  Ruangan: "Room",
+  "Station / Area": "Station / Area",
+  Kapasitas: "Capacity",
+  Fasilitas: "Facilities",
+  "Status Operasional": "Operational State",
+  "Nama Ruangan": "Room Name",
+  "Area / Lokasi": "Area / Location",
+  "Tipe Ruangan": "Room Type",
+  "Fasilitas (dipisahkan koma)": "Facilities (comma separated)",
+  "Simpan Ruangan": "Save Room",
+  "Perangkat Display": "Display Device",
+  "Ruangan Terpetakan": "Mapped Room",
+  Koneksi: "Connection",
+  Persetujuan: "Approval",
+  "Belum dipetakan": "Not mapped",
+  "Simpan Perangkat": "Save Device",
+  "Panduan Pendaftaran Perangkat": "Device Registration Guide",
+  "Lengkapi inventory, setujui, lalu hubungkan player menggunakan kode sekali pakai.":
+    "Complete the inventory, approve it, then connect the player using a one-time code.",
+  "Tambah dan simpan perangkat": "Add and save device",
+  "Setujui inventory perangkat": "Approve device inventory",
+  "Buat kode enrollment": "Generate enrollment code",
+  "Buka Player pada perangkat": "Open Player on device",
+  "Masukkan kode dalam 10 menit": "Enter code within 10 minutes",
+  "Pastikan status Online": "Confirm Online status",
+  "Buka Player": "Open Player",
+  "Setelah inventory disimpan": "After saving the inventory",
+  "Buka TV & Digital Signage lalu pilih Monitor.":
+    "Open TV & Digital Signage and select Monitor.",
+  "Jika status masih Pending, klik Setujui.":
+    "If the status is still Pending, select Approve.",
+  "Klik Daftarkan Player lalu Buat Kode.":
+    "Select Enroll Player and then Generate Code.",
+  "Buka /player pada perangkat tujuan dan masukkan kode dalam 10 menit.":
+    "Open /player on the target device and enter the code within 10 minutes.",
+  "Perangkat berhasil terdaftar ketika status berubah menjadi Enrolled dan Online.":
+    "The device is registered when its status changes to Enrolled and Online.",
+  "Kontrol Operasional": "Operational Control",
+  "Check-in, check-out, cleaning turnaround, maintenance, dan insiden dalam satu alur kerja.":
+    "Check-in, check-out, cleaning turnaround, maintenance, and incidents in one workflow.",
+  "Laporkan Insiden": "Report Incident",
+  "Mulai Pemeliharaan": "Start Maintenance",
+  Disetujui: "Approved",
+  "Insiden Terbuka": "Open Incident",
+  "Eksekusi Booking": "Booking Execution",
+  "Operasional Aktif": "Active Operations",
+  Jadwal: "Schedule",
+  Booking: "Booking",
+  "Kesiapan / Serah Terima": "Readiness / Handover",
+  "Menunggu kesiapan": "Awaiting readiness",
+  "Pindah Ruangan": "Move Room",
+  "Tidak Hadir": "No Show",
+  "Belum ada booking aktif pada scope ini.":
+    "There are no active bookings in this scope.",
+  Perputaran: "Turnaround",
+  "Antrean Pembersihan": "Cleaning Queue",
+  "Penyelesaian Pembersihan": "Cleaning Completion",
+  "Menunggu penyelesaian pembersihan": "Waiting for cleaning completion",
+  Selesai: "Complete",
+  "Tidak ada ruangan dalam antrean pembersihan.":
+    "There are no rooms in the cleaning queue.",
+  "Ketersediaan Ruangan": "Room Availability",
+  "Pemeliharaan Aktif": "Open Maintenance",
+  "Tidak ada pemeliharaan aktif.": "There is no active maintenance.",
+  "Kontrol Masalah": "Issue Control",
+  "Insiden Aktif": "Open Incidents",
+  "Dilaporkan oleh": "Reported by",
+  "Tidak ada insiden terbuka.": "There are no open incidents.",
+  "Jejak Audit": "Audit Trail",
+  "Log Aktivitas Ruangan": "Room Activity Log",
+  "Riwayat operasional dibuat oleh backend dan tidak dapat diedit dari browser.":
+    "Operational history is created by the backend and cannot be edited from the browser.",
+  Cari: "Search",
+  "Aksi, operator, ruangan, booking": "Action, operator, room, booking",
+  Operator: "Operator",
+  Detail: "Detail",
+  "Belum ada log aktivitas pada scope ini.":
+    "There are no activity logs in this scope.",
+  "Check-in Ruangan": "Room Check-in",
+  "Check-out & Serah Terima Ruangan": "Room Check-out & Handover",
+  "Konfirmasi Check-in": "Confirm Check-in",
+  "Konfirmasi Check-out": "Confirm Check-out",
+  "Tandai Ruangan Tersedia": "Mark Room Available",
+  "Pindahkan Booking": "Move Booking",
+  "Kirim Insiden": "Submit Incident",
+  "Daftar Periksa Kesiapan": "Readiness Checklist",
+  "Ruangan bersih dan siap": "Room clean and ready",
+  "Peralatan AV / meeting siap": "AV / meeting equipment ready",
+  "Amenitas lengkap": "Amenities complete",
+  "Pemeriksaan keselamatan selesai": "Safety check completed",
+  "TV / display siap": "TV / display ready",
+  "Catatan Kesiapan": "Readiness Note",
+  "Alasan Override Supervisor": "Supervisor Override Reason",
+  "Wajib bila checklist belum seluruhnya ready atau check-in di luar operational window":
+    "Required if the checklist is incomplete or check-in is outside the operational window",
+  "Serah Terima Kepada": "Handover To",
+  "Ringkasan Masalah": "Issue Summary",
+  "Catatan Serah Terima": "Handover Note",
+  "Ruangan sudah dibersihkan": "Room has been cleaned",
+  "Amenitas sudah dilengkapi kembali": "Amenities have been replenished",
+  "Pemeriksaan kerusakan sudah selesai": "Damage check has been completed",
+  "Catatan Pembersihan": "Cleaning Note",
+  "Ruangan Tujuan": "Target Room",
+  "Pilih ruangan tujuan": "Select target room",
+  "Alasan Perpindahan": "Movement Reason",
+  "Alasan Pemeliharaan": "Maintenance Reason",
+  Keparahan: "Severity",
+  Deskripsi: "Description",
+  "Sedang diproses...": "Processing...",
+  "Pengelolaan Konten & Jadwal": "Content & Schedule Management",
+  "Kelola jadwal tayangan, player terhubung, running text, dan remote command per perangkat.":
+    "Manage scheduled playback, connected players, running text, and remote commands per device.",
+  "Siapkan konten, susun channel, dan jadwalkan penayangan per perangkat. Remote command aktif pada tahap integrasi player.":
+    "Prepare content, arrange channels, and schedule playback per device. Remote commands are activated during player integration.",
+  Monitor: "Monitor",
+  "Daftar Jadwal": "Schedules",
+  Channel: "Channels",
+  "Pustaka Konten": "Content Library",
+  "Tambah Konten": "Add Content",
+  "Channel Baru": "New Channel",
+  "Jadwal Baru": "New Schedule",
+  "Program Penayangan": "Program Grid",
+  "Jadwal Layar": "Display Schedules",
+  aktif: "active",
+  "Tanggal & Waktu": "Date & Time",
+  Perangkat: "Devices",
+  Overlay: "Overlay",
+  "Belum ada jadwal pada scope ini.": "There are no schedules in this scope.",
+  "Penyusun Playlist": "Playlist Builder",
+  konten: "content",
+  "Tidak ada deskripsi": "No description",
+  "Konten tidak tersedia": "Content unavailable",
+  "Belum ada channel. Tambahkan konten terlebih dahulu lalu susun urutannya dalam channel.":
+    "There are no channels. Add content first, then arrange it in a channel.",
+  "Sumber Media": "Media Source",
+  "Sumber berkelanjutan": "Continuous source",
+  "Belum ada konten. Tambahkan Live TV, video, image, atau web URL.":
+    "There is no content. Add Live TV, video, image, or a web URL.",
+  "Judul Konten": "Content Title",
+  "Jenis Konten": "Content Type",
+  Scope: "Scope",
+  "Durasi (detik)": "Duration (seconds)",
+  "URL Sumber": "Source URL",
+  "Upload Media (opsional)": "Upload Media (optional)",
+  "Judul Jadwal": "Schedule Title",
+  Prioritas: "Priority",
+  "Tanggal Selesai": "End Date",
+  "Hari Operasi": "Operating Days",
+  "Perangkat Tujuan": "Target Devices",
+  "Aktifkan running text terjadwal": "Enable scheduled running text",
+  "Informasi boarding, final call, atau pesan lounge":
+    "Boarding information, final call, or lounge message",
+  "Nama Channel": "Channel Name",
+  "Konten Channel": "Channel Content",
+  "Urutan Penayangan": "Playback Order",
+  "Pilih channel": "Select channel",
+  "Daftarkan Player": "Enroll Player",
+  "Kontrol Jarak Jauh": "Remote Control",
+  "Belum Terdaftar": "Not Enrolled",
+  "Perintah Terakhir": "Last Command",
+  "Putar Channel Sekarang": "Play Channel Now",
+  "Atur Running Text": "Set Running Text",
+  "Hapus Running Text": "Clear Running Text",
+  "Jeda Layar": "Pause Screen",
+  "Lanjutkan Layar": "Resume Screen",
+  "Muat Ulang Player": "Refresh Player",
+  "Durasi Override": "Override Duration",
+  "Kirim Perintah": "Send Command",
+  "Buat Kode": "Generate Code",
+  "Kode Sudah Dibuat": "Code Generated",
+  "Pendaftaran Aman": "Secure enrollment",
+  "Kemampuan Browser Player": "Browser player capability",
+  "Pilot & Peluncuran": "Pilot & Rollout",
+  "Pilot UAT & Kesiapan Peluncuran": "Pilot UAT & Rollout Readiness",
+  "Setiap perangkat wajib menyelesaikan seluruh pemeriksaan wajib sebelum dapat disertifikasi Siap Operasional.":
+    "Each device must complete every required check before it can be certified Ready for Operations.",
+  Sehat: "Healthy",
+  Menurun: "Degraded",
+  Offline: "Offline",
+  "Siap Operasional": "Ready for Operations",
+  Pengujian: "Testing",
+  "pemeriksaan wajib lulus": "required checks passed",
+  Wajib: "Required",
+  Opsional: "Optional",
+  "Belum Diuji": "Not Tested",
+  Lulus: "Pass",
+  Gagal: "Fail",
+  Terblokir: "Blocked",
+  "Sertifikasi Peluncuran": "Certify Rollout",
+  "Sertifikasi peluncuran belum diberikan.":
+    "Rollout certification has not been granted.",
+  "Catat Hasil Pengujian": "Record Test Result",
+  Hasil: "Result",
+  "Bukti / Catatan Pengujian": "Evidence / Test Note",
+  "Simpan Hasil Pengujian": "Save Test Result",
+  "Mengubah hasil UAT akan mengembalikan status peluncuran menjadi Pengujian sampai seluruh pemeriksaan wajib kembali Lulus dan disertifikasi ulang.":
+    "Changing a UAT result returns rollout status to Testing until all required checks pass again and are recertified.",
+  "Belum pernah terhubung": "Never connected",
+  "Tidak ada data operasional": "No operational data",
+  "TAHAP BERIKUTNYA": "NEXT PHASE",
   "Profil Saya": "My Profile",
   Notifikasi: "Notifications",
   "Ganti Password": "Change Password",
@@ -437,41 +788,337 @@ const interfaceTranslations: Record<string, string> = {
   "LANGKAH 2–3": "STEPS 2–3",
   "dd/mm/tttt": "dd/mm/yyyy",
 };
-const interfaceIdTranslations: Record<string, string> = {
-  "Manage Table": "Kelola Tabel",
-  "Manage Report": "Kelola Laporan",
-  "Save & Confirm": "Simpan & Konfirmasi",
-  Cancel: "Batal",
-  Close: "Tutup",
-  "Add & Confirm": "Tambah & Konfirmasi",
-  "Update & Confirm": "Perbarui & Konfirmasi",
-  "Search Visitor": "Cari Visitor",
-  "Passenger Category": "Kategori Penumpang",
-  "Visitor Status": "Status Visitor",
-  "Start Date": "Tanggal Mulai",
-  "End Date": "Tanggal Akhir",
-  "All Date": "Semua Tanggal",
-  "Import Passenger List": "Impor Passenger List",
-  "Passenger List — Manual Import": "Passenger List — Impor Manual",
-  "Waiting for Lounge Response": "Menunggu Respons Lounge",
-  "No dispute data.": "Belum ada data dispute.",
-  "Total Cost": "Total Biaya",
-  "records found": "data ditemukan",
-  "Change Password": "Ganti Password",
-  "Management & Monitoring": "Manajemen & Monitoring",
-  "Executive Summary": "Ringkasan Eksekutif",
-  "Visitor Composition": "Komposisi Pengunjung",
-  "Top 10 Branch Offices": "10 Branch Office Teratas",
-  "Provider Cost Analysis": "Analisis Biaya Provider",
-  "Total Passenger": "Total Penumpang",
-  "Confirmed Lounge Visitor": "Pengunjung Lounge Terkonfirmasi",
-  "Average Cost / Visitor": "Rata-rata Biaya / Pengunjung",
-  "All Areas": "Semua Area",
-  "All BO": "Semua BO",
-  "All Providers": "Semua Provider",
-  "Passenger Volume Template": "Template Passenger Volume",
-  "Import Passenger Volume": "Impor Passenger Volume",
-};
+Object.assign(interfaceTranslations, {
+  "Memulihkan sesi...": "Restoring session...",
+  "Email atau Username": "Email or Username",
+  "Masukkan email atau username": "Enter email or username",
+  "Masukkan password": "Enter password",
+  "Lupa password?": "Forgot password?",
+  "Permintaan reset password": "Password reset request",
+  "Permintaan akan masuk ke inbox Admin dan Super Admin.":
+    "The request will be sent to the Admin and Super Admin inbox.",
+  "Pesan (opsional)": "Message (optional)",
+  "Tambahkan informasi untuk Admin": "Add information for the Admin",
+  "Email atau username wajib diisi.": "Email or username is required.",
+  "Permintaan berhasil dikirim. Admin atau Super Admin akan menindaklanjuti.":
+    "The request was sent successfully. An Admin or Super Admin will follow up.",
+  "Permintaan reset password tidak dapat dikirim.":
+    "The password reset request could not be sent.",
+  "Mengirim...": "Sending...",
+  "Kirim Permintaan": "Send Request",
+  Bantuan: "Help",
+  "Garuda Indonesia Access Entitlement Management":
+    "Garuda Indonesia Access Entitlement Management",
+  "Total Pengunjung Lounge": "Total Lounge Visitors",
+  "data visitor diterima": "accepted visitor records",
+  "Lihat data →": "View data →",
+  "Penumpang First Class": "First Class Pax",
+  "Pengunjung lounge diterima": "Accepted lounge visitors",
+  "Penumpang Business Class": "Business Class Pax",
+  "Penumpang Economy Class": "Economy Class Pax",
+  "Estimasi Biaya": "Estimated Cost",
+  "Scope terfilter": "Filtered scope",
+  "Lihat laporan →": "View report →",
+  Agregasi: "Aggregation",
+  "menyesuaikan periode terpilih.": "follows the selected period.",
+  "Belum ada data visitor pada filter ini.":
+    "No visitor data is available for this filter.",
+  "Persentase menggunakan denominator passenger volume, bukan hanya data lounge. Nilai produksi dapat berasal dari API/DCS atau impor BO.":
+    "The percentage uses passenger volume as the denominator, not lounge data alone. Production values may come from API/DCS or a BO import.",
+  "Total Visitor": "Total Visitors",
+  Kontribusi: "Contribution",
+  "Rata-rata / Hari": "Average / Day",
+  "Average Cost / Visitor": "Average Cost / Visitor",
+  "Kontribusi Biaya": "Cost Contribution",
+  "Menunggu Verifikasi": "Pending Verification",
+  "Rekonsiliasi Final": "Final Reconciliation",
+  "Dashboard membaca data operasional Firebase sesuai scope akun. Denominator First, Business, dan Economy berasal dari tab Passenger Volume dan hanya menghitung flight DEPARTED.":
+    "The dashboard reads Firebase operational data according to the account scope. First, Business, and Economy denominators come from the Passenger Volume tab and include DEPARTED flights only.",
+  "← Back to Dashboard": "← Back to Dashboard",
+  Penyedia: "Provider",
+  Tujuan: "Destination",
+  "Pilih kategori lebih dahulu agar aturan akses yang sesuai diterapkan sejak proses scan.":
+    "Select an access category first so the applicable rule is used from the start of scanning.",
+  "Kategori Akses": "Access Category",
+  "Nomor Kursi": "Seat Number",
+  "Nomor Tiket": "Ticket Number",
+  "Tidak Ada / Lainnya": "None / Other",
+  "Status Eligibility": "Eligibility Status",
+  "Isi manual bila entitlement memperbolehkan pendamping.":
+    "Enter manually when the entitlement allows a companion.",
+  "Nomor Membership": "Membership Number",
+  "Nomor membership pendamping": "Companion membership number",
+  "source eksternal disimulasikan": "external source is simulated",
+  "Verifikasi Member": "Verify Member",
+  "Agreement, validity, quota, dan rate akan diperiksa.":
+    "Agreement, validity, quota, and rate will be checked.",
+  "Validasi Partner": "Validate Partner",
+  "Name, flight, coupon status, dan riwayat redemption.":
+    "Name, flight, coupon status, and redemption history.",
+  "Validasi EMD": "Validate EMD",
+  "Pemeriksaan duplikat otomatis": "Automatic duplicate check",
+  "Scanner aktif": "Scanner active",
+  "Mendukung QR Code, PDF417, Aztec, Data Matrix, Code 128, EAN dan format barcode umum lainnya.":
+    "Supports QR Code, PDF417, Aztec, Data Matrix, Code 128, EAN, and other common barcode formats.",
+  "Visitor pada Peak Hour": "Peak-hour Visitors",
+  "Jam tersibuk": "Peak hour",
+  "Traffic tertinggi": "Peak traffic",
+  Penolakan: "Declined",
+  "Total Visitor — Filtered Rows": "Total Visitors — Filtered Rows",
+  "Confirmed / Payable Visitor": "Confirmed / Payable Visitors",
+  "Accepted sesuai filter aktif": "Accepted within the active filters",
+  "Belum ada data visitor": "No visitor data",
+  "Lakukan pengujian dari menu Lounge/Tenant Access.":
+    "Run a test from the Lounge/Tenant Access menu.",
+  "Mulai Pengujian": "Start Testing",
+  "Total Terfilter": "Filtered Total",
+  "Koreksi & Evidence": "Correction & Evidence",
+  "Terima Penolakan": "Accept Rejection",
+  "Nama penumpang / flight / lounge": "Passenger name / flight / lounge",
+  "Additional Info Cost/Price": "Additional Cost/Price Information",
+  "Status laporan saja": "Report status only",
+  "Role Anda dapat memantau status, tetapi tidak dapat menandatangani sebagai BO maupun Vendor.":
+    "Your role can monitor the status but cannot sign as either BO or Vendor.",
+  "Nama & Jabatan BO": "BO Name & Position",
+  "Approve & Sign as BO": "Approve & Sign as BO",
+  "Nama & Jabatan Vendor": "Vendor Name & Position",
+  "Approve & Sign as Vendor": "Approve & Sign as Vendor",
+  "Laporan telah disetujui BO dan Vendor. Pada produksi, periode akan dikunci dan perubahan menggunakan adjustment report.":
+    "The report has been approved by the BO and Vendor. In production, the period will be locked and changes will use an adjustment report.",
+  "Sinkronisasi Lounge & Station": "Synchronize Lounge & Station",
+  "Unggah Data": "Upload Data",
+  "+ Tambah Lounge": "+ Add Lounge",
+  "Nama Lounge / Provider": "Lounge / Provider Name",
+  "Source tidak ditemukan": "Source not found",
+  "Periode kerja sama": "Agreement period",
+  "Harga per pax": "Price per pax",
+  "Kapasitas lounge": "Lounge capacity",
+  "periode harga": "price periods",
+  "Perubahan dilakukan pada Ground Experience Portal, lalu jalankan sinkronisasi ulang.":
+    "Make changes in the Ground Experience Portal, then run synchronization again.",
+  "Sumber resmi pilihan station, authority akun, dan local time.":
+    "Official source for station selection, account authority, and local time.",
+  "Unduh Template": "Download Template",
+  "+ Tambah Station": "+ Add Station",
+  "Kode / nama station": "Station code / name",
+  "Nama Station": "Station Name",
+  Sumber: "Source",
+  "Kode IATA dua karakter untuk ekspor, tampilan, dan routing organisasi verifier.":
+    "Two-character IATA code for export, display, and verifier-organization routing.",
+  "+ Tambah Airline": "+ Add Airline",
+  "Kode / nama airline": "Airline code / name",
+  "Kode 2 Karakter": "2-Letter Code",
+  "Organisasi Verifier": "Verifier Organization",
+  "Ubah Status": "Toggle Status",
+  "+ Tambah User": "+ Add User",
+  "Nama / Username": "Name / Username",
+  "Atur Ulang Password": "Reset Password",
+  Nonaktifkan: "Deactivate",
+  "Hapus Akun": "Delete Account",
+  "Kelola Eligibility Rules": "Manage Eligibility Rules",
+  "Status Integrasi": "Integration Status",
+  "+ Tambah Produk / Agreement": "+ Add Product / Agreement",
+  "Nama produk / agreement": "Product / agreement name",
+  "Scope Rule": "Rule Scope",
+  "Sebagian BO": "Selected BOs",
+  "Satu BO / Lounge": "One BO / Lounge",
+  "Access Window sebelum STD": "Access Window before STD",
+  "SLA Verifikasi Manual (menit)": "Manual Verification SLA (minutes)",
+  "Visibilitas Evidence — BO (hari)": "Evidence Visibility — BO (days)",
+  "Visibilitas Evidence — Super Admin (hari)":
+    "Evidence Visibility — Super Admin (days)",
+  "Simpan Pengaturan": "Save Settings",
+  "Atur siapa yang dapat membuka Dashboard serta widget yang dapat dilihat setiap role.":
+    "Configure who can open the Dashboard and which widgets each role can see.",
+  "Ubah label, visibilitas, tipe field, dan urutan tanpa menghapus data inti.":
+    "Change labels, visibility, field type, and order without deleting core data.",
+  "Pilih area konfigurasi": "Choose configuration surface",
+  "Field inti": "Core field",
+  "Field khusus": "Custom field",
+  "Label Indonesia": "Indonesian label",
+  "Label Inggris": "English label",
+  "Tambah Field / Kolom Khusus": "Add Custom Field / Column",
+  "Setiap item baru wajib memiliki label ID dan EN sebelum dapat dipublikasikan.":
+    "Every new item requires both ID and EN labels before it can be published.",
+  "Area Tujuan": "Target Surface",
+  "Field wajib": "Required field",
+  "Tambahkan ke Draft": "Add to Draft",
+  "Tinjau label dan urutan → Preview → Publikasikan versi konfigurasi.":
+    "Review labels and order → Preview → Publish configuration version.",
+  "Publikasikan Versi": "Publish Version",
+  "Bahasa Indonesia": "Indonesian",
+  "Teks draft": "Draft text",
+  "Preview seluruh halaman sebelum publikasi.":
+    "Preview the entire page before publishing.",
+  "Publikasikan Perubahan Teks": "Publish Text Changes",
+  "Aktifkan bahasa Inggris hanya setelah seluruh translation key lulus review.":
+    "Enable English only after every translation key passes review.",
+  "Jika nonaktif, tombol bahasa disembunyikan untuk seluruh pengguna.":
+    "When disabled, the language button is hidden for all users.",
+  "Label lengkap": "Complete labels",
+  "Wajib diterjemahkan": "Require translation",
+  "Log Aktivitas": "Activity Log",
+  "Simulasi audit trail": "Audit trail simulation",
+  "DATA PENUMPANG PER FLIGHT": "FLIGHT-LEVEL PASSENGER DATA",
+  "Denominator Lounge Utilization per flight dan cabin class. Dashboard hanya memakai flight berstatus DEPARTED.":
+    "Lounge Utilization denominator per flight and cabin class. The dashboard uses DEPARTED flights only.",
+  "Unggah Excel/CSV": "Upload Excel/CSV",
+  "Simpan Data": "Save Data",
+  "Flight tersimpan": "Saved flights",
+  "Total pax": "Total pax",
+  "Awal Season": "Season Start",
+  "Akhir Season": "Season End",
+  "Hari Operasi 1–7": "Operating Days 1–7",
+  "Kode hari:": "Day code:",
+  "1 Senin · 2 Selasa · 3 Rabu · 4 Kamis · 5 Jumat · 6 Sabtu · 7 Minggu":
+    "1 Monday · 2 Tuesday · 3 Wednesday · 4 Thursday · 5 Friday · 6 Saturday · 7 Sunday",
+  "Tanggal Irregularity": "Irregularity Date",
+  "Jenis Irregularity": "Irregularity Type",
+  Alasan: "Reason",
+  "Alasan operasional": "Operational reason",
+  "Simpan Irregularity": "Save Irregularity",
+  "Unduh Template Flight": "Download Flight Template",
+  "Digunakan hanya ketika integrasi Passenger List/DCS belum tersedia atau sedang terganggu.":
+    "Use only when Passenger List/DCS integration is unavailable or disrupted.",
+  "Impor Passenger List": "Import Passenger List",
+  "+ Tambah Flight": "+ Add Flight",
+  "Tidak berwenang": "Not authorized",
+  "Aktivitas untuk Anda": "Activity for You",
+  "menunggu verifikasi": "awaiting verification",
+  "Tidak ada aktivitas baru.": "No new activity.",
+  "Password lama": "Current password",
+  "Password baru": "New password",
+  "Konfirmasi password baru": "Confirm new password",
+  "Koreksi dan Kirim Evidence": "Correct and Submit Evidence",
+  "MASTER STATION": "MASTER STATION",
+  "Kode IATA": "IATA Code",
+  "Nama Airline": "Airline Name",
+  "Kelola Tabel —": "Manage Table —",
+  "Field kritis untuk verifikasi": "Verification-critical fields",
+  "Geser ke atas": "Move up",
+  "Geser ke bawah": "Move down",
+  "Contoh: Flight & DOT": "Example: Flight & DOT",
+  "Pilih data…": "Select data…",
+  "Pilih fungsi…": "Select function…",
+  "Gunakan field yang tersedia dan operator aman. Fungsi: CONCAT, SQRT/akar kuadrat, ABS, ROUND, MIN, MAX, dan POWER.":
+    "Use available fields and safe operators. Functions: CONCAT, SQRT, ABS, ROUND, MIN, MAX, and POWER.",
+  "Gunakan:": "Use:",
+  "kolom dipilih · hanya confirmed visitor":
+    "columns selected · confirmed visitors only",
+  "Urutan tampilan": "Display order",
+  "Ubah Label": "Edit Label",
+  "Kelola Role & Permission": "Manage Role & Permission",
+  "Hanya Super Admin yang dapat mengubah authority.":
+    "Only Super Admin can change authority.",
+  "Simpan Versi Permission": "Save Permission Version",
+  "Sinkronisasi terakhir:": "Last sync:",
+  "Pemilik data:": "Data owner:",
+  "Pemilik teknis:": "Technical owner:",
+  "Konfigurasi produksi diselesaikan oleh Tim IT.":
+    "Production setup is completed by Tim IT.",
+  "Admin dapat memublikasikan aturan eligibility operasional tanpa persetujuan Super Admin.":
+    "Admin may publish operational eligibility rules without Super Admin approval.",
+  "Produk/Tier": "Product/Tier",
+  "Data Referensi": "Reference Data",
+  Versi: "Version",
+  "Uji Rule": "Test Rule",
+  "Publikasikan Versi Baru": "Publish New Version",
+  "Pastikan target dan dampak tindakan sudah benar.":
+    "Ensure the action target and impact are correct.",
+  Konfirmasi: "Confirm",
+  "Password Baru / Sementara": "New / Temporary Password",
+  "Minimal 8 karakter": "Minimum 8 characters",
+  "Password Sementara": "Temporary Password",
+  "Organisasi / Unit": "Organization / Unit",
+  "Program, airline, kategori": "Program, airline, category",
+  "Produk / Agreement": "Product / Agreement",
+  Tipe: "Type",
+  "Nama Produk / Agreement": "Product / Agreement Name",
+  "Referensi / Ketentuan": "Reference / Terms",
+  "Tier / Produk Eligible": "Eligible Tier / Product",
+  "Mulai Berlaku": "Effective Start",
+  "Berakhir Berlaku": "Effective End",
+  "Scope Station / Lounge": "Station / Lounge Scope",
+  "Aturan Harga": "Price Rule",
+  "Aturan Pendamping": "Companion Rule",
+  "Field Referensi API": "API Reference Fields",
+  "Role yang dapat menggunakan": "Authorized roles",
+  Mitra: "Partner",
+  "Nama Lounge/Tenant": "Lounge/Tenant Name",
+  "Mata Uang": "Currency",
+  "Harga per Pax": "Price per Pax",
+  "Tanggal Mulai": "Start Date",
+  "Tanggal Berakhir": "End Date",
+  "Kapasitas Lounge (Pax)": "Lounge Capacity (Pax)",
+  "Kapasitas Berlaku Mulai": "Capacity Effective From",
+  "Periode Harga": "Price Periods",
+  "Harga dapat memiliki beberapa periode. Dashboard menggunakan harga yang berlaku pada Date of Travel visitor.":
+    "Prices may have multiple periods. The dashboard uses the price effective on the visitor's Date of Travel.",
+  "Hapus Periode": "Delete Period",
+  "+ Tambah Periode Harga": "+ Add Price Period",
+  "AKSES DITOLAK": "ACCESS DENIED",
+  "Coba Scan Lagi": "Scan Again",
+  "PERBARUI DATA": "UPDATE DATA",
+  Tolak: "Reject",
+  "View only sesuai role": "View only according to role",
+  "Belum ada visitor untuk diverifikasi.": "No visitors to verify.",
+  "Cari Visitor": "Search Visitor",
+  "Tanggal Akhir": "End Date",
+  "Semua Tanggal": "All Date",
+  "Passenger List — Impor Manual": "Passenger List — Manual Import",
+  "Manajemen & Monitoring": "Management & Monitoring",
+  "Ringkasan Eksekutif": "Executive Summary",
+  "Komposisi Pengunjung": "Visitor Composition",
+  "10 Branch Office Teratas": "Top 10 Branch Offices",
+  "Analisis Biaya Provider": "Provider Cost Analysis",
+  "Total Penumpang": "Total Passenger",
+  "Pengunjung Lounge Terkonfirmasi": "Confirmed Lounge Visitor",
+  "Semua Area": "All Areas",
+  "Semua Provider": "All Providers",
+  "Template Passenger Volume": "Passenger Volume Template",
+  "Impor Passenger Volume": "Import Passenger Volume",
+  "Eligibility tidak diisi petugas. Sistem menghitung otomatis dari kelas kabin dan membership.":
+    "Eligibility is not entered by the officer. The system calculates it automatically from cabin class and membership.",
+  "RATA-RATA TRAFFIC PENUMPANG PER JAM": "AVERAGE PASSENGER TRAFFIC PER HOUR",
+  "Dispute & Koreksi": "Dispute & Correction",
+  "Data yang ditolak verifier dikembalikan kepada Lounge Officer. Tombol koreksi hanya muncul untuk data yang memerlukan respons Lounge sesuai scope akun.":
+    "Data rejected by a verifier is returned to the Lounge Officer. The correction button appears only for records that require a Lounge response within the account scope.",
+  "BO mengirim permintaan; Admin menyetujui atau menolak dengan alasan audit dan revisi laporan.":
+    "BO submits a request; Admin approves or rejects with an audit reason and report revision.",
+  "sesuai seluruh filter laporan": "within all report filters",
+  "VENDOR / PENGELOLA LOUNGE": "VENDOR / LOUNGE OPERATOR",
+  "Data Portal Sync bersifat read-only dan diperbarui melalui sinkronisasi. Data Manual Entry dapat ditambah, diperbarui, dan dihapus oleh Super Admin/Admin. Harga yang diterapkan pada transaksi visitor dikunci berdasarkan DOT sehingga perubahan agreement tidak mengubah transaksi historis.":
+    "Portal Sync data is read-only and updated through synchronization. Manual Entry data can be added, updated, and deleted by a Super Admin/Admin. The visitor transaction price is locked by DOT so agreement changes do not alter historical transactions.",
+  "Operating Airline Code diambil tepat dari dua karakter alfanumerik pertama sebelum nomor flight. Master digunakan untuk memvalidasi kode dan mengarahkan verifikasi partner; master tidak diperlukan hanya untuk memisahkan ORG/DEST.":
+    "Operating Airline Code is derived from exactly the first two alphanumeric characters immediately before the numeric flight number. The master is used to validate the code and route partner verification; it is not required merely to split ORG/DEST.",
+  "Field inti dan khusus disembunyikan atau diarsipkan, bukan dihapus. Perubahan disimpan sebagai konfigurasi tampilan agar relasi operasional, formula, API mapping, laporan, dan data audit tetap tersedia.":
+    "Core and custom fields are hidden or archived instead of deleted. Changes are saved as display configuration so operational relationships, formulas, API mapping, reports, and audit data remain available.",
+  "Menu & Pengelola Tabel": "Menu & Table Manager",
+  "Editor Halaman & Teks": "Page & Text Editor",
+  "Kelola label dan deskripsi pendek. Teks operasional tetap melalui draft, preview, dan publish.":
+    "Manage labels and short descriptions. Operational text continues through draft, preview, and publish.",
+  "Buat Jadwal Seasonal": "Generate Seasonal Schedule",
+  "Super Admin, Admin/HO, dan BO dapat upload atau menambah flight. Lounge Officer dapat menambah flight operasional station-nya, tetapi perubahan ETD/status tetap dibatasi kepada Admin/HO/BO.":
+    "Super Admin, Admin/HO, and BO users can upload or add flights. Lounge Officers can add operational flights for their station, but ETD/status changes remain restricted to Admin/HO/BO users.",
+  "INBOX & NOTIFIKASI": "INBOX & NOTIFICATIONS",
+  "DISPUTE & KOREKSI": "DISPUTE & CORRECTION",
+  "KONFIGURASI LAPORAN REKONSILIASI": "RECONCILIATION REPORT CONFIGURATION",
+  "Primary key, relationship key, authority scope, status verifikasi, dan field audit dilindungi. Kolom tampilan dapat ditampilkan, disembunyikan, atau diurutkan ulang tanpa menghapus source data.":
+    "Primary key, relationship keys, authority scope, verification status, and audit fields are protected. Display columns may be shown, hidden, or reordered without deleting source data.",
+  "KONFIGURASI AUTHORITY": "AUTHORITY CONFIGURATION",
+  "KESIAPAN INTEGRASI IT": "IT INTEGRATION READINESS",
+  "Secret dan endpoint URL ditempatkan pada server-side environment variable. Frontend memanggil common connector contract dan tidak boleh menyimpan credential perusahaan.":
+    "Secrets and endpoint URLs belong in server-side environment variables. The frontend calls a common connector contract; it must never store corporate credentials.",
+  "BUSINESS RULE BERVERSI": "VERSIONED BUSINESS RULE",
+  "ALL — Seluruh Station": "ALL — All Stations",
+  "Minta Akses Exceptional": "Request Exceptional Access",
+  "Berikan Akses Provisional": "Grant Provisional Access",
+  "Visitor Lounge/Tenant": "Lounge/Tenant Visitor",
+});
+
+const interfaceIdTranslations: Record<string, string> = Object.fromEntries(
+  Object.entries(interfaceTranslations).map(([id, en]) => [en, id]),
+);
 type ReportColumnKey =
   | "dot"
   | "accessTime"
@@ -499,6 +1146,12 @@ type LoungePricePeriod = {
   price: number;
   start: string;
   end: string;
+  agreementId?: string;
+  agreementType?: string;
+  documentNumber?: string;
+  status?: string;
+  sourceRecordId?: string;
+  sourceStatus?: "ACTIVE" | "SOURCE_NOT_FOUND";
 };
 type LoungeCapacityHistory = {
   id: string;
@@ -520,6 +1173,14 @@ type Lounge = {
   capacityEffectiveFrom?: string;
   capacityHistory?: LoungeCapacityHistory[];
   pricePeriods?: LoungePricePeriod[];
+  dataOrigin?: "SYNC" | "MANUAL";
+  readOnly?: boolean;
+  sourceProject?: string;
+  sourceRecordId?: string;
+  sourcePath?: string;
+  sourceIdentityKey?: string;
+  sourceStatus?: "ACTIVE" | "SOURCE_NOT_FOUND";
+  lastSyncedAt?: string;
 };
 type FlightStatus =
   "Scheduled" | "Delayed" | "Rescheduled" | "Postponed" | "Cancelled";
@@ -561,6 +1222,17 @@ type Account = {
   status: "Aktif" | "Nonaktif";
   mustChangePassword?: boolean;
 };
+
+function roleCanUseFacility(role: Account["role"]) {
+  return [
+    "Super Admin",
+    "Admin",
+    "HO Admin",
+    "BO Admin",
+    "Lounge Officer",
+    "Lounge Manager",
+  ].includes(role);
+}
 type PortalNotification = {
   id: string;
   userId: string;
@@ -568,14 +1240,181 @@ type PortalNotification = {
   title: string;
   text: string;
   targetUid?: string;
+  targetId?: string;
   active: boolean;
 };
+type PortalAuditLog = {
+  id: string;
+  action?: string;
+  actorName?: string;
+  actorId?: string;
+  station?: string;
+  targetId?: string;
+  notificationType?: string;
+  module?: string;
+  result?: string;
+  actorRole?: string;
+  actorUsername?: string;
+  actorEmail?: string;
+  actorOrganization?: string;
+  scope?: string;
+  loungeName?: string;
+  targetName?: string;
+  targetType?: string;
+  detail?: string;
+  reasonCode?: string;
+  deviceId?: string;
+  roomId?: string;
+  bookingId?: string;
+  outputGroupId?: string;
+  createdAt?: unknown;
+};
+
+function portalActivityTime(value: unknown) {
+  if (!value) return "—";
+  const timestamp = value as { toDate?: () => Date; seconds?: number };
+  const date =
+    typeof timestamp.toDate === "function"
+      ? timestamp.toDate()
+      : typeof timestamp.seconds === "number"
+        ? new Date(timestamp.seconds * 1000)
+        : new Date(String(value));
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleString("id-ID", {
+        dateStyle: "short",
+        timeStyle: "short",
+      });
+}
+
+function portalActivityMillis(value: unknown) {
+  if (!value) return 0;
+  const timestamp = value as { toDate?: () => Date; seconds?: number };
+  const date =
+    typeof timestamp.toDate === "function"
+      ? timestamp.toDate()
+      : typeof timestamp.seconds === "number"
+        ? new Date(timestamp.seconds * 1000)
+        : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+const portalActivityLabels: Record<string, string> = {
+  CREATE_VISITOR: "Menambahkan visitor",
+  IMPORT_VISITOR: "Mengimpor visitor",
+  IMPORT_VISITOR_BUNDLE: "Mengunggah visitor bundle",
+  UPDATE_VISITOR: "Memperbarui data visitor",
+  DELETE_VISITOR: "Menghapus visitor",
+  ACCEPT_VISITOR: "Menerima visitor",
+  REJECT_VISITOR: "Menolak visitor",
+  ACCEPT_VISITOR_REJECTION: "Menerima hasil penolakan visitor",
+  LOUNGE_ACCESS_DENIED: "Menolak akses lounge",
+  LOUNGE_ACCESS_GRANTED: "Menyetujui akses lounge",
+  EXCEPTIONAL_ACCESS_REQUESTED: "Mengajukan exceptional access",
+  EXCEPTIONAL_ACCESS_GRANTED: "Memberikan provisional access",
+  NOTIFICATION_OPENED: "Membuka notifikasi",
+  CREATE_USER: "Membuat akun pengguna",
+  UPDATE_USER: "Memperbarui akun pengguna",
+  DEACTIVATE_USER: "Menonaktifkan akun pengguna",
+  DELETE_USER: "Menghapus akun pengguna",
+  RESET_USER_PASSWORD: "Mereset password pengguna",
+  ROOM_CONFIG_SAVED: "Menyimpan konfigurasi ruangan",
+  FLIGHT_DATA_SAVED: "Menyimpan data penerbangan",
+  MASTER_DATA_SAVED: "Menyimpan master data",
+  CREATE_ROOM_BOOKING: "Membuat pemesanan ruangan",
+  UPDATE_ROOM_BOOKING_DRAFT: "Memperbarui draft pemesanan",
+  UPDATE_SUBMITTED_ROOM_BOOKING: "Memperbarui pemesanan yang diajukan",
+  SUBMIT_ROOM_BOOKING: "Mengajukan pemesanan ruangan",
+  APPROVE_ROOM_BOOKING: "Menyetujui pemesanan ruangan",
+  REJECT_ROOM_BOOKING: "Menolak pemesanan ruangan",
+  CANCEL_ROOM_BOOKING: "Membatalkan pemesanan ruangan",
+  ROOM_CHECK_IN: "Check-in ruangan",
+  ROOM_CHECK_OUT: "Check-out ruangan",
+  ROOM_CLEANING_COMPLETED: "Menyelesaikan pembersihan ruangan",
+  ROOM_BOOKING_NO_SHOW: "Menandai booking no-show",
+  ROOM_MOVED: "Memindahkan ruangan",
+  ROOM_MAINTENANCE_STARTED: "Memulai maintenance ruangan",
+  ROOM_MAINTENANCE_COMPLETED: "Menyelesaikan maintenance ruangan",
+  ROOM_INCIDENT_REPORTED: "Melaporkan insiden ruangan",
+  DISPLAY_ENROLLMENT_CREATED: "Membuat enrollment display",
+  DISPLAY_ENROLLMENT_REVOKED: "Mencabut enrollment display",
+  DISPLAY_DEVICE_DELETED: "Menghapus display device",
+  DISPLAY_ANNOUNCEMENT_CREATED: "Menayangkan announcement",
+  DISPLAY_ANNOUNCEMENT_STOPPED: "Menghentikan announcement",
+  DISPLAY_SHARE_STARTED: "Memulai screen share",
+  DISPLAY_SHARE_STOPPED: "Menghentikan screen share",
+};
+
+function readableActivity(value: unknown = "ACTIVITY") {
+  const action = normalizedText(value, "ACTIVITY").toUpperCase();
+  if (portalActivityLabels[action]) return portalActivityLabels[action];
+  if (action.startsWith("DISPLAY_COMMAND_"))
+    return `Mengirim perintah display: ${action.replace("DISPLAY_COMMAND_", "").replaceAll("_", " ").toLowerCase()}`;
+  if (action.startsWith("DISPLAY_PLAYER_"))
+    return `Perubahan status display: ${action.replace("DISPLAY_PLAYER_", "").replaceAll("_", " ").toLowerCase()}`;
+  return action.replaceAll("_", " ").toLowerCase().replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function normalizePortalNotification(row: Record<string, unknown>) {
+  const id = normalizedText(row.id);
+  const userId = normalizedText(row.userId);
+  if (!id || !userId) return null;
+  return {
+    id,
+    userId,
+    type: normalizedText(row.type, "INFO").toUpperCase(),
+    title: normalizedText(row.title, "Informasi"),
+    text: normalizedText(row.text, "Silakan buka halaman terkait untuk melihat detail."),
+    targetUid: normalizedText(row.targetUid) || undefined,
+    targetId: normalizedText(row.targetId) || undefined,
+    active: row.active !== false,
+  } satisfies PortalNotification;
+}
+
+function normalizePortalAuditLog(row: Record<string, unknown>) {
+  const id = normalizedText(row.id);
+  if (!id) return null;
+  const optionalText = (value: unknown) => normalizedText(value) || undefined;
+  return {
+    id,
+    action: normalizedText(row.action, "ACTIVITY").toUpperCase(),
+    actorName: optionalText(row.actorName),
+    actorId: optionalText(row.actorId),
+    station: optionalText(row.station),
+    targetId: optionalText(row.targetId),
+    notificationType: optionalText(row.notificationType),
+    module: optionalText(row.module),
+    result: optionalText(row.result),
+    actorRole: optionalText(row.actorRole),
+    actorUsername: optionalText(row.actorUsername),
+    actorEmail: optionalText(row.actorEmail),
+    actorOrganization: optionalText(row.actorOrganization),
+    scope: optionalText(row.scope),
+    loungeName: optionalText(row.loungeName),
+    targetName: optionalText(row.targetName),
+    targetType: optionalText(row.targetType),
+    detail: optionalText(row.detail),
+    reasonCode: optionalText(row.reasonCode),
+    deviceId: optionalText(row.deviceId),
+    roomId: optionalText(row.roomId),
+    bookingId: optionalText(row.bookingId),
+    outputGroupId: optionalText(row.outputGroupId),
+    createdAt: row.createdAt,
+  } satisfies PortalAuditLog;
+}
 type Station = {
   code: string;
   name: string;
   timeZone: string;
   utcLabel: string;
   status: "Aktif" | "Nonaktif";
+  dataOrigin?: "SYNC" | "MANUAL";
+  readOnly?: boolean;
+  sourceProject?: string;
+  sourceRecordId?: string;
+  sourcePath?: string;
+  sourceStatus?: "ACTIVE" | "SOURCE_NOT_FOUND";
+  lastSyncedAt?: string;
 };
 type Partnership = {
   id: string;
@@ -669,6 +1508,31 @@ type MonitoringRow = {
   other: number;
   unitPrice: number;
   source: "API/DCS" | "BO Import" | "Manual" | "Sample";
+};
+type PassengerVolume = {
+  id: string;
+  flightDate: string;
+  period: string;
+  flight: string;
+  station: string;
+  origin: string;
+  destination: string;
+  time: string;
+  gate: string;
+  location: string;
+  status: string;
+  aircraft: string;
+  capacityF: number;
+  capacityC: number;
+  capacityY: number;
+  passengerF: number;
+  passengerC: number;
+  passengerY: number;
+  totalPassengers: number;
+  source: string;
+  sourceFile: string;
+  uploadedBy: string;
+  uploadedAt: string;
 };
 
 const partnershipSeed: Partnership[] = [
@@ -1298,6 +2162,45 @@ function sortData<T>(
     return sort.direction === "asc" ? result : -result;
   });
 }
+
+type LoungeValidity =
+  | "Valid"
+  | "Expiring Soon"
+  | "Expired"
+  | "Not Yet Valid"
+  | "Invalid Data";
+
+function loungeValidity(lounge: Pick<Lounge, "start" | "end">, today = localDate()): LoungeValidity {
+  if (!lounge.start || !lounge.end || lounge.end < lounge.start)
+    return "Invalid Data";
+  if (today < lounge.start) return "Not Yet Valid";
+  if (today > lounge.end) return "Expired";
+  const days = Math.ceil(
+    (new Date(`${lounge.end}T23:59:59`).getTime() -
+      new Date(`${today}T00:00:00`).getTime()) /
+      86400000,
+  );
+  return days <= 90 ? "Expiring Soon" : "Valid";
+}
+
+function cabinCounts(value: unknown) {
+  const result = { F: 0, C: 0, Y: 0 };
+  const source = String(value ?? "").toUpperCase();
+  for (const match of source.matchAll(/(\d+(?:[.,]\d+)?)\s*(F|C|Y)\b/g)) {
+    result[match[2] as keyof typeof result] = Math.max(
+      0,
+      normalizedNumber(match[1]),
+    );
+  }
+  return result;
+}
+
+function importDate(value: unknown) {
+  if (value instanceof Date) return isoDate(value);
+  if (typeof value === "number" && value > 20000) return isoDate(value);
+  const raw = String(value ?? "").trim();
+  return /\d{4}/.test(raw) ? isoDate(raw) : "";
+}
 function nextSort(current: SortState, key: string): SortState {
   return {
     key,
@@ -1312,6 +2215,19 @@ const localDate = (timeZone = "Asia/Jakarta") =>
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
+
+function loungeCapacityForDate(lounge: Lounge, date: string) {
+  const history = (lounge.capacityHistory || [])
+    .filter(
+      (item) =>
+        item.capacity >= 0 &&
+        item.effectiveFrom &&
+        item.effectiveFrom <= date,
+    )
+    .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
+  return history[0]?.capacity ?? lounge.capacity ?? 0;
+}
+
 function localClock(timeZone: string, language: "ID" | "EN") {
   return new Intl.DateTimeFormat(language === "EN" ? "en-GB" : "id-ID", {
     timeZone,
@@ -1505,6 +2421,32 @@ function flightOperatorCode(flightNumber: string) {
       .match(/^([A-Z0-9]{2})(?=\s*\d)/)?.[1] || ""
   );
 }
+function splitPassengerName(value: string) {
+  const parts = value.trim().replace(/\s+/g, " ").split(" ").filter(Boolean);
+  if (parts.length < 2) return { firstName: parts[0] || "", lastName: "" };
+  return {
+    firstName: parts.slice(0, -1).join(" "),
+    lastName: parts.at(-1) || "",
+  };
+}
+function visitorCell(
+  row: Record<string, unknown>,
+  ...aliases: string[]
+) {
+  const normalizedEntries = new Map(
+    Object.entries(row).map(([key, value]) => [
+      key.toLowerCase().replace(/[^a-z0-9]/g, ""),
+      value,
+    ]),
+  );
+  for (const alias of aliases) {
+    const value = normalizedEntries.get(
+      alias.toLowerCase().replace(/[^a-z0-9]/g, ""),
+    );
+    if (value != null && String(value).trim()) return value;
+  }
+  return "";
+}
 async function imageDataUrl(path: string) {
   const blob = await fetch(path).then((r) => r.blob());
   return await new Promise<string>((resolve, reject) => {
@@ -1532,6 +2474,11 @@ export default function Home() {
     [lounges, setLounges] = useState<Lounge[]>([]),
     [visitors, setVisitors] = useState<Visitor[]>([]),
     [flights, setFlights] = useState<Flight[]>([]);
+  const [facilityRoute, setFacilityRoute] = useState<{
+    tab: "Room Booking" | "TV & Digital Signage";
+    targetId?: string;
+    nonce: number;
+  } | null>(null);
   const [reconTab, setReconTab] = useState("Visitor List"),
     [flightTab, setFlightTab] = useState("Daily Flight"),
     [masterTab, setMasterTab] = useState("Master Lounge/Tenant");
@@ -1578,12 +2525,22 @@ export default function Home() {
     [portalNotifications, setPortalNotifications] = useState<
       PortalNotification[]
     >([]),
+    [portalAuditLogs, setPortalAuditLogs] = useState<PortalAuditLog[]>([]),
+    [roomAuditLogs, setRoomAuditLogs] = useState<PortalAuditLog[]>([]),
+    [displayAuditLogs, setDisplayAuditLogs] = useState<PortalAuditLog[]>([]),
     [partnerships, setPartnerships] = useState<Partnership[]>([]),
     [airlines, setAirlines] = useState<Airline[]>([]),
     [stations, setStations] = useState<Station[]>([]),
     [masterQuery, setMasterQuery] = useState(""),
     [masterSelect, setMasterSelect] = useState("Semua"),
     [masterSelect2, setMasterSelect2] = useState("Semua");
+  const [visitorImportPreview, setVisitorImportPreview] = useState<
+      Array<Record<string, unknown>>
+    >([]),
+    [visitorImportFileName, setVisitorImportFileName] = useState(""),
+    [visitorImportNotice, setVisitorImportNotice] =
+      useState<InlineNotice | null>(null),
+    [visitorImportSaving, setVisitorImportSaving] = useState(false);
   const [roleProfiles, setRoleProfiles] =
       useState<RoleProfile[]>(roleProfileSeed),
     [integrations] = useState<IntegrationStatus[]>(integrationSeed),
@@ -1615,12 +2572,20 @@ export default function Home() {
     >(["Super Admin", "Admin", "HO Admin", "Report Viewer"]),
     [languageFeatureEnabled, setLanguageFeatureEnabled] = useState(true),
     [monitoringRows, setMonitoringRows] = useState<MonitoringRow[]>([]),
-    [dashboardPeriod, setDashboardPeriod] = useState("2026-08"),
+    [passengerVolumes, setPassengerVolumes] = useState<PassengerVolume[]>([]),
+    [passengerVolumePreview, setPassengerVolumePreview] = useState<
+      PassengerVolume[]
+    >([]),
+    [passengerVolumeFileName, setPassengerVolumeFileName] = useState(""),
+    [dashboardPeriod, setDashboardPeriod] = useState("All Periods"),
+    [operationalYear, setOperationalYear] = useState(
+      String(new Date().getFullYear()),
+    ),
     [dashboardArea, setDashboardArea] = useState("All Areas"),
     [dashboardBo, setDashboardBo] = useState("All BO"),
     [dashboardProvider, setDashboardProvider] = useState("All Providers"),
     [dashboardDetail, setDashboardDetail] = useState<
-      "Business Pax" | "Economy Pax"
+      "First Pax" | "Business Pax" | "Economy Pax"
     >("Business Pax"),
     [dashboardImportNotice, setDashboardImportNotice] =
       useState<InlineNotice | null>(null);
@@ -1643,6 +2608,18 @@ export default function Home() {
     [disputeSort, setDisputeSort] = useState<SortState>({
       key: "name",
       direction: "asc",
+    }),
+    [loungeSort, setLoungeSort] = useState<SortState>({
+      key: "name",
+      direction: "asc",
+    }),
+    [stationSort, setStationSort] = useState<SortState>({
+      key: "code",
+      direction: "asc",
+    }),
+    [airlineSort, setAirlineSort] = useState<SortState>({
+      key: "code",
+      direction: "asc",
     });
   const [flightNotice, setFlightNotice] = useState<InlineNotice | null>(null),
     [passengerImportNotice, setPassengerImportNotice] = useState(""),
@@ -1662,6 +2639,7 @@ export default function Home() {
     name: "",
     flight: "",
     route: "",
+    finalDestination: "",
     cabin: "",
     seat: "",
     seq: "",
@@ -1693,6 +2671,8 @@ export default function Home() {
     [reference, setReference] = useState(""),
     [notice, setNotice] = useState<{ kind: string; text: string } | null>(null),
     [camera, setCamera] = useState(false),
+    [cameraTorch, setCameraTorch] = useState(false),
+    [cameraZoom, setCameraZoom] = useState(1),
     [scanner, setScanner] = useState(false),
     [manualMode, setManualMode] = useState(false),
     [manualMember, setManualMember] = useState("Tidak Ada / Lainnya");
@@ -1702,6 +2682,7 @@ export default function Home() {
   const [showLoungeForm, setShowLoungeForm] = useState(false),
     [editingLounge, setEditingLounge] = useState<string | null>(null),
     [loungeNotice, setLoungeNotice] = useState<InlineNotice | null>(null),
+    [loungeTypeFilter, setLoungeTypeFilter] = useState("Semua"),
     [loungeDraft, setLoungeDraft] = useState<Omit<Lounge, "id">>({
       airport: "",
       name: "",
@@ -1816,10 +2797,7 @@ export default function Home() {
     [actionDialog, setActionDialog] = useState<null | {
       kind: "ok" | "error" | "warn";
       text: string;
-    }>(null),
-    [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(
-      new Set(),
-    );
+    }>(null);
   const [language, setLanguage] = useState<"ID" | "EN">("ID"),
     [showProfileMenu, setShowProfileMenu] = useState(false),
     [showManageTable, setShowManageTable] = useState(false),
@@ -1871,9 +2849,14 @@ export default function Home() {
     scanLock = useRef(false),
     buffer = useRef(""),
     keyTime = useRef(0),
-    translatedNodesRef = useRef(new WeakMap<Text, string>()),
+    translatedNodesRef = useRef(
+      new WeakMap<Text, { original: string; rendered: string }>(),
+    ),
     translatedAttributesRef = useRef(
-      new WeakMap<Element, Record<string, string>>(),
+      new WeakMap<
+        Element,
+        Record<string, { original: string; rendered: string }>
+      >(),
     ),
     profileMenuRef = useRef<HTMLDivElement>(null);
 
@@ -1885,6 +2868,7 @@ export default function Home() {
       const dictionary =
         language === "EN" ? interfaceTranslations : interfaceIdTranslations;
       if (dictionary[value]) return dictionary[value];
+      if (Object.values(dictionary).includes(value)) return value;
       return Object.entries(dictionary)
         .sort(([a], [b]) => b.length - a.length)
         .reduce(
@@ -1898,14 +2882,21 @@ export default function Home() {
       while (node) {
         const parent = node.parentElement;
         if (parent && !["SCRIPT", "STYLE"].includes(parent.tagName)) {
-          const original = translatedNodes.get(node) ?? node.data;
-          translatedNodes.set(node, original);
+          const current = node.data;
+          const previous = translatedNodes.get(node);
+          const original =
+            !previous ||
+            (current !== previous.original && current !== previous.rendered)
+              ? current
+              : previous.original;
           const trimmed = original.trim();
           const translated = translateValue(trimmed);
-          node.data =
+          const rendered =
             translated !== trimmed
               ? original.replace(trimmed, translated)
               : original;
+          if (current !== rendered) node.data = rendered;
+          translatedNodes.set(node, { original, rendered });
         }
         node = walker.nextNode() as Text | null;
       }
@@ -1915,18 +2906,29 @@ export default function Home() {
           const stored = translatedAttributes.get(element) ?? {};
           ["placeholder", "aria-label", "title"].forEach((attribute) => {
             const current = element.getAttribute(attribute);
-            if (current != null && stored[attribute] == null)
-              stored[attribute] = current;
-            const original = stored[attribute];
-            if (original != null)
-              element.setAttribute(attribute, translateValue(original));
+            if (current == null) return;
+            const previous = stored[attribute];
+            const original =
+              !previous ||
+              (current !== previous.original && current !== previous.rendered)
+                ? current
+                : previous.original;
+            const rendered = translateValue(original);
+            if (current !== rendered) element.setAttribute(attribute, rendered);
+            stored[attribute] = { original, rendered };
           });
           translatedAttributes.set(element, stored);
         });
     };
     translate(document.body);
     const observer = new MutationObserver(() => translate(document.body));
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["placeholder", "aria-label", "title"],
+      characterData: true,
+      childList: true,
+      subtree: true,
+    });
     return () => observer.disconnect();
   }, [language]);
   useEffect(() => {
@@ -1949,8 +2951,18 @@ export default function Home() {
         const account = {
           id: user.uid,
           password: "",
-          status: "Aktif",
-          ...data,
+          username: normalizedText(data.username, user.email || user.uid).toLowerCase(),
+          name: normalizedText(data.name, user.displayName || user.email || "User"),
+          email: normalizedText(data.email, user.email || ""),
+          role: normalizedText(data.role, "Report Viewer") as Account["role"],
+          station: normalizedText(data.station, "ALL").toUpperCase(),
+          scope: normalizedText(data.scope, "Configured authority"),
+          organization: normalizedText(data.organization),
+          verificationScopes: Array.isArray(data.verificationScopes)
+            ? data.verificationScopes.map((value) => normalizedText(value)).filter(Boolean)
+            : [],
+          status: "Aktif" as const,
+          mustChangePassword: data.mustChangePassword === true,
         } as Account;
         setCurrentAccount(account);
         setRole(account.role);
@@ -1961,6 +2973,7 @@ export default function Home() {
           "access",
           "reconciliation",
           ...(account.role !== "Lounge Officer" ? ["flights" as MainTab] : []),
+          ...(roleCanUseFacility(account.role) ? ["facility" as MainTab] : []),
           ...([
             "Super Admin",
             "Admin",
@@ -2015,23 +3028,6 @@ export default function Home() {
     syncLocation();
   }, [currentAccount, tab, masterTab, reconTab, flightTab]);
   useEffect(() => {
-    if (!firebaseUser) {
-      setReadNotificationIds(new Set());
-      return;
-    }
-    try {
-      const saved = JSON.parse(
-        localStorage.getItem(`gaes-read-notifications-${firebaseUser.uid}`) ||
-          "[]",
-      );
-      setReadNotificationIds(
-        new Set(Array.isArray(saved) ? saved.map(String) : []),
-      );
-    } catch {
-      setReadNotificationIds(new Set());
-    }
-  }, [firebaseUser]);
-  useEffect(() => {
     const restoreLocation = () => {
       const params = new URLSearchParams(window.location.search);
       const requested = params.get("view") as MainTab | null;
@@ -2043,6 +3039,7 @@ export default function Home() {
           "access",
           "reconciliation",
           "flights",
+          "facility",
           "master",
         ].includes(requested)
       )
@@ -2079,8 +3076,19 @@ export default function Home() {
       ),
       subscribeCollection<unknown>(
         "lounges",
-        (rows) =>
-          setLounges(normalizeRows<Lounge>(rows, normalizeLounge) as Lounge[]),
+        (rows) => {
+          const normalized = normalizeRows<Lounge>(
+            rows,
+            normalizeLounge,
+          ) as Lounge[];
+          setLounges(
+            deduplicateLounges(
+              normalized as Array<
+                NonNullable<ReturnType<typeof normalizeLounge>>
+              >,
+            ) as Lounge[],
+          );
+        },
         undefined,
         subscriptionError,
       ),
@@ -2102,12 +3110,55 @@ export default function Home() {
             subscriptionError,
           )
         : () => undefined,
-      subscribeUserNotifications<PortalNotification>(
+      subscribeUserNotifications<Record<string, unknown>>(
         firebaseUser.uid,
         (rows) =>
-          setPortalNotifications(rows.filter((item) => item.active !== false)),
+          setPortalNotifications(
+            rows
+              .map(normalizePortalNotification)
+              .flatMap((item) => (item?.active ? [item] : [])) as PortalNotification[],
+          ),
         subscriptionError,
       ),
+      currentAccount && ["Super Admin", "Admin"].includes(currentAccount.role)
+        ? subscribeCollection<Record<string, unknown>>(
+            "auditLogs",
+            (rows) =>
+              setPortalAuditLogs(
+                rows
+                  .map(normalizePortalAuditLog)
+                  .flatMap((item) => (item ? [item] : [])) as PortalAuditLog[],
+              ),
+            undefined,
+            subscriptionError,
+          )
+        : () => undefined,
+      currentAccount && ["Super Admin", "Admin"].includes(currentAccount.role)
+        ? subscribeCollection<Record<string, unknown>>(
+            "roomActivityLogs",
+            (rows) =>
+              setRoomAuditLogs(
+                rows
+                  .map(normalizePortalAuditLog)
+                  .flatMap((item) => (item ? [item] : [])) as PortalAuditLog[],
+              ),
+            undefined,
+            subscriptionError,
+          )
+        : () => undefined,
+      currentAccount && ["Super Admin", "Admin"].includes(currentAccount.role)
+        ? subscribeCollection<Record<string, unknown>>(
+            "displayActivityLogs",
+            (rows) =>
+              setDisplayAuditLogs(
+                rows
+                  .map(normalizePortalAuditLog)
+                  .flatMap((item) => (item ? [item] : [])) as PortalAuditLog[],
+              ),
+            undefined,
+            subscriptionError,
+          )
+        : () => undefined,
       subscribeCollection<unknown>(
         "stations",
         (rows) =>
@@ -2150,17 +3201,55 @@ export default function Home() {
         undefined,
         subscriptionError,
       ),
+      subscribeCollection<unknown>(
+        "passengerVolumes",
+        (rows) =>
+          setPassengerVolumes(
+            normalizeRows<PassengerVolume>(
+              rows,
+              normalizePassengerVolume,
+            ) as PassengerVolume[],
+          ),
+        undefined,
+        subscriptionError,
+      ),
       subscribeCollection<Record<string, unknown>>(
         "portalConfiguration",
         (rows) => {
           const dashboard = rows.find((item) => item.id === "dashboard");
           if (!dashboard) return;
-          if (Array.isArray(dashboard.allowedRoles))
-            setDashboardAllowedRoles(
-              dashboard.allowedRoles as Account["role"][],
+          if (Array.isArray(dashboard.allowedRoles)) {
+            const allowedRoles = dashboard.allowedRoles
+              .map((value) => normalizedText(value))
+              .filter(Boolean) as Account["role"][];
+            if (allowedRoles.length) setDashboardAllowedRoles(allowedRoles);
+          }
+          if (Array.isArray(dashboard.widgets)) {
+            const configured = new Map(
+              dashboard.widgets
+                .filter(
+                  (value): value is Record<string, unknown> =>
+                    Boolean(value) && typeof value === "object" && !Array.isArray(value),
+                )
+                .map((value) => [normalizedText(value.id), value]),
             );
-          if (Array.isArray(dashboard.widgets))
-            setDashboardWidgets(dashboard.widgets as DashboardWidget[]);
+            setDashboardWidgets(
+              dashboardWidgetSeed.map((fallback) => {
+                const value = configured.get(fallback.id);
+                if (!value) return fallback;
+                const roles = Array.isArray(value.roles)
+                  ? value.roles.map((role) => normalizedText(role)).filter(Boolean)
+                  : fallback.roles;
+                return {
+                  ...fallback,
+                  titleId: normalizedText(value.titleId, fallback.titleId),
+                  titleEn: normalizedText(value.titleEn, fallback.titleEn),
+                  visible: value.visible !== false,
+                  roles: roles.length ? (roles as Account["role"][]) : fallback.roles,
+                };
+              }),
+            );
+          }
         },
         undefined,
         subscriptionError,
@@ -2219,7 +3308,15 @@ export default function Home() {
       "HO Ancillary Verifier",
     ].includes(role),
     canManageMaster = role === "Super Admin" || role === "Admin",
+    canManageSubmittedVisitor = [
+      "Super Admin",
+      "Admin",
+      "BO Admin",
+      "Lounge Manager",
+    ].includes(role),
+    canUploadVisitorBundle = ["Super Admin", "Admin", "Lounge Manager"].includes(role),
     canSeeDashboard = dashboardAllowedRoles.includes(role),
+    canSeeFacility = roleCanUseFacility(role),
     canDeleteFlight = (f: Flight) =>
       isGlobalAdmin || (role === "BO Admin" && f.origin === station),
     canBOVerify = [
@@ -2267,28 +3364,11 @@ export default function Home() {
     setDeleteRequest({ title, message, action });
   }
 
-  function markNotificationRead(id: string) {
-    setReadNotificationIds((current) => {
-      const next = new Set(current).add(id);
-      if (firebaseUser) {
-        localStorage.setItem(
-          `gaes-read-notifications-${firebaseUser.uid}`,
-          JSON.stringify([...next]),
-        );
-      }
-      return next;
-    });
-  }
-
   async function markPortalNotificationRead(item: PortalNotification) {
     setPortalNotifications((rows) => rows.filter((row) => row.id !== item.id));
     try {
-      await saveRecord("notifications", {
-        id: item.id,
-        userId: item.userId,
-        active: false,
-        readAt: new Date().toISOString(),
-      });
+      if (!firebaseUser) throw new Error("Sesi Firebase tidak aktif.");
+      await manageNotification(firebaseUser, { action: "read", id: item.id });
     } catch (error) {
       setPortalNotifications((rows) => [item, ...rows]);
       setActionDialog({
@@ -2343,104 +3423,187 @@ export default function Home() {
 
   function downloadPassengerVolumeTemplate() {
     const headers = [
-      "Period",
-      "Area",
-      "BO",
-      "Station",
-      "Provider",
-      "Business Pax",
-      "Economy Pax",
-      "Business Lounge",
-      "Platinum",
-      "Elite Plus",
-      "SkyTeam",
-      "Partnership",
-      "DPR",
-      "Paid Access",
-      "Other",
-      "Unit Price",
-      "Source",
+      "Date",
+      "From",
+      "Flight",
+      "To",
+      "Time",
+      "Gate",
+      "Location",
+      "Flight Status",
+      "Aircraft",
+      "Capacity",
+      "F Class",
+      "C Class",
+      "Y Class",
     ];
     const sample = [
-      "2026-08",
-      "West Indonesia",
+      localDate(),
       "CGK",
-      "CGK",
-      "Garuda Indonesia Executive Lounge T3",
-      "12500",
-      "88500",
-      "7380",
-      "2140",
-      "1270",
-      "680",
-      "420",
-      "95",
-      "315",
-      "140",
-      "102800",
-      "BO Import",
+      "GA204",
+      "JOG",
+      "08:30 ATD",
+      "12",
+      "G38",
+      "DEPARTED",
+      "738",
+      "8F 26C 267Y",
+      "0F",
+      "18C",
+      "201Y",
     ];
     const body = [headers, sample]
       .map((row) => row.map((value) => `"${value}"`).join(","))
       .join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([body], { type: "text/csv" }));
-    a.download = "template-passenger-volume-dashboard.csv";
+    a.download = "template-passenger-volume-per-flight.csv";
     a.click();
     URL.revokeObjectURL(a.href);
   }
 
-  async function uploadPassengerVolume(file: File) {
+  async function previewPassengerVolumeFile(file: File) {
     try {
       if (!file.size)
         throw new Error("File kosong. Tidak ada data yang diproses.");
-      const XLSX = await import("xlsx");
-      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const wb = XLSX.read(await file.arrayBuffer(), {
+        type: "array",
+        cellDates: true,
+      });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       if (!sheet) throw new Error("Worksheet tidak ditemukan.");
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+        header: 1,
         defval: "",
+        raw: true,
       });
-      const incoming: MonitoringRow[] = [],
+      const key = (value: unknown) =>
+        String(value ?? "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, "");
+      const headerIndex = matrix.findIndex((row) => {
+        const keys = row.map(key);
+        return (
+          keys.includes("flight") &&
+          keys.includes("flightstatus") &&
+          (keys.includes("capacity") || keys.includes("booked"))
+        );
+      });
+      if (headerIndex < 0)
+        throw new Error(
+          "Header Flight, Flight Status, serta Capacity/Booked tidak ditemukan.",
+        );
+      const headers = matrix[headerIndex].map(key);
+      const column = (...names: string[]) =>
+        headers.findIndex((item) => names.includes(item));
+      const dateCol = column("date", "flightdate", "departuredate");
+      const fromCol = column("from", "origin", "station");
+      const flightCol = column("flight", "flightnumber");
+      const toCol = column("to", "destination");
+      const timeCol = column("time", "std", "atd");
+      const gateCol = column("gate");
+      const locationCol = column("location");
+      const statusCol = column("flightstatus", "status");
+      const aircraftCol = column("aircraft", "aircrafttype");
+      const capacityCol = column("capacity", "configuration");
+      const bookedCol = column("booked", "passengers", "pax");
+      const fCol = column("fclass", "firstclass", "passengerf");
+      const cCol = column("cclass", "businessclass", "passengerc");
+      const yCol = column("yclass", "economyclass", "passengery");
+      const preamble = matrix
+        .slice(0, headerIndex + 1)
+        .flat()
+        .map(String)
+        .join(" ");
+      const searchedOrigin =
+        preamble
+          .match(/Departing\s+From\s*:\s*([A-Z]{3})/i)?.[1]
+          ?.toUpperCase() || station;
+      const incoming: PassengerVolume[] = [],
         errors: string[] = [];
-      rows.forEach((row, index) => {
-        if (Object.values(row).every((value) => !normalizedText(value))) return;
-        const period = normalizedText(row.Period),
-          bo = normalizedText(row.BO).toUpperCase(),
-          stationCode = normalizedText(row.Station, bo).toUpperCase(),
-          provider = normalizedText(row.Provider);
-        const normalized = normalizeMonitoring({
-          id: `monitor-${period}-${bo}-${stationCode}-${provider.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
-          period,
-          area: row.Area,
-          bo,
+      let activeDate = "";
+      matrix.slice(headerIndex + 1).forEach((row, offset) => {
+        const rowNumber = headerIndex + offset + 2;
+        const markerDate = importDate(row[dateCol >= 0 ? dateCol : 0]);
+        if (markerDate) activeDate = markerDate;
+        const flight = normalizedText(row[flightCol])
+          .toUpperCase()
+          .replace(/\s/g, "");
+        if (!flight) return;
+        const capacity = cabinCounts(row[capacityCol]);
+        const booked = cabinCounts(row[bookedCol]);
+        const stationCode = normalizedText(
+          fromCol >= 0 ? row[fromCol] : searchedOrigin,
+          searchedOrigin,
+        ).toUpperCase();
+        const normalized = normalizePassengerVolume({
+          flightDate: markerDate || activeDate,
+          flight,
           station: stationCode,
-          provider,
-          businessPax: row["Business Pax"],
-          economyPax: row["Economy Pax"],
-          businessLounge: row["Business Lounge"],
-          platinum: row.Platinum,
-          elitePlus: row["Elite Plus"],
-          skyteam: row.SkyTeam,
-          partnership: row.Partnership,
-          dpr: row.DPR,
-          paidAccess: row["Paid Access"],
-          other: row.Other,
-          unitPrice: row["Unit Price"],
+          destination: row[toCol],
+          time: row[timeCol],
+          gate: row[gateCol],
+          location: row[locationCol],
+          status: row[statusCol],
+          aircraft: row[aircraftCol],
+          capacityF: capacity.F,
+          capacityC: capacity.C,
+          capacityY: capacity.Y,
+          passengerF:
+            fCol >= 0
+              ? cabinCounts(row[fCol]).F || normalizedNumber(row[fCol])
+              : booked.F,
+          passengerC:
+            cCol >= 0
+              ? cabinCounts(row[cCol]).C || normalizedNumber(row[cCol])
+              : booked.C,
+          passengerY:
+            yCol >= 0
+              ? cabinCounts(row[yCol]).Y || normalizedNumber(row[yCol])
+              : booked.Y,
           source: "BO Import",
+          sourceFile: file.name,
+          uploadedBy: currentAccount?.name || role,
+          uploadedAt: new Date().toISOString(),
         });
         if (!normalized || (role === "BO Admin" && stationCode !== station)) {
-          errors.push(`Baris ${index + 2}`);
+          errors.push(`Baris ${rowNumber}`);
           return;
         }
-        incoming.push(normalized as MonitoringRow);
+        incoming.push(normalized as PassengerVolume);
       });
       if (!incoming.length)
         throw new Error(
-          `Tidak ada Passenger Volume yang valid.${errors.length ? ` Periksa ${errors.join(", ")}.` : ""}`,
+          `Tidak ada Passenger Volume yang valid.${errors.length ? ` Periksa ${errors.slice(0, 10).join(", ")}.` : ""}`,
         );
-      const result = await persistRecords("monitoringRows", incoming);
-      setMonitoringRows((current) => {
+      setPassengerVolumePreview(incoming);
+      setPassengerVolumeFileName(file.name);
+      setDashboardImportNotice({
+        kind: errors.length ? "warn" : "ok",
+        text: `${incoming.length} flight siap diperiksa.${errors.length ? ` ${errors.length} baris tidak valid diabaikan.` : ""} Belum ada data yang disimpan.`,
+      });
+    } catch (error) {
+      setPassengerVolumePreview([]);
+      setPassengerVolumeFileName("");
+      setDashboardImportNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Passenger Volume tidak dapat dibaca. Gunakan template yang tersedia.",
+      });
+    }
+  }
+
+  async function savePassengerVolumePreview() {
+    if (!passengerVolumePreview.length) return;
+    try {
+      const result = await persistRecords(
+        "passengerVolumes",
+        passengerVolumePreview,
+      );
+      setPassengerVolumes((current) => {
         const next = [...current];
         result.saved.forEach((item) => {
           const existing = next.findIndex((row) => row.id === item.id);
@@ -2450,16 +3613,65 @@ export default function Home() {
         return next;
       });
       setDashboardImportNotice({
-        kind: errors.length + result.failed ? "warn" : "ok",
-        text: `${result.saved.length} Passenger Volume berhasil disimpan.${errors.length + result.failed ? ` ${errors.length + result.failed} baris gagal/diabaikan.` : ""}`,
+        kind: result.failed ? "warn" : "ok",
+        text: `${result.saved.length} flight berhasil disimpan.${result.failed ? ` ${result.failed} flight gagal disimpan.` : ""}`,
       });
+      if (!result.failed) {
+        setFlightDateFilter(result.saved[0]?.flightDate || "");
+        setPassengerVolumePreview([]);
+        setPassengerVolumeFileName("");
+      }
     } catch (error) {
       setDashboardImportNotice({
         kind: "error",
         text:
           error instanceof Error
             ? error.message
-            : "Passenger Volume tidak dapat dibaca. Gunakan template yang tersedia.",
+            : "Passenger Volume tidak dapat disimpan.",
+      });
+    }
+  }
+
+  async function syncPortalMasterData(
+    setResultNotice: (notice: InlineNotice) => void,
+  ) {
+    if (!firebaseUser) {
+      setResultNotice({
+        kind: "error",
+        text: "Sesi Firebase tidak aktif. Silakan login ulang.",
+      });
+      return;
+    }
+    try {
+      const result = await syncSourceLounges(firebaseUser);
+      const details = [
+        `${result.imported} master lounge/tenant`,
+        `${result.stationsImported} master station`,
+        result.deactivated
+          ? `${result.deactivated} lounge ditandai nonaktif`
+          : "",
+        result.stationsDeactivated
+          ? `${result.stationsDeactivated} station ditandai nonaktif`
+          : "",
+        result.skipped + result.stationsSkipped
+          ? `${result.skipped + result.stationsSkipped} data sumber tidak valid diabaikan`
+          : "",
+      ].filter(Boolean);
+      setResultNotice({
+        kind:
+          result.skipped || result.stationsSkipped || !result.stationSourcePath
+            ? "warn"
+            : "ok",
+        text: `Sinkronisasi Ground Experience Portal selesai: ${details.join(", ")}.${
+          result.stationSourcePath
+            ? ""
+            : " Collection Airport/Station belum ditemukan; atur SOURCE_FIREBASE_STATIONS_PATH bila path sumber berbeda."
+        }`,
+      });
+    } catch (error) {
+      setResultNotice({
+        kind: "error",
+        text: error instanceof Error ? error.message : "Sinkronisasi gagal.",
       });
     }
   }
@@ -2723,6 +3935,20 @@ export default function Home() {
       setPass(emptyPass);
       setNotice(null);
       setRejected({ reason, origin, detail });
+      if (firebaseUser) {
+        void recordPortalActivity(firebaseUser, {
+          action: "LOUNGE_ACCESS_DENIED",
+          module: "Lounge/Tenant Access",
+          result: "Denied",
+          station: airport,
+          loungeId,
+          loungeName: lounges.find((item) => item.id === loungeId)?.name || "",
+          targetType: "Boarding Pass",
+          targetName: `${data.name || "Passenger"} · ${data.flight || "Flight unavailable"}`,
+          reasonCode: reason.toUpperCase(),
+          detail: detail || `Access validation stopped: ${reason}.`,
+        }).catch(() => undefined);
+      }
     };
     if (data.eligible !== "Y") {
       deny(data.eligible === "N" ? "N" : "missing");
@@ -2836,6 +4062,8 @@ export default function Home() {
       stream.current = null;
       scanLock.current = false;
       setCamera(false);
+      setCameraTorch(false);
+      setCameraZoom(1);
       setScanStatus("");
       return;
     }
@@ -2864,8 +4092,9 @@ export default function Home() {
         {
           video: {
             facingMode: { ideal: "environment" },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: 1920, min: 1280 },
+            height: { ideal: 1080, min: 720 },
+            advanced: [{ focusMode: "continuous" }] as unknown as MediaTrackConstraintSet[],
           },
         },
         video.current,
@@ -2903,13 +4132,131 @@ export default function Home() {
       });
     }
   }
+
+  async function setScannerTorch(enabled: boolean) {
+    if (!controls.current?.switchTorch) {
+      setNotice({
+        kind: "warn",
+        text: "Perangkat atau browser ini tidak menyediakan kontrol lampu kamera.",
+      });
+      return;
+    }
+    try {
+      await controls.current.switchTorch(enabled);
+      setCameraTorch(enabled);
+    } catch {
+      setNotice({
+        kind: "warn",
+        text: "Lampu kamera tidak dapat diaktifkan pada perangkat ini.",
+      });
+    }
+  }
+
+  async function setScannerZoom(value: number) {
+    setCameraZoom(value);
+    try {
+      controls.current?.streamVideoConstraintsApply?.({
+        advanced: [{ zoom: value }] as unknown as MediaTrackConstraintSet[],
+      });
+    } catch {
+      // Some mobile browsers expose a zoom slider but reject the constraint.
+    }
+  }
+
+  async function scanBarcodeImage(file: File) {
+    if (!file.type.startsWith("image/")) {
+      setNotice({ kind: "error", text: "Pilih file gambar barcode atau boarding pass." });
+      return;
+    }
+    setScanStatus("Memproses gambar pada beberapa orientasi…");
+    setNotice(null);
+    try {
+      const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] =
+        await Promise.all([import("@zxing/browser"), import("@zxing/library")]);
+      const hints = new Map();
+      hints.set(DecodeHintType.TRY_HARDER, true);
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+        BarcodeFormat.QR_CODE,
+        BarcodeFormat.CODE_128,
+        BarcodeFormat.PDF_417,
+        BarcodeFormat.AZTEC,
+        BarcodeFormat.DATA_MATRIX,
+        BarcodeFormat.CODE_39,
+        BarcodeFormat.EAN_13,
+        BarcodeFormat.EAN_8,
+      ]);
+      const reader = new BrowserMultiFormatReader(hints);
+      const bitmap = await createImageBitmap(file);
+      let decoded = "";
+      for (const rotation of [0, 90, 180, 270]) {
+        const swap = rotation === 90 || rotation === 270;
+        const canvas = document.createElement("canvas");
+        canvas.width = swap ? bitmap.height : bitmap.width;
+        canvas.height = swap ? bitmap.width : bitmap.height;
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        if (!context) continue;
+        context.translate(canvas.width / 2, canvas.height / 2);
+        context.rotate((rotation * Math.PI) / 180);
+        context.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+        try {
+          decoded = reader.decodeFromCanvas(canvas).getText();
+        } catch {
+          const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+          for (let index = 0; index < pixels.data.length; index += 4) {
+            const grey =
+              pixels.data[index] * 0.299 +
+              pixels.data[index + 1] * 0.587 +
+              pixels.data[index + 2] * 0.114;
+            const contrasted = grey < 128 ? Math.max(0, grey - 28) : Math.min(255, grey + 28);
+            pixels.data[index] = contrasted;
+            pixels.data[index + 1] = contrasted;
+            pixels.data[index + 2] = contrasted;
+          }
+          context.putImageData(pixels, 0, 0);
+          try {
+            decoded = reader.decodeFromCanvas(canvas).getText();
+          } catch {
+            decoded = "";
+          }
+        }
+        if (decoded) break;
+      }
+      bitmap.close();
+      if (!decoded) throw new Error("Barcode belum dapat dikenali dari gambar ini.");
+      setScanStatus("");
+      read(decoded, "gambar boarding pass");
+    } catch (error) {
+      setScanStatus("");
+      setNotice({
+        kind: "warn",
+        text:
+          error instanceof Error
+            ? `${error.message} Ambil gambar lebih lurus, terang, dan pastikan seluruh barcode terlihat.`
+            : "Gambar barcode tidak dapat diproses.",
+      });
+    }
+  }
   async function save(e: FormEvent) {
     e.preventDefault();
     if (pass.eligible !== "Y") {
       setRejected({ reason: pass.eligible === "N" ? "N" : "missing" });
+      if (firebaseUser) {
+        void recordPortalActivity(firebaseUser, {
+          action: "LOUNGE_ACCESS_DENIED",
+          module: "Lounge/Tenant Access",
+          result: "Denied",
+          station: airport,
+          loungeId,
+          loungeName: lounges.find((item) => item.id === loungeId)?.name || "",
+          targetType: "Manual Access",
+          targetName: `${pass.name || "Passenger"} · ${pass.flight || "Flight unavailable"}`,
+          reasonCode: pass.eligible === "N" ? "N" : "MISSING_ELIGIBILITY_INDICATOR",
+          detail: "Eligibility indicator Y was not confirmed.",
+        }).catch(() => undefined);
+      }
       setActionDialog({
         kind: "error",
-        text: "Penumpang tidak eligible. Silakan coba scan ulang.",
+      text: "Indikator kelayakan akses belum memenuhi ketentuan. Pastikan boarding pass telah dipindai dengan benar atau lakukan verifikasi manual sesuai kewenangan.",
       });
       return;
     }
@@ -2917,6 +4264,7 @@ export default function Home() {
     const missing = [
       !pass.name.trim() && "Nama",
       !pass.flight.trim() && "Flight",
+      !pass.finalDestination.trim() && "Final Destination",
       !travelDate && "Date of Travel",
       !pass.seq.trim() && "Sequence",
       !airport && "Airport",
@@ -2930,6 +4278,36 @@ export default function Home() {
       return;
     }
     if (!lounge) return;
+    const applicablePricePeriods = (lounge.pricePeriods || []).filter(
+      (period) =>
+        period.status !== "Nonaktif" &&
+        period.sourceStatus !== "SOURCE_NOT_FOUND" &&
+        period.start &&
+        period.end &&
+        period.start <= travelDate &&
+        period.end >= travelDate,
+    );
+    if (applicablePricePeriods.length > 1) {
+      setNotice({
+        kind: "error",
+        text: "Terdapat lebih dari satu periode harga yang berlaku pada DOT ini. Hubungi Admin untuk menyelesaikan konflik periode harga.",
+      });
+      return;
+    }
+    const appliedPricePeriod = applicablePricePeriods[0];
+    const fallbackPriceApplies =
+      !lounge.pricePeriods?.length &&
+      Boolean(lounge.start) &&
+      Boolean(lounge.end) &&
+      lounge.start <= travelDate &&
+      lounge.end >= travelDate;
+    if (!appliedPricePeriod && !fallbackPriceApplies) {
+      setNotice({
+        kind: "error",
+        text: "Tidak ditemukan harga lounge yang berlaku pada Date of Travel ini. Data belum disimpan.",
+      });
+      return;
+    }
     if (required && !reference.trim()) {
       setNotice({
         kind: "error",
@@ -2990,6 +4368,7 @@ export default function Home() {
       name: pass.name,
       flight: pass.flight,
       route: pass.route,
+      finalDestination: pass.finalDestination,
       cabin: pass.cabin,
       seat: pass.seat,
       seq: pass.seq,
@@ -2997,8 +4376,13 @@ export default function Home() {
       eligible: "Y",
       category,
       reference: reference.trim(),
-      currency: lounge.currency,
-      price: lounge.price,
+      currency: appliedPricePeriod?.currency || lounge.currency,
+      price: appliedPricePeriod?.price ?? lounge.price,
+      loungeId: lounge.id,
+      agreementId: appliedPricePeriod?.agreementId || "",
+      pricePeriodId: appliedPricePeriod?.id || `${lounge.id}-default`,
+      priceSource: lounge.dataOrigin || "MANUAL",
+      pricingDate: travelDate,
       source: raw ? "Scan/Input" : "Manual",
       boStatus: "Pending",
       boReason: lateScan ? "Melewati STD/ETD" : "",
@@ -3119,20 +4503,35 @@ export default function Home() {
     query,
     visitorSort,
   ]);
-  const filteredLounges = lounges.filter(
-      (l) =>
-        (masterSelect === "Semua" || l.airport === masterSelect) &&
-        (masterSelect2 === "Semua" ||
-          l.type === masterSelect2 ||
-          l.status === masterSelect2) &&
-        `${l.airport} ${l.name} ${l.type} ${l.currency}`
-          .toLowerCase()
-          .includes(
-            (masterQuery === "Semua Lounge / Provider"
-              ? ""
-              : masterQuery
-            ).toLowerCase(),
-          ),
+  const filteredLounges = sortData(
+      lounges.filter(
+        (l) =>
+          (masterSelect === "Semua" || l.airport === masterSelect) &&
+          (masterSelect2 === "Semua" ||
+            loungeValidity(l) === masterSelect2) &&
+          (loungeTypeFilter === "Semua" || l.type === loungeTypeFilter) &&
+          `${l.airport} ${l.name} ${l.type} ${l.currency} ${l.status}`
+            .toLowerCase()
+            .includes(
+              (masterQuery === "Semua Lounge / Provider"
+                ? ""
+                : masterQuery
+              ).toLowerCase(),
+            ),
+      ),
+      loungeSort,
+      (l, key) =>
+        ({
+          airport: l.airport,
+          name: l.name,
+          type: l.type,
+          period: l.end,
+          validity: loungeValidity(l),
+          operational: l.status,
+          capacity: loungeCapacityForDate(l, localDate()),
+          price: l.price,
+          source: l.dataOrigin || "MANUAL",
+        })[key] || "",
     ),
     filteredAccounts = sortData(
       accounts.filter(
@@ -3164,29 +4563,26 @@ export default function Home() {
           .toLowerCase()
           .includes(masterQuery.toLowerCase()),
     ),
-    activityRows = [
-      {
-        id: "a1",
-        time: `${localDate()} 09:15`,
-        user: "Super Admin",
-        activity: "Update operational rule",
-        scope: "Semua BO",
-      },
-      {
-        id: "a2",
-        time: `${localDate()} 08:30`,
-        user: "BO Admin CGK",
-        activity: "Update ETD GA204",
-        scope: "CGK",
-      },
-      {
-        id: "a3",
-        time: `${localDate()} 08:12`,
-        user: "Lounge Officer",
-        activity: "Submit visitor",
-        scope: "CGK",
-      },
-    ],
+    activityRows = [...portalAuditLogs, ...roomAuditLogs, ...displayAuditLogs].map((entry) => {
+      const account = accounts.find((item) => item.id === entry.actorId);
+      const actorName = entry.actorName || account?.name || "System";
+      const actorRole = entry.actorRole || account?.role || "";
+      const stationScope = entry.station && entry.station !== "ALL" ? `Station ${entry.station}` : entry.scope || "All Stations";
+      const locationScope = entry.loungeName ? `${stationScope} · ${entry.loungeName}` : stationScope;
+      return {
+        id: `${entry.module || "activity"}-${entry.id}`,
+        time: portalActivityTime(entry.createdAt),
+        timeValue: portalActivityMillis(entry.createdAt),
+        user: `${actorName}${actorRole ? ` · ${actorRole}` : ""}`,
+        activity: [
+          readableActivity(entry.action),
+          entry.targetName,
+          entry.result && entry.result !== "Success" ? entry.result : "",
+          entry.reasonCode ? `Reason ${entry.reasonCode}` : "",
+        ].filter(Boolean).join(" · "),
+        scope: locationScope,
+      };
+    }),
     filteredActivity = sortData(
       activityRows.filter(
         (a) =>
@@ -3198,7 +4594,7 @@ export default function Home() {
       ),
       activitySort,
       (a, key) =>
-        ({ time: a.time, user: a.user, activity: a.activity, scope: a.scope })[
+        ({ time: a.timeValue, user: a.user, activity: a.activity, scope: a.scope })[
           key
         ] || "",
     ),
@@ -3263,25 +4659,49 @@ export default function Home() {
           visitor.lounge === dashboardProvider),
     ),
     dashboardVisitorCount = dashboardAcceptedVisitors.length,
+    dashboardPassengerVolumes = passengerVolumes.filter(
+      (row) =>
+        row.status === "DEPARTED" &&
+        (dashboardPeriod === "All Periods" || row.period === dashboardPeriod) &&
+        (dashboardBo === "All BO" || row.station === dashboardBo) &&
+        (dashboardArea === "All Areas" ||
+          monitoringRows.some(
+            (item) =>
+              item.area === dashboardArea && item.station === row.station,
+          )),
+    ),
     cabinClass = (visitor: Visitor) => {
-      const value = String(visitor.cabin || "").trim().toUpperCase();
-      if (["FIRST", "FIRST CLASS", "F", "P"].includes(value)) return "First Class";
-      if (["BUSINESS", "BUSINESS CLASS", "C", "J"].includes(value)) return "Business Class";
-      if (["ECONOMY", "ECONOMY CLASS", "Y", "M", "W"].includes(value)) return "Economy Class";
+      const value = String(visitor.cabin || "")
+        .trim()
+        .toUpperCase();
+      if (["FIRST", "FIRST CLASS", "F", "P"].includes(value))
+        return "First Class";
+      if (["BUSINESS", "BUSINESS CLASS", "C", "J"].includes(value))
+        return "Business Class";
+      if (["ECONOMY", "ECONOMY CLASS", "Y", "M", "W"].includes(value))
+        return "Economy Class";
+      if (visitor.category === "Business Class") return "Business Class";
+      if (
+        [
+          "Platinum",
+          "Elite Plus",
+          "Partner Airline / SkyTeam",
+          "Kerjasama MPA",
+          "DPR",
+          "EMD",
+          "Paid Access",
+        ].includes(visitor.category)
+      )
+        return "Economy Class";
       return "";
     },
-    loungeCapacityForDate = (lounge: Lounge, date: string) => {
-      const history = (lounge.capacityHistory || [])
-        .filter((item) => item.capacity >= 0 && item.effectiveFrom && item.effectiveFrom <= date)
-        .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
-      return history[0]?.capacity ?? lounge.capacity ?? 0;
-    },
     loungePriceForVisitor = (visitor: Visitor) => {
+      if (visitor.pricingDate || visitor.pricePeriodId || visitor.agreementId)
+        return Number(visitor.price) || 0;
       const travelDate = visitor.travelDate || visitor.date;
       const lounge = lounges.find(
         (item) =>
-          item.airport === visitor.airport &&
-          item.name === visitor.lounge,
+          item.airport === visitor.airport && item.name === visitor.lounge,
       );
       if (!lounge) return visitor.price;
       const periods = (lounge.pricePeriods || []).filter(
@@ -3292,20 +4712,42 @@ export default function Home() {
           travelDate <= period.end,
       );
       if (periods.length) {
-        const current = periods.sort((a, b) => b.start.localeCompare(a.start))[0];
+        const current = periods.sort((a, b) =>
+          b.start.localeCompare(a.start),
+        )[0];
         return current.price;
       }
-      if (lounge.start && lounge.end && travelDate >= lounge.start && travelDate <= lounge.end) {
+      if (
+        lounge.start &&
+        lounge.end &&
+        travelDate >= lounge.start &&
+        travelDate <= lounge.end
+      ) {
         return lounge.price;
       }
       return visitor.price;
     },
     dashboardTotals = {
-      firstPax: dashboardAcceptedVisitors.filter((visitor) => cabinClass(visitor) === "First Class").length,
-      businessPax: dashboardAcceptedVisitors.filter((visitor) => cabinClass(visitor) === "Business Class").length,
-      economyPax: dashboardAcceptedVisitors.filter((visitor) => cabinClass(visitor) === "Economy Class").length,
+      firstPax: dashboardPassengerVolumes.reduce(
+        (total, row) => total + row.passengerF,
+        0,
+      ),
+      businessPax: dashboardPassengerVolumes.reduce(
+        (total, row) => total + row.passengerC,
+        0,
+      ),
+      economyPax: dashboardPassengerVolumes.reduce(
+        (total, row) => total + row.passengerY,
+        0,
+      ),
+      firstLounge: dashboardAcceptedVisitors.filter(
+        (visitor) => cabinClass(visitor) === "First Class",
+      ).length,
       businessLounge: dashboardAcceptedVisitors.filter(
-        (visitor) => visitor.category === "Business Class",
+        (visitor) => cabinClass(visitor) === "Business Class",
+      ).length,
+      economyLounge: dashboardAcceptedVisitors.filter(
+        (visitor) => cabinClass(visitor) === "Economy Class",
       ).length,
       cost: dashboardAcceptedVisitors.reduce(
         (total, visitor) => total + loungePriceForVisitor(visitor),
@@ -3388,6 +4830,7 @@ export default function Home() {
     dashboardTrend = (() => {
       const rows = visitors.filter(
         (visitor) =>
+          visitor.boStatus === "Accepted" &&
           (dashboardPeriod === "All Periods" ||
             (visitor.travelDate || visitor.date).startsWith(dashboardPeriod)) &&
           (dashboardBo === "All BO" || visitor.airport === dashboardBo) &&
@@ -3451,6 +4894,7 @@ export default function Home() {
       traffic[0],
     );
   const verificationQueue = shown.filter((v) => {
+      if (v.importStatus === "Needs Data Completion") return false;
       if (role === "Super Admin" || role === "Admin") return true;
       if (role === "BO Admin")
         return ["Business Class", "VIP/CIP/VVIP"].includes(v.category);
@@ -3534,7 +4978,6 @@ export default function Home() {
     try {
       if (!file.size)
         throw new Error("File kosong. Tidak ada data yang diproses.");
-      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), {
         type: "array",
         cellDates: true,
@@ -3594,7 +5037,6 @@ export default function Home() {
   }
   async function previewPassengerList(file: File) {
     try {
-      const XLSX = await import("xlsx");
       const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
         workbook.Sheets[workbook.SheetNames[0]],
@@ -3833,11 +5275,190 @@ export default function Home() {
       });
     }
   }
+  function downloadVisitorTemplate() {
+    const headers = [
+      "Date Of Access",
+      "Time Of Access",
+      "First Name",
+      "Last Name",
+      "Confirmation Number",
+      "Source Issuing Confirmation",
+      "Access Granted By",
+      "E-Ticket Number",
+      "Operating Airline Code",
+      "Flight Number",
+      "Cabin Class",
+      "Departure Date",
+      "Flight Origin",
+      "Flight Destination",
+      "Number of Guests",
+      "FFP Airline Code",
+      "FFP Number",
+      "FFP Tier Level",
+      "Airport Code",
+      "Override Reason",
+      "Remarks",
+      "Payment Id",
+      "Guest Name",
+      "Total Passengers",
+      "Lounge/Tenant",
+      "Check-in Sequence",
+      "Seat Number",
+      "Eligibility Indicator",
+    ];
+    const example = [
+      stationDate,
+      "08:30",
+      "BUDI",
+      "SANTOSO",
+      "",
+      "Visitor Bundle Upload",
+      "",
+      "1260000000000",
+      "GA",
+      "GA204",
+      "C",
+      stationDate,
+      "CGK",
+      "JOG",
+      "0",
+      "GA",
+      "",
+      "Business Class",
+      station === "ALL" ? "CGK" : station,
+      "Y",
+      "",
+      "",
+      "",
+      "1",
+      "",
+      "037",
+      "7A",
+      "Y",
+    ];
+    const body = [headers, example]
+      .map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(","))
+      .join("\n");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([body], { type: "text/csv;charset=utf-8" }));
+    link.download = "template-upload-visitor.csv";
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+  async function prepareVisitorBundle(file: File) {
+    setVisitorImportNotice(null);
+    try {
+      if (!file.size) throw new Error("File kosong.");
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!sheet) throw new Error("Worksheet tidak ditemukan.");
+      const sourceRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+        defval: "",
+        raw: false,
+        dateNF: "yyyy-mm-dd",
+      });
+      const rows = sourceRows
+        .filter((row) => Object.values(row).some((value) => String(value || "").trim()))
+        .map((row) => {
+          const firstName = normalizedText(visitorCell(row, "First Name"));
+          const lastName = normalizedText(visitorCell(row, "Last Name"));
+          const name =
+            normalizedText(visitorCell(row, "Passenger Name", "Name")) ||
+            [firstName, lastName].filter(Boolean).join(" ");
+          const origin = normalizedText(
+            visitorCell(row, "Flight Origin", "Origin", "Origin (ORG)"),
+          ).toUpperCase();
+          const finalDestination = normalizedText(
+            visitorCell(
+              row,
+              "Flight Destination",
+              "Final Destination",
+              "Destination",
+              "Destination (DEST)",
+            ),
+          ).toUpperCase();
+          const route =
+            normalizedText(visitorCell(row, "Route")).toUpperCase() ||
+            [origin, finalDestination].filter(Boolean).join("–");
+          return {
+            travelDate: normalizedText(
+              visitorCell(row, "Departure Date", "Date of Travel", "DOT"),
+            ),
+            airport: normalizedText(
+              visitorCell(row, "Airport Code", "Airport", "Station"),
+            ).toUpperCase(),
+            lounge: normalizedText(visitorCell(row, "Lounge/Tenant", "Lounge")),
+            firstName,
+            lastName,
+            name,
+            confirmationNumber: normalizedText(
+              visitorCell(row, "Confirmation Number", "Reference Number"),
+            ),
+            sourceIssuingConfirmation: normalizedText(
+              visitorCell(row, "Source Issuing Confirmation"),
+            ),
+            accessGrantedBy: normalizedText(visitorCell(row, "Access Granted By")),
+            flight: normalizedText(visitorCell(row, "Flight Number", "Flight")).toUpperCase(),
+            route,
+            finalDestination,
+            cabin: normalizedText(visitorCell(row, "Cabin Class")).toUpperCase(),
+            seat: normalizedText(visitorCell(row, "Seat Number", "Seat")).toUpperCase(),
+            seq: normalizedText(visitorCell(row, "Check-in Sequence", "Sequence", "Seq")),
+            ticket: normalizedText(visitorCell(row, "E-Ticket Number", "Ticket Number")),
+            category: normalizedText(
+              visitorCell(row, "Access Category", "FFP Tier Level", "Category"),
+            ),
+            reference: normalizedText(
+              visitorCell(row, "FFP Number", "Reference Number", "Membership"),
+            ),
+            membership: normalizedText(visitorCell(row, "Membership", "FFP Number")),
+            ffpAirlineCode: normalizedText(visitorCell(row, "FFP Airline Code")).toUpperCase(),
+            eligible: normalizedText(visitorCell(row, "Eligibility Indicator", "Eligible")).toUpperCase(),
+            date: normalizedText(visitorCell(row, "Date Of Access", "Access Date")),
+            time: normalizedText(visitorCell(row, "Time Of Access", "Access Time")),
+            companionCount: normalizedNumber(visitorCell(row, "Number of Guests", "Companion Count")),
+            guestName: normalizedText(visitorCell(row, "Guest Name")),
+            notes: normalizedText(visitorCell(row, "Remarks", "Notes")),
+            paymentId: normalizedText(visitorCell(row, "Payment Id", "Payment ID")),
+          };
+        });
+      if (!rows.length) throw new Error("Tidak ada baris visitor pada file.");
+      if (rows.length > 150) throw new Error("Maksimal 150 visitor dalam satu upload.");
+      setVisitorImportPreview(rows);
+      setVisitorImportFileName(file.name);
+    } catch (error) {
+      setVisitorImportNotice({
+        kind: "error",
+        text: error instanceof Error ? error.message : "File visitor tidak dapat dibaca.",
+      });
+    }
+  }
+  async function confirmVisitorBundle() {
+    if (!firebaseUser || !visitorImportPreview.length) return;
+    setVisitorImportSaving(true);
+    try {
+      const result = await importVisitorBundle(firebaseUser, visitorImportPreview);
+      setVisitorImportNotice({
+        kind: result.errors.length ? "warn" : "ok",
+        text: `${result.imported} visitor berhasil diimpor; ${result.needsCompletion} perlu pelengkapan data; ${result.duplicates} duplikat dilewati${result.errors.length ? `; ${result.errors.length} baris tidak diproses` : ""}.`,
+      });
+      setVisitorImportPreview([]);
+      setVisitorImportFileName("");
+    } catch (error) {
+      setVisitorImportNotice({
+        kind: "error",
+        text: error instanceof Error ? error.message : "Visitor bundle tidak dapat diimpor.",
+      });
+    } finally {
+      setVisitorImportSaving(false);
+    }
+  }
   function csv() {
     const head = [
         "Date Of Access",
         "Time Of Access",
-        "Passenger Name",
+        "First Name",
+        "Last Name",
         "Confirmation Number",
         "Source Issuing Confirmation",
         "Access Granted By",
@@ -3846,8 +5467,8 @@ export default function Home() {
         "Flight Number",
         "Cabin Class",
         "Departure Date",
-        "Origin (ORG)",
-        "Destination (DEST)",
+        "Flight Origin",
+        "Flight Destination",
         "Number of Guests",
         "FFP Airline Code",
         "FFP Number",
@@ -3856,41 +5477,40 @@ export default function Home() {
         "Override Reason",
         "Remarks",
         "Payment Id",
-        "Guest Category",
+        "Guest Name",
         "Total Passengers",
-        "Verification Status",
-        ...customColumns.filter((c) => c.visible).map((c) => c.label),
       ],
       rows = shown.map((v) => {
         const route = splitRoute(v.route);
+        const passenger =
+          v.firstName || v.lastName
+            ? { firstName: v.firstName || "", lastName: v.lastName || "" }
+            : splitPassengerName(v.name);
         return [
           v.date,
           v.time,
-          v.name,
-          v.id,
-          v.source,
-          v.verifier || "",
+          passenger.firstName,
+          passenger.lastName,
+          v.confirmationNumber || v.id,
+          v.sourceIssuingConfirmation || v.source,
+          v.accessGrantedBy || v.verifier || "",
           v.ticket,
           flightOperatorCode(v.flight),
           v.flight,
           v.cabin,
           v.travelDate || v.date,
           route.origin,
-          route.destination,
+          v.finalDestination || route.destination,
           v.companionCount || 0,
-          v.category.includes("Partner") ? v.reference.slice(0, 2) : "",
+          v.ffpAirlineCode || (v.category.includes("Partner") ? v.reference.slice(0, 2) : ""),
           ["Platinum", "Elite Plus"].includes(v.category) ? v.reference : "",
           v.category,
           v.airport,
           v.boReason,
-          v.evidenceName || "",
-          "",
-          v.companionCategory || "",
+          v.notes || v.evidenceName || "",
+          v.paymentId || "",
+          v.guestName || "",
           1 + (v.companionCount || 0),
-          v.boStatus,
-          ...customColumns
-            .filter((c) => c.visible)
-            .map((c) => customValue(v, c)),
         ];
       });
     const body = [head, ...rows]
@@ -4144,11 +5764,136 @@ export default function Home() {
     a.click();
     URL.revokeObjectURL(a.href);
   }
+  function downloadRowsCsv(
+    filename: string,
+    headers: string[],
+    rows: Array<Array<string | number>>,
+  ) {
+    const body = [headers, ...rows]
+      .map((row) =>
+        row
+          .map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`)
+          .join(","),
+      )
+      .join("\n");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(
+      new Blob([`\uFEFF${body}`], { type: "text/csv;charset=utf-8" }),
+    );
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+  function downloadLoungeData() {
+    downloadRowsCsv(
+      `master-lounge-tenant-${stationDate}.csv`,
+      [
+        "Airport",
+        "Name",
+        "Facility Type",
+        "Operational Status",
+        "Agreement Start",
+        "Agreement End",
+        "Agreement Validity",
+        "Currency",
+        "Price per Pax",
+        "Capacity",
+        "Data Source",
+      ],
+      filteredLounges.map((row) => [
+        row.airport,
+        row.name,
+        row.type,
+        row.status,
+        row.start,
+        row.end,
+        loungeValidity(row),
+        row.currency,
+        row.price,
+        loungeCapacityForDate(row, localDate()),
+        row.dataOrigin || "MANUAL",
+      ]),
+    );
+  }
+  function downloadStationData() {
+    downloadRowsCsv(
+      `master-station-${stationDate}.csv`,
+      ["Code", "Name", "Time Zone", "UTC", "Status", "Data Source"],
+      stations.map((row) => [
+        row.code,
+        row.name,
+        row.timeZone,
+        row.utcLabel,
+        row.status,
+        row.dataOrigin || "MANUAL",
+      ]),
+    );
+  }
+  function downloadAirlineData() {
+    downloadRowsCsv(
+      `master-airline-${stationDate}.csv`,
+      ["Code", "Name", "Verifier Organization", "Status"],
+      airlines.map((row) => [
+        row.code,
+        row.name,
+        row.verifierOrganization,
+        row.status,
+      ]),
+    );
+  }
+  function downloadUserData() {
+    downloadRowsCsv(
+      `master-user-role-${stationDate}.csv`,
+      ["Name", "Username", "Email", "Role", "Station", "Scope", "Organization", "Status"],
+      filteredAccounts.map((row) => [
+        row.name,
+        row.username,
+        row.email || "",
+        row.role,
+        row.station,
+        row.scope,
+        row.organization,
+        row.status,
+      ]),
+    );
+  }
+  function downloadEntitlementData() {
+    downloadRowsCsv(
+      `master-access-entitlement-${stationDate}.csv`,
+      [
+        "Type",
+        "Name",
+        "Reference",
+        "Status",
+        "Verifier Organization",
+        "Eligible Tier",
+        "Effective Start",
+        "Effective End",
+        "Station Scope",
+        "Payer",
+        "Price Rule",
+        "Companion Rule",
+      ],
+      partnerships.map((row) => [
+        row.type,
+        row.name,
+        row.reference,
+        row.status,
+        row.verifierOrganization,
+        row.eligibleTiers,
+        row.effectiveStart,
+        row.effectiveEnd,
+        row.stationScope,
+        row.payer,
+        row.priceRule,
+        row.companionRule,
+      ]),
+    );
+  }
   async function uploadLounges(file: File) {
     try {
       if (!file.size)
         throw new Error("File kosong. Tidak ada data yang diproses.");
-      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), {
         type: "array",
         cellDates: true,
@@ -4196,6 +5941,16 @@ export default function Home() {
   }
   async function saveLounge(e: FormEvent) {
     e.preventDefault();
+    if (
+      editingLounge &&
+      lounges.find((item) => item.id === editingLounge)?.readOnly
+    ) {
+      setLoungeNotice({
+        kind: "error",
+        text: "Data hasil sinkronisasi bersifat read-only. Lakukan perubahan pada Ground Experience Portal lalu sinkronkan ulang.",
+      });
+      return;
+    }
     if (!loungeDraft.airport || !loungeDraft.name || !loungeDraft.end) {
       setLoungeNotice({
         kind: "warn",
@@ -4203,20 +5958,23 @@ export default function Home() {
       });
       return;
     }
-    const pricePeriods = (loungeDraft.pricePeriods?.length
-      ? loungeDraft.pricePeriods
-      : [{
-          id: `${editingLounge || crypto.randomUUID()}-default`,
-          currency: loungeDraft.currency,
-          price: loungeDraft.price,
-          start: loungeDraft.start,
-          end: loungeDraft.end,
-        }])
-      .map((period) => ({
-        ...period,
-        currency: (period.currency || loungeDraft.currency).toUpperCase(),
-        price: Number(period.price) || 0,
-      }));
+    const pricePeriods = (
+      loungeDraft.pricePeriods?.length
+        ? loungeDraft.pricePeriods
+        : [
+            {
+              id: `${editingLounge || crypto.randomUUID()}-default`,
+              currency: loungeDraft.currency,
+              price: loungeDraft.price,
+              start: loungeDraft.start,
+              end: loungeDraft.end,
+            },
+          ]
+    ).map((period) => ({
+      ...period,
+      currency: (period.currency || loungeDraft.currency).toUpperCase(),
+      price: Number(period.price) || 0,
+    }));
     const invalidPricePeriod = pricePeriods.some(
       (period) =>
         !period.start ||
@@ -4248,7 +6006,11 @@ export default function Home() {
     const latestCapacity = capacityHistory
       .slice()
       .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
-    if (nextCapacity > 0 && (nextCapacity !== previousCapacity || latestCapacity?.effectiveFrom !== effectiveFrom)) {
+    if (
+      nextCapacity > 0 &&
+      (nextCapacity !== previousCapacity ||
+        latestCapacity?.effectiveFrom !== effectiveFrom)
+    ) {
       capacityHistory.push({
         id: crypto.randomUUID(),
         capacity: nextCapacity,
@@ -4396,7 +6158,6 @@ export default function Home() {
     let rows: Record<string, unknown>[];
     try {
       if (!file.size) throw new Error("File kosong.");
-      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const firstSheet = wb.Sheets[wb.SheetNames[0]];
       if (!firstSheet) throw new Error("Worksheet tidak ditemukan.");
@@ -4508,7 +6269,6 @@ export default function Home() {
     try {
       if (!file.size)
         throw new Error("File kosong. Tidak ada data yang diproses.");
-      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       if (!sheet) throw new Error("Worksheet tidak ditemukan.");
@@ -4532,14 +6292,27 @@ export default function Home() {
           return item ? { ...item, id: item.code } : null;
         })
         .filter(Boolean) as Array<Station & { id: string }>;
-      if (!incoming.length)
+      const protectedCodes = new Set(
+        stations
+          .filter((item) =>
+            isSynchronizedRecord(item as unknown as Record<string, unknown>),
+          )
+          .map((item) => item.code),
+      );
+      const editableIncoming = incoming.filter(
+        (item) => !protectedCodes.has(item.code),
+      );
+      const protectedCount = incoming.length - editableIncoming.length;
+      if (!editableIncoming.length)
         throw new Error(
-          `Tidak ada station valid.${invalid.length ? ` Periksa baris ${invalid.join(", ")}.` : ""}`,
+          protectedCount
+            ? "Seluruh station pada file merupakan data Portal Sync dan tidak dapat ditimpa melalui upload manual."
+            : `Tidak ada station valid.${invalid.length ? ` Periksa baris ${invalid.join(", ")}.` : ""}`,
         );
-      const result = await persistRecords("stations", incoming);
+      const result = await persistRecords("stations", editableIncoming);
       setStationNotice({
-        kind: invalid.length + result.failed ? "warn" : "ok",
-        text: `${result.saved.length} station berhasil disimpan.${invalid.length + result.failed ? ` ${invalid.length + result.failed} baris gagal/diabaikan.` : ""}`,
+        kind: invalid.length + result.failed + protectedCount ? "warn" : "ok",
+        text: `${result.saved.length} station berhasil disimpan.${protectedCount ? ` ${protectedCount} station Portal Sync dilindungi dan tidak ditimpa.` : ""}${invalid.length + result.failed ? ` ${invalid.length + result.failed} baris gagal/diabaikan.` : ""}`,
       });
     } catch (error) {
       setStationNotice({
@@ -4554,6 +6327,19 @@ export default function Home() {
   async function saveStation(e: FormEvent) {
     e.preventDefault();
     const code = stationDraft.code.trim().toUpperCase();
+    if (
+      editingStation &&
+      isSynchronizedRecord(
+        stations.find((item) => item.code === editingStation) as unknown as
+          Record<string, unknown> | undefined,
+      )
+    ) {
+      setStationNotice({
+        kind: "error",
+        text: "Station hasil sinkronisasi bersifat read-only. Lakukan perubahan pada Ground Experience Portal lalu sinkronkan ulang.",
+      });
+      return;
+    }
     if (
       !/^[A-Z]{3}$/.test(code) ||
       !stationDraft.name ||
@@ -4613,7 +6399,6 @@ export default function Home() {
     try {
       if (!file.size)
         throw new Error("File kosong. Tidak ada data yang diproses.");
-      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       if (!sheet) throw new Error("Worksheet tidak ditemukan.");
@@ -4716,7 +6501,6 @@ export default function Home() {
     try {
       if (!file.size)
         throw new Error("File kosong. Tidak ada data yang diproses.");
-      const XLSX = await import("xlsx");
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       if (!sheet) throw new Error("Worksheet tidak ditemukan.");
@@ -4833,22 +6617,32 @@ export default function Home() {
       <main className="loginPage">
         <section className="loginPanel">
           <form className="loginCard" onSubmit={login}>
+            {languageFeatureEnabled && (
+              <button
+                type="button"
+                className="loginLanguageToggle"
+                onClick={() => setLanguage(language === "ID" ? "EN" : "ID")}
+                aria-label={tr("Ganti bahasa", "Change language")}
+              >
+                {language === "ID" ? "EN" : "ID"}
+              </button>
+            )}
             <div className="loginBrand">
-              <img
-                src="/garuda-indonesia-logo-skyteam.png"
-                alt="Garuda Indonesia — SkyTeam"
-              />
+              <img src="/garuda-indonesia-logo.png" alt="Garuda Indonesia" />
               <h1>Garuda Access Entitlement System</h1>
             </div>
-            <h2>Sign In</h2>
+            <h2>{tr("Masuk", "Sign In")}</h2>
             <label>
-              Email atau Username
+              {tr("Email atau Username", "Email or Username")}
               <input
                 autoFocus
                 autoComplete="username"
                 value={loginUser}
                 onChange={(e) => setLoginUser(e.target.value)}
-                placeholder="Masukkan email atau username"
+                placeholder={tr(
+                  "Masukkan email atau username",
+                  "Enter email or username",
+                )}
               />
             </label>
             <label>
@@ -4858,7 +6652,7 @@ export default function Home() {
                 autoComplete="current-password"
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
-                placeholder="Masukkan password"
+                placeholder={tr("Masukkan password", "Enter password")}
               />
             </label>
             {loginError && <div className="loginError">{loginError}</div>}
@@ -4874,28 +6668,39 @@ export default function Home() {
                 setResetRequestNotice(null);
               }}
             >
-              Lupa password?
+              {tr("Lupa password?", "Forgot password?")}
             </button>
             {showForgotPassword && (
               <div className="forgotPasswordPanel">
-                <b>Permintaan reset password</b>
+                <b>
+                  {tr("Permintaan reset password", "Password reset request")}
+                </b>
                 <span>
-                  Permintaan akan masuk ke inbox Admin dan Super Admin.
+                  {tr(
+                    "Permintaan akan masuk ke inbox Admin dan Super Admin.",
+                    "The request will be sent to the Admin and Super Admin inbox.",
+                  )}
                 </span>
                 <label>
-                  Email atau Username
+                  {tr("Email atau Username", "Email or Username")}
                   <input
                     value={resetRequestIdentity}
                     onChange={(e) => setResetRequestIdentity(e.target.value)}
-                    placeholder="Masukkan email atau username"
+                    placeholder={tr(
+                      "Masukkan email atau username",
+                      "Enter email or username",
+                    )}
                   />
                 </label>
                 <label>
-                  Pesan (opsional)
+                  {tr("Pesan (opsional)", "Message (optional)")}
                   <textarea
                     value={resetRequestMessage}
                     onChange={(e) => setResetRequestMessage(e.target.value)}
-                    placeholder="Tambahkan informasi untuk Admin"
+                    placeholder={tr(
+                      "Tambahkan informasi untuk Admin",
+                      "Add information for the Admin",
+                    )}
                   />
                 </label>
                 {resetRequestNotice && (
@@ -4939,7 +6744,9 @@ export default function Home() {
                     }
                   }}
                 >
-                  {sendingResetRequest ? "Mengirim..." : "Kirim Permintaan"}
+                  {sendingResetRequest
+                    ? tr("Mengirim...", "Sending...")
+                    : tr("Kirim Permintaan", "Send Request")}
                 </button>
               </div>
             )}
@@ -4953,10 +6760,7 @@ export default function Home() {
       <header className="top">
         <div className="brand">
           <div className="officialLogo">
-            <img
-              src="/garuda-indonesia-logo-skyteam.png"
-              alt="Garuda Indonesia — SkyTeam"
-            />
+            <img src="/garuda-indonesia-logo.png" alt="Garuda Indonesia" />
           </div>
           <div>
             <b>GARUDA ACCESS ENTITLEMENT SYSTEM</b>
@@ -4964,6 +6768,54 @@ export default function Home() {
           </div>
         </div>
         <div className="signedUser">
+          <label className="headerPeriod">
+            <span>{tr("Periode", "Period")}</span>
+            <select
+              value={operationalYear}
+              onChange={(event) => setOperationalYear(event.target.value)}
+            >
+              {[
+                ...new Set([
+                  String(new Date().getFullYear()),
+                  operationalYear,
+                  ...monitoringRows.map((row) => row.period.slice(0, 4)),
+                  ...passengerVolumes.map((row) => row.period.slice(0, 4)),
+                  ...visitors.map((visitor) =>
+                    (visitor.travelDate || visitor.date).slice(0, 4),
+                  ),
+                ]),
+              ]
+                .filter((year) => /^\d{4}$/.test(year))
+                .sort((a, b) => b.localeCompare(a))
+                .map((year) => (
+                  <option key={year}>{year}</option>
+                ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="headerIconButton"
+            aria-label={tr("Notifikasi", "Notifications")}
+            onClick={() => setShowInbox(true)}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+            </svg>
+            <strong>{portalNotifications.length}</strong>
+          </button>
+          <button
+            type="button"
+            className="headerIconButton"
+            aria-label={tr("Bantuan", "Help")}
+            onClick={() =>
+              setActionDialog({
+                kind: "ok",
+                text: "Gunakan menu di sidebar untuk membuka modul. Hubungi Super Admin bila otorisasi atau data station tidak sesuai.",
+              })
+            }
+          >
+            ?
+          </button>
           {languageFeatureEnabled && (
             <button
               type="button"
@@ -4977,11 +6829,22 @@ export default function Home() {
           <div className="profileMenuWrap" ref={profileMenuRef}>
             <button
               type="button"
-              className="headerAction"
+              className="headerIdentity"
               aria-expanded={showProfileMenu}
               onClick={() => setShowProfileMenu((x) => !x)}
             >
-              {tr("Profil Saya", "My Profile")} <span>⌄</span>
+              <i>
+                {currentAccount.name
+                  .split(/\s+/)
+                  .slice(0, 2)
+                  .map((part) => part[0])
+                  .join("")
+                  .toUpperCase()}
+              </i>
+              <span>
+                <b>{currentAccount.name}</b>
+                <small>{role}</small>
+              </span>
             </button>
             {showProfileMenu && (
               <div className="profileMenu">
@@ -5000,13 +6863,7 @@ export default function Home() {
                 >
                   {tr("Notifikasi", "Notifications")}{" "}
                   <strong>
-                    {visitors.filter(
-                      (v) =>
-                        v.boStatus !== "Accepted" &&
-                        !readNotificationIds.has(
-                          `${v.boStatus === "Rejected" ? "dispute" : "verify"}-${v.id}`,
-                        ),
-                    ).length + portalNotifications.length}
+                    {portalNotifications.length}
                   </strong>
                 </button>
                 <button
@@ -5016,7 +6873,7 @@ export default function Home() {
                     setShowProfileMenu(false);
                   }}
                 >
-                  {tr("Ganti Password", "Change Password")}
+                  {tr("Profil & Password", "Profile & Password")}
                 </button>
                 <button type="button" onClick={logout}>
                   {tr("Keluar", "Sign Out")}
@@ -5098,6 +6955,21 @@ export default function Home() {
                 <span>Flight Information</span>
               </Link>
             )}
+            {canSeeFacility && (
+              <Link
+                href="/?view=facility"
+                className={tab === "facility" ? "active" : ""}
+                onClick={(e) => {
+                  if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+                    e.preventDefault();
+                    setTab("facility");
+                  }
+                }}
+              >
+                <i>FO</i>
+                <span>Facility &amp; Room Operations</span>
+              </Link>
+            )}
             {isGlobalAdmin && (
               <Link
                 href="/?view=master"
@@ -5133,6 +7005,7 @@ export default function Home() {
                         "All Periods",
                         ...new Set([
                           ...monitoringRows.map((row) => row.period),
+                          ...passengerVolumes.map((row) => row.period),
                           ...visitors
                             .map((visitor) =>
                               (visitor.travelDate || visitor.date).slice(0, 7),
@@ -5162,6 +7035,7 @@ export default function Home() {
                         "All BO",
                         ...new Set([
                           ...monitoringRows.map((row) => row.bo),
+                          ...passengerVolumes.map((row) => row.station),
                           ...visitors.map((visitor) => visitor.airport),
                         ]),
                       ]}
@@ -5183,36 +7057,6 @@ export default function Home() {
                     />
                   </FilterField>
                 </div>
-                <div className="dashboardDataTools">
-                  <span>
-                    <b>Passenger Volume</b>
-                    <small>
-                      Import denominator Business/Economy pax dari DCS/source
-                      system atau file BO.
-                    </small>
-                  </span>
-                  <button onClick={downloadPassengerVolumeTemplate}>
-                    Download Template
-                  </button>
-                  <label className="uploadButton">
-                    Import Passenger Volume
-                    <input
-                      type="file"
-                      accept=".csv,.xlsx,.xls"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) void uploadPassengerVolume(file);
-                        e.target.value = "";
-                      }}
-                    />
-                  </label>
-                </div>
-                {dashboardImportNotice && (
-                  <Notice
-                    n={dashboardImportNotice}
-                    close={() => setDashboardImportNotice(null)}
-                  />
-                )}
               </article>
 
               {visibleDashboardWidgets.some(
@@ -5229,18 +7073,31 @@ export default function Home() {
                   </button>
                   <button type="button" onClick={() => openDashboardVisitors()}>
                     <span>First Class Pax</span>
-                    <b>{dashboardTotals.firstPax.toLocaleString("id-ID")}</b>
-                    <small>Accepted visitor records <i>View data →</i></small>
+                    <b>{dashboardTotals.firstLounge.toLocaleString("id-ID")}</b>
+                    <small>
+                      Accepted lounge visitors <i>View data →</i>
+                    </small>
                   </button>
-                  <button type="button" onClick={() => openDashboardVisitors()}>
+                  <button
+                    type="button"
+                    onClick={() => openDashboardVisitors("Business Class")}
+                  >
                     <span>Business Class Pax</span>
-                    <b>{dashboardTotals.businessPax.toLocaleString("id-ID")}</b>
-                    <small>Accepted visitor records <i>View data →</i></small>
+                    <b>
+                      {dashboardTotals.businessLounge.toLocaleString("id-ID")}
+                    </b>
+                    <small>
+                      Accepted lounge visitors <i>View data →</i>
+                    </small>
                   </button>
                   <button type="button" onClick={() => openDashboardVisitors()}>
                     <span>Economy Class Pax</span>
-                    <b>{dashboardTotals.economyPax.toLocaleString("id-ID")}</b>
-                    <small>Accepted visitor records <i>View data →</i></small>
+                    <b>
+                      {dashboardTotals.economyLounge.toLocaleString("id-ID")}
+                    </b>
+                    <small>
+                      Accepted lounge visitors <i>View data →</i>
+                    </small>
                   </button>
                   <button type="button" onClick={() => openDashboardReport()}>
                     <span>Estimated Cost</span>
@@ -5331,6 +7188,36 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={() => {
+                          setDashboardDetail("First Pax");
+                          setTab("dashboard-detail");
+                        }}
+                      >
+                        <DonutChart
+                          compact
+                          items={[
+                            ["Lounge", dashboardTotals.firstLounge],
+                            [
+                              "Not used",
+                              Math.max(
+                                0,
+                                dashboardTotals.firstPax -
+                                  dashboardTotals.firstLounge,
+                              ),
+                            ],
+                          ]}
+                          total={dashboardTotals.firstPax}
+                          centerLabel="First"
+                        />
+                        <span>First Class Lounge / First Class Pax</span>
+                        <small>
+                          {dashboardTotals.firstPax
+                            ? `${dashboardTotals.firstLounge.toLocaleString("id-ID")} dari ${dashboardTotals.firstPax.toLocaleString("id-ID")} pax`
+                            : "Data passenger belum tersedia"}
+                        </small>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
                           setDashboardDetail("Business Pax");
                           setTab("dashboard-detail");
                         }}
@@ -5353,12 +7240,9 @@ export default function Home() {
                         />
                         <span>Business Lounge / Business Pax</span>
                         <small>
-                          {dashboardTotals.businessLounge.toLocaleString(
-                            "id-ID",
-                          )}{" "}
-                          dari{" "}
-                          {dashboardTotals.businessPax.toLocaleString("id-ID")}{" "}
-                          pax
+                          {dashboardTotals.businessPax
+                            ? `${dashboardTotals.businessLounge.toLocaleString("id-ID")} dari ${dashboardTotals.businessPax.toLocaleString("id-ID")} pax`
+                            : "Data passenger belum tersedia"}
                         </small>
                       </button>
                       <button
@@ -5371,18 +7255,13 @@ export default function Home() {
                         <DonutChart
                           compact
                           items={[
-                            [
-                              "Lounge",
-                              dashboardVisitorCount -
-                                dashboardTotals.businessLounge,
-                            ],
+                            ["Lounge", dashboardTotals.economyLounge],
                             [
                               "Not used",
                               Math.max(
                                 0,
                                 dashboardTotals.economyPax -
-                                  (dashboardVisitorCount -
-                                    dashboardTotals.businessLounge),
+                                  dashboardTotals.economyLounge,
                               ),
                             ],
                           ]}
@@ -5391,13 +7270,9 @@ export default function Home() {
                         />
                         <span>Economy Membership Lounge / Economy Pax</span>
                         <small>
-                          {(
-                            dashboardVisitorCount -
-                            dashboardTotals.businessLounge
-                          ).toLocaleString("id-ID")}{" "}
-                          dari{" "}
-                          {dashboardTotals.economyPax.toLocaleString("id-ID")}{" "}
-                          pax
+                          {dashboardTotals.economyPax
+                            ? `${dashboardTotals.economyLounge.toLocaleString("id-ID")} dari ${dashboardTotals.economyPax.toLocaleString("id-ID")} pax`
+                            : "Data passenger belum tersedia"}
                         </small>
                       </button>
                     </div>
@@ -5598,9 +7473,8 @@ export default function Home() {
               </div>
               <p className="dashboardFootnote">
                 Dashboard membaca data operasional Firebase sesuai scope akun.
-                Flight Schedule, Passenger List/DCS, membership, payment, dan
-                evidence memerlukan endpoint serta kredensial produksi yang
-                dikonfigurasi Tim IT.
+                Denominator First, Business, dan Economy berasal dari tab
+                Passenger Volume dan hanya menghitung flight DEPARTED.
               </p>
             </>
           )}
@@ -5638,7 +7512,9 @@ export default function Home() {
                     <b>
                       {(dashboardDetail === "Business Pax"
                         ? dashboardTotals.businessPax
-                        : dashboardTotals.economyPax
+                        : dashboardDetail === "First Pax"
+                          ? dashboardTotals.firstPax
+                          : dashboardTotals.economyPax
                       ).toLocaleString("id-ID")}
                     </b>
                   </span>
@@ -5648,44 +7524,46 @@ export default function Home() {
                     <thead>
                       <tr>
                         <th>Period</th>
-                        <th>Area</th>
-                        <th>Branch Office</th>
+                        <th>Date</th>
                         <th>Station</th>
-                        <th>Lounge / Provider</th>
+                        <th>Flight</th>
+                        <th>Destination</th>
+                        <th>Status</th>
                         <th>{dashboardDetail}</th>
                         <th>Source</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {dashboardRows.map((row) => (
+                      {dashboardPassengerVolumes.map((row) => (
                         <tr key={row.id}>
                           <td>{row.period}</td>
-                          <td>{row.area}</td>
+                          <td>{row.flightDate}</td>
+                          <td>{row.station}</td>
                           <td>
                             <button
                               className="tableLink"
-                              onClick={() =>
-                                openDashboardVisitors(
-                                  "Semua",
-                                  row.bo,
-                                  row.provider,
-                                )
-                              }
+                              onClick={() => {
+                                setFlightQuery(row.flight);
+                                setFlightTab("Passenger Volume");
+                                setTab("flights");
+                              }}
                             >
-                              {row.bo} →
+                              {row.flight} →
                             </button>
                           </td>
-                          <td>{row.station}</td>
-                          <td>{row.provider}</td>
+                          <td>{row.destination}</td>
+                          <td>{row.status}</td>
                           <td>
                             <b>
                               {(dashboardDetail === "Business Pax"
-                                ? row.businessPax
-                                : row.economyPax
+                                ? row.passengerC
+                                : dashboardDetail === "First Pax"
+                                  ? row.passengerF
+                                  : row.passengerY
                               ).toLocaleString("id-ID")}
                             </b>
                           </td>
-                          <td>{row.source}</td>
+                          <td>{row.sourceFile || row.source}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -5739,6 +7617,25 @@ export default function Home() {
                     />
                     <small>
                       Pilih tanggal penerbangan sebelum memulai scan.
+                    </small>
+                  </label>
+                  <label className="accessCategoryStep">
+                    Kategori Akses
+                    <select
+                      value={category}
+                      onChange={(e) => {
+                        setCategory(e.target.value);
+                        setReference("");
+                        setMemberStatus("Belum diverifikasi");
+                      }}
+                    >
+                      {cats.map((x) => (
+                        <option key={x}>{x}</option>
+                      ))}
+                    </select>
+                    <small>
+                      Pilih kategori lebih dahulu agar aturan akses yang sesuai
+                      diterapkan sejak proses scan.
                     </small>
                   </label>
                   <div className="selectRow">
@@ -5810,6 +7707,43 @@ export default function Home() {
                         : "Aktifkan Device Scanner"}
                     </button>
                   </div>
+                  {camera && (
+                    <div className="cameraAssist" aria-label="Camera controls">
+                      <button
+                        type="button"
+                        className={cameraTorch ? "primary" : "secondary"}
+                        onClick={() => void setScannerTorch(!cameraTorch)}
+                      >
+                        {cameraTorch ? "Matikan Lampu" : "Nyalakan Lampu"}
+                      </button>
+                      <label>
+                        Zoom {cameraZoom.toFixed(1)}×
+                        <input
+                          type="range"
+                          min="1"
+                          max="4"
+                          step="0.25"
+                          value={cameraZoom}
+                          onChange={(event) =>
+                            void setScannerZoom(Number(event.target.value))
+                          }
+                        />
+                      </label>
+                    </div>
+                  )}
+                  <label className="uploadButton scanImageUpload">
+                    Ambil Foto / Upload Gambar Barcode
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) void scanBarcodeImage(file);
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
                   <div className="or">ATAU INPUT STRING</div>
                   <label>
                     Hasil scan / string boarding pass
@@ -5885,19 +7819,41 @@ export default function Home() {
                       />
                     </label>
                     <label>
-                      Rute
+                      Final Destination
                       <input
                         readOnly={!manualMode}
                         className={!manualMode ? "autoField" : ""}
-                        value={pass.route}
-                        onChange={(e) =>
+                        list={manualMode ? "access-destination-options" : undefined}
+                        value={pass.finalDestination}
+                        onChange={(e) => {
+                          const finalDestination = e.target.value
+                            .toUpperCase()
+                            .replace(/[^A-Z]/g, "")
+                            .slice(0, 3);
                           setPass({
                             ...pass,
-                            route: e.target.value.toUpperCase(),
-                          })
-                        }
-                        placeholder="DJB–CGK"
+                            finalDestination,
+                            route: finalDestination
+                              ? `${airport}–${finalDestination}`
+                              : "",
+                          });
+                        }}
+                        placeholder="Cari kode atau nama airport"
                       />
+                      {manualMode && (
+                        <datalist id="access-destination-options">
+                          {stations.map((item) => (
+                            <option key={item.code} value={item.code}>
+                              {item.name}
+                            </option>
+                          ))}
+                        </datalist>
+                      )}
+                      <small>
+                        {manualMode
+                          ? "Cari berdasarkan kode atau nama airport."
+                          : "Destinasi terakhir yang tersedia pada hasil scan."}
+                      </small>
                     </label>
                     <label>
                       Nomor Penerbangan
@@ -6026,21 +7982,6 @@ export default function Home() {
                         }
                         readOnly
                       />
-                    </label>
-                    <label>
-                      Kategori Akses
-                      <select
-                        value={category}
-                        onChange={(e) => {
-                          setCategory(e.target.value);
-                          setReference("");
-                          setMemberStatus("Belum diverifikasi");
-                        }}
-                      >
-                        {cats.map((x) => (
-                          <option key={x}>{x}</option>
-                        ))}
-                      </select>
                     </label>
                     {required && (
                       <label className="full">
@@ -6250,6 +8191,25 @@ export default function Home() {
                           Manage Table
                         </button>
                       )}
+                      {canUploadVisitorBundle && (
+                        <>
+                          <button onClick={downloadVisitorTemplate}>
+                            Unduh Template Visitor
+                          </button>
+                          <label className="uploadButton">
+                            Upload Visitor Bundle
+                            <input
+                              type="file"
+                              accept=".csv,.xlsx,.xls"
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (file) void prepareVisitorBundle(file);
+                                event.target.value = "";
+                              }}
+                            />
+                          </label>
+                        </>
+                      )}
                       <button onClick={csv}>Unduh CSV</button>
                       <button
                         className="primary"
@@ -6276,6 +8236,9 @@ export default function Home() {
                       </button>
                     </div>
                   </div>
+                  {visitorImportNotice && (
+                    <Notice n={visitorImportNotice} close={() => setVisitorImportNotice(null)} />
+                  )}
                   <article className="card trafficCard">
                     <div className="trafficHead">
                       <div>
@@ -6561,6 +8524,9 @@ export default function Home() {
                                 <td>
                                   {v.name}
                                   <small>{v.source}</small>
+                                  {v.importStatus === "Needs Data Completion" && (
+                                    <mark className="yellow">Perlu Pelengkapan Data</mark>
+                                  )}
                                 </td>
                                 <td>
                                   {v.flight}
@@ -6594,26 +8560,37 @@ export default function Home() {
                                     <td key={c.id}>{customValue(v, c)}</td>
                                   ))}
                                 <td>
-                                  <div className="rowAct">
-                                    <button onClick={() => setEdit(v)}>
-                                      Ubah
-                                    </button>
-                                    <button
-                                      className="del"
-                                      onClick={() =>
-                                        askDelete(
-                                          "Hapus data visitor?",
-                                          `${v.name} · ${v.flight} · ${v.travelDate || v.date}`,
-                                          () =>
-                                            setVisitors((x) =>
-                                              x.filter((y) => y.id !== v.id),
-                                            ),
-                                        )
-                                      }
-                                    >
-                                      Hapus
-                                    </button>
-                                  </div>
+                                  {canManageSubmittedVisitor ? (
+                                    <div className="rowAct">
+                                      <button onClick={() => setEdit(v)}>
+                                        Ubah
+                                      </button>
+                                      <button
+                                        className="del"
+                                        onClick={() =>
+                                          askDelete(
+                                            "Hapus data visitor?",
+                                            `${v.name} · ${v.flight} · ${v.travelDate || v.date}`,
+                                            async () => {
+                                              if (!firebaseUser)
+                                                throw new Error("Sesi Firebase tidak aktif.");
+                                              await manageVisitor(firebaseUser, {
+                                                action: "delete",
+                                                id: v.id,
+                                              });
+                                              setVisitors((rows) =>
+                                                rows.filter((row) => row.id !== v.id),
+                                              );
+                                            },
+                                          )
+                                        }
+                                      >
+                                        Hapus
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <small>Read only</small>
+                                  )}
                                 </td>
                               </tr>
                             ))
@@ -6708,38 +8685,40 @@ export default function Home() {
                   acceptLabel="Terima"
                   rejectReasons={disputeCodes}
                   onDecision={async (ids, decision, reason) => {
-                    const updates = visitors
-                      .filter((item) => ids.includes(item.id))
-                      .map((item) => ({
-                        ...item,
-                        boStatus:
-                          decision === "accept"
-                            ? ("Accepted" as const)
-                            : ("Rejected" as const),
-                        boReason: decision === "accept" ? "" : reason,
-                        disputeCode:
-                          decision === "accept" ? "" : reason.split(" — ")[0],
-                        vendorStatus: "Pending" as const,
-                        reconciliationStatus:
-                          decision === "accept"
-                            ? ("Final" as const)
-                            : ("Open" as const),
-                      }));
-                    const result = await persistRecords("visitors", updates);
-                    if (!result.saved.length)
-                      throw new Error(
-                        "Keputusan verifikasi tidak dapat disimpan.",
-                      );
-                    setVisitors((rows) =>
-                      rows.map(
-                        (item) =>
-                          result.saved.find((saved) => saved.id === item.id) ||
-                          item,
+                    if (!firebaseUser) throw new Error("Sesi Firebase tidak aktif.");
+                    const selected = visitors.filter((item) => ids.includes(item.id));
+                    const results = await Promise.allSettled(
+                      selected.map((item) =>
+                        manageVisitor(firebaseUser, {
+                          action: "decision",
+                          id: item.id,
+                          decision,
+                          reason,
+                        }),
                       ),
                     );
-                    if (result.failed)
+                    const savedIds = selected
+                      .filter((_, index) => results[index].status === "fulfilled")
+                      .map((item) => item.id);
+                    if (!savedIds.length) throw new Error("Keputusan verifikasi tidak dapat disimpan.");
+                    setVisitors((rows) =>
+                      rows.map((item) =>
+                        savedIds.includes(item.id)
+                          ? {
+                              ...item,
+                              boStatus: decision === "accept" ? "Accepted" : "Rejected",
+                              boReason: decision === "accept" ? "" : reason,
+                              disputeCode: decision === "accept" ? "" : reason.split(" — ")[0],
+                              vendorStatus: "Pending",
+                              reconciliationStatus: decision === "accept" ? "Final" : "Open",
+                            }
+                          : item,
+                      ),
+                    );
+                    const failed = results.length - savedIds.length;
+                    if (failed)
                       throw new Error(
-                        `${result.saved.length} keputusan tersimpan, tetapi ${result.failed} gagal.`,
+                        `${savedIds.length} keputusan tersimpan, tetapi ${failed} gagal.`,
                       );
                   }}
                 />
@@ -6858,20 +8837,24 @@ export default function Home() {
                                         Koreksi &amp; Evidence
                                       </button>
                                       <button
-                                        onClick={() =>
-                                          setVisitors((xs) =>
-                                            xs.map((x) =>
-                                              x.id === v.id
-                                                ? {
-                                                    ...x,
-                                                    vendorStatus: "Confirmed",
-                                                    reconciliationStatus:
-                                                      "Final",
-                                                  }
-                                                : x,
-                                            ),
-                                          )
-                                        }
+                                        onClick={async () => {
+                                          try {
+                                            if (!firebaseUser) throw new Error("Sesi Firebase tidak aktif.");
+                                            await manageVisitor(firebaseUser, { action: "acceptrejection", id: v.id });
+                                            setVisitors((xs) =>
+                                              xs.map((x) =>
+                                                x.id === v.id
+                                                  ? { ...x, vendorStatus: "Confirmed", reconciliationStatus: "Final" }
+                                                  : x,
+                                              ),
+                                            );
+                                          } catch (error) {
+                                            setActionDialog({
+                                              kind: "error",
+                                              text: error instanceof Error ? error.message : "Hasil penolakan tidak dapat diproses.",
+                                            });
+                                          }
+                                        }}
                                       >
                                         Terima Penolakan
                                       </button>
@@ -7195,6 +9178,35 @@ export default function Home() {
               )}
             </>
           )}
+          {tab === "facility" &&
+            currentAccount &&
+            firebaseUser &&
+            canSeeFacility && (
+              <FacilityOperations
+                user={firebaseUser}
+                route={facilityRoute}
+                account={{
+                  id: currentAccount.id,
+                  name: currentAccount.name,
+                  role: currentAccount.role,
+                  station:
+                    currentAccount.station === "ALL"
+                      ? station
+                      : currentAccount.station,
+                }}
+                stations={stations.map((item) => ({
+                  code: item.code,
+                  name: item.name,
+                  timeZone: item.timeZone,
+                }))}
+                lounges={lounges.map((item) => ({
+                  id: item.id,
+                  airport: item.airport,
+                  name: item.name,
+                  type: item.type,
+                }))}
+              />
+            )}
           {tab === "master" && (
             <>
               <Title
@@ -7219,6 +9231,7 @@ export default function Home() {
                   setMasterQuery("");
                   setMasterSelect("Semua");
                   setMasterSelect2("Semua");
+                  setLoungeTypeFilter("Semua");
                 }}
               />
             </>
@@ -7241,37 +9254,14 @@ export default function Home() {
                       Kelola Tabel
                     </button>
                     <button
-                      onClick={async () => {
-                        if (!firebaseUser) return;
-                        try {
-                          const result = await syncSourceLounges(firebaseUser);
-                          setLoungeNotice(
-                            result.imported > 0
-                              ? {
-                                  kind: result.skipped ? "warn" : "ok",
-                                  text: `${result.imported} data lounge/tenant berhasil disinkronkan dari Ground Experience Portal.${result.skipped ? ` ${result.skipped} data sumber tidak valid diabaikan.` : ""}`,
-                                }
-                              : {
-                                  kind: "warn",
-                                  text: "Sinkronisasi selesai, tetapi tidak ada data lounge/tenant yang ditemukan.",
-                                },
-                          );
-                        } catch (error) {
-                          setLoungeNotice({
-                            kind: "error",
-                            text:
-                              error instanceof Error
-                                ? error.message
-                                : "Sinkronisasi gagal.",
-                          });
-                        }
-                      }}
+                      onClick={() => void syncPortalMasterData(setLoungeNotice)}
                     >
-                      Sinkronisasi Data
+                      Sinkronisasi Lounge &amp; Station
                     </button>
                     <button onClick={downloadLoungeTemplate}>
                       Unduh Template CSV
                     </button>
+                    <button onClick={downloadLoungeData}>Unduh Data</button>
                     <label className="uploadButton">
                       Upload Data
                       <input
@@ -7322,14 +9312,15 @@ export default function Home() {
                 value2={masterSelect2}
                 setValue2={setMasterSelect2}
                 options2={[
-                  ...new Set([
-                    ...lounges.map((x) => x.type),
-                    ...lounges.map((x) => x.status),
-                  ]),
+                  "Valid",
+                  "Expiring Soon",
+                  "Expired",
+                  "Not Yet Valid",
+                  "Invalid Data",
                 ]}
                 placeholder="Nama Lounge / Provider"
                 label1="Station"
-                label2="Lounge Type / Status"
+                label2="Agreement Validity"
                 searchLabel="Lounge / Provider"
                 queryOptions={[
                   "Semua Lounge / Provider",
@@ -7337,116 +9328,89 @@ export default function Home() {
                 ]}
                 count={filteredLounges.length}
               />
-              <div className="loungeGrid">
-                {filteredLounges.map((l) => {
-                  const endTime = l.end ? new Date(`${l.end}T23:59:59`).getTime() : NaN;
-                  const d = Number.isFinite(endTime)
-                    ? Math.ceil((endTime - Date.now()) / 86400000)
-                    : NaN;
-                  return (
-                    <article className="card lounge" key={l.id}>
-                      <div className="code">{l.airport}</div>
-                      <div>
-                        <span className="type">{l.type}</span>
-                        <h3>{l.name}</h3>
-                        <p>
-                          Periode kerja sama
-                          <br />
-                          <b>
-                            {l.start} — {l.end}
-                          </b>
-                        </p>
-                        <p>
-                          Harga per pax
-                          <br />
-                          <b>{cash(l.price, l.currency)}</b>
-                        </p>
-                        <p>
-                          Kapasitas lounge
-                          <br />
-                          <b>{loungeCapacityForDate(l, localDate()).toLocaleString("id-ID")} pax</b>
-                        </p>
-                        {l.pricePeriods && l.pricePeriods.length > 1 && (
-                          <p><b>{l.pricePeriods.length} periode harga</b></p>
-                        )}
-                        {canManageMaster && (
-                          <div className="rowAct">
-                            <button
-                              className="loungeEdit"
-                              onClick={() => {
-                                setEditingLounge(l.id);
-                                setLoungeDraft({
-                                  airport: l.airport,
-                                  name: l.name,
-                                  type: l.type,
-                                  currency: l.currency,
-                                  price: l.price,
-                                  start: l.start,
-                                  end: l.end,
-                                  status: l.status,
-                                  capacity: l.capacity || 0,
-                                  capacityEffectiveFrom:
-                                    l.capacityEffectiveFrom ||
-                                    l.capacityHistory?.slice().sort((a, b) =>
-                                      b.effectiveFrom.localeCompare(a.effectiveFrom),
-                                    )[0]?.effectiveFrom || localDate(),
-                                  capacityHistory: l.capacityHistory || [],
-                                  pricePeriods: l.pricePeriods?.length
-                                    ? l.pricePeriods
-                                    : [{
-                                        id: `${l.id}-default`,
-                                        currency: l.currency,
-                                        price: l.price,
-                                        start: l.start,
-                                        end: l.end,
-                                      }],
-                                });
-                                setShowLoungeForm(true);
-                              }}
-                            >
-                              Update
-                            </button>
-                            <button
-                              className="del"
-                              onClick={() =>
-                                askDelete(
-                                  "Hapus lounge/tenant?",
-                                  `${l.airport} · ${l.name}`,
-                                  async () => {
+              <div className="loungeTypeFilter">
+                <label>
+                  Facility Type
+                  <select
+                    value={loungeTypeFilter}
+                    onChange={(event) => setLoungeTypeFilter(event.target.value)}
+                  >
+                    <option>Semua</option>
+                    {[...new Set(lounges.map((row) => row.type))].map((type) => (
+                      <option key={type}>{type}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="tableWrap loungeMasterTable">
+                <table>
+                  <thead>
+                    <tr>
+                      <SortTh label="Station" sortKey="airport" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Lounge/Tenant" sortKey="name" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Type" sortKey="type" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Agreement Period" sortKey="period" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Validity" sortKey="validity" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Operational" sortKey="operational" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Capacity" sortKey="capacity" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Price/Pax" sortKey="price" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Source" sortKey="source" current={loungeSort} onSort={(key) => setLoungeSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredLounges.map((l) => {
+                      const validity = loungeValidity(l);
+                      return (
+                        <tr key={l.id}>
+                          <td><b>{l.airport}</b></td>
+                          <td><b>{l.name}</b><small>{l.pricePeriods?.length || 1} agreement/price period</small></td>
+                          <td>{l.type}</td>
+                          <td>{l.start}<small>to {l.end}</small></td>
+                          <td><mark className={validity === "Valid" ? "green" : validity === "Expiring Soon" || validity === "Not Yet Valid" ? "yellow" : "red"}>{validity}</mark></td>
+                          <td>{l.status}</td>
+                          <td>{loungeCapacityForDate(l, localDate()).toLocaleString("id-ID")} pax</td>
+                          <td>{cash(l.price, l.currency)}</td>
+                          <td>{l.dataOrigin === "SYNC" ? "Portal Sync" : "Manual Entry"}</td>
+                          <td>
+                            <div className="rowAct">
+                              {canManageMaster && !l.readOnly && (
+                                <>
+                                  <button onClick={() => {
+                                    setEditingLounge(l.id);
+                                    setLoungeDraft({
+                                      airport: l.airport, name: l.name, type: l.type,
+                                      currency: l.currency, price: l.price, start: l.start,
+                                      end: l.end, status: l.status, capacity: l.capacity || 0,
+                                      capacityEffectiveFrom: l.capacityEffectiveFrom || localDate(),
+                                      capacityHistory: l.capacityHistory || [],
+                                      pricePeriods: l.pricePeriods?.length ? l.pricePeriods : [{ id: `${l.id}-default`, currency: l.currency, price: l.price, start: l.start, end: l.end }],
+                                    });
+                                    setShowLoungeForm(true);
+                                  }}>Edit</button>
+                                  <button className="del" onClick={() => askDelete("Hapus lounge/tenant?", `${l.airport} · ${l.name}`, async () => {
                                     await removeRecord("lounges", l.id);
-                                    setLounges((xs) =>
-                                      xs.filter((x) => x.id !== l.id),
-                                    );
-                                  },
-                                )
-                              }
-                            >
-                              Hapus
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      <mark
-                        className={
-                          d < 90 ? "red" : d < 150 ? "yellow" : "green"
-                        }
-                      >
-                        {!Number.isFinite(d)
-                          ? "Periode tidak valid"
-                          : d < 0
-                            ? "Kedaluwarsa"
-                            : `${d} hari tersisa`}
-                      </mark>
-                    </article>
-                  );
-                })}
+                                    setLounges((rows) => rows.filter((row) => row.id !== l.id));
+                                  })}>Hapus</button>
+                                </>
+                              )}
+                              {l.readOnly && <small className="readOnlyHint">Read-only</small>}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
               <div className="info">
                 <b>Hak pengelolaan</b>
                 <br />
-                Penambahan, upload CSV, update, dan hapus daftar lounge tersedia
-                untuk Super Admin dan Admin. Perubahan harga tidak mengubah
-                transaksi visitor yang sudah tercatat.
+                Data Portal Sync bersifat read-only dan diperbarui melalui
+                sinkronisasi. Data Manual Entry dapat ditambah, diperbarui, dan
+                dihapus oleh Super Admin/Admin. Harga yang diterapkan pada
+                transaksi visitor dikunci berdasarkan DOT sehingga perubahan
+                agreement tidak mengubah transaksi historis.
               </div>
             </>
           )}
@@ -7467,9 +9431,17 @@ export default function Home() {
                     >
                       Kelola Tabel
                     </button>
+                    <button
+                      onClick={() =>
+                        void syncPortalMasterData(setStationNotice)
+                      }
+                    >
+                      Sinkronisasi Lounge &amp; Station
+                    </button>
                     <button onClick={downloadStationTemplate}>
                       Unduh Template
                     </button>
+                    <button onClick={downloadStationData}>Unduh Data</button>
                     <label className="uploadButton">
                       Upload Data
                       <input
@@ -7536,17 +9508,18 @@ export default function Home() {
                 <table>
                   <thead>
                     <tr>
-                      <th>Kode</th>
-                      <th>Nama Station</th>
-                      <th>Time Zone</th>
-                      <th>UTC</th>
-                      <th>Status</th>
+                      <SortTh label="Kode" sortKey="code" current={stationSort} onSort={(key) => setStationSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Nama Station" sortKey="name" current={stationSort} onSort={(key) => setStationSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Time Zone" sortKey="timeZone" current={stationSort} onSort={(key) => setStationSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="UTC" sortKey="utc" current={stationSort} onSort={(key) => setStationSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Status" sortKey="status" current={stationSort} onSort={(key) => setStationSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Sumber" sortKey="source" current={stationSort} onSort={(key) => setStationSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
                       <th>Aksi</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {stations
-                      .filter(
+                    {sortData(
+                      stations.filter(
                         (s) =>
                           `${s.code} ${s.name}`
                             .toLowerCase()
@@ -7555,7 +9528,10 @@ export default function Home() {
                             s.utcLabel === masterSelect) &&
                           (masterSelect2 === "Semua" ||
                             s.status === masterSelect2),
-                      )
+                      ),
+                      stationSort,
+                      (item, key) => ({ code: item.code, name: item.name, timeZone: item.timeZone, utc: item.utcLabel, status: item.status, source: item.dataOrigin || "MANUAL" })[key] || "",
+                    )
                       .map((s) => (
                         <tr key={s.code}>
                           <td>
@@ -7572,7 +9548,28 @@ export default function Home() {
                             </mark>
                           </td>
                           <td>
-                            {canManageMaster ? (
+                            <span
+                              className={
+                                s.dataOrigin === "SYNC"
+                                  ? "originBadge synced"
+                                  : "originBadge manual"
+                              }
+                            >
+                              {s.dataOrigin === "SYNC"
+                                ? "Portal Sync"
+                                : "Manual Entry"}
+                            </span>
+                            {s.sourceStatus === "SOURCE_NOT_FOUND" && (
+                              <small className="sourceMissingText">
+                                Source tidak ditemukan
+                              </small>
+                            )}
+                          </td>
+                          <td>
+                            {canManageMaster &&
+                            !isSynchronizedRecord(
+                              s as unknown as Record<string, unknown>,
+                            ) ? (
                               <div className="rowAct">
                                 <button
                                   onClick={() => {
@@ -7611,6 +9608,10 @@ export default function Home() {
                                   Hapus
                                 </button>
                               </div>
+                            ) : isSynchronizedRecord(
+                                s as unknown as Record<string, unknown>,
+                              ) ? (
+                              <span className="readOnlyText">Read-only</span>
                             ) : (
                               "View only"
                             )}
@@ -7621,9 +9622,10 @@ export default function Home() {
                 </table>
               </div>
               <div className="info">
-                Station yang sudah digunakan oleh akun atau lounge tidak dapat
-                dihapus. Nonaktifkan terlebih dahulu setelah relasinya
-                diselesaikan.
+                Station Portal Sync bersifat read-only. Jika station tidak lagi
+                ditemukan pada sumber, statusnya otomatis menjadi Nonaktif dan
+                tetap disimpan untuk kebutuhan audit. Station Manual Entry yang
+                sudah digunakan oleh akun atau lounge tidak dapat dihapus.
               </div>
             </article>
           )}
@@ -7647,6 +9649,7 @@ export default function Home() {
                     <button onClick={downloadAirlineTemplate}>
                       Unduh Template
                     </button>
+                    <button onClick={downloadAirlineData}>Unduh Data</button>
                     <label className="uploadButton">
                       Upload Data
                       <input
@@ -7715,16 +9718,16 @@ export default function Home() {
                 <table>
                   <thead>
                     <tr>
-                      <th>2-Letter Code</th>
-                      <th>Airline</th>
-                      <th>Verifier Organization</th>
-                      <th>Status</th>
+                      <SortTh label="2-Letter Code" sortKey="code" current={airlineSort} onSort={(key) => setAirlineSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Airline" sortKey="name" current={airlineSort} onSort={(key) => setAirlineSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Verifier Organization" sortKey="verifier" current={airlineSort} onSort={(key) => setAirlineSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
+                      <SortTh label="Status" sortKey="status" current={airlineSort} onSort={(key) => setAirlineSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))} />
                       <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {airlines
-                      .filter(
+                    {sortData(
+                      airlines.filter(
                         (item) =>
                           `${item.code} ${item.name}`
                             .toLowerCase()
@@ -7733,7 +9736,10 @@ export default function Home() {
                             item.verifierOrganization === masterSelect) &&
                           (masterSelect2 === "Semua" ||
                             item.status === masterSelect2),
-                      )
+                      ),
+                      airlineSort,
+                      (item, key) => ({ code: item.code, name: item.name, verifier: item.verifierOrganization, status: item.status })[key] || "",
+                    )
                       .map((airline) => (
                         <tr key={`${airline.code}-${airline.name}`}>
                           <td>
@@ -7862,6 +9868,7 @@ export default function Home() {
                     <button onClick={downloadUserTemplate}>
                       Unduh Template
                     </button>
+                    <button onClick={downloadUserData}>Unduh Data</button>
                     <label className="uploadButton">
                       Upload Data
                       <input
@@ -8109,6 +10116,7 @@ export default function Home() {
                   <button onClick={downloadEntitlementTemplate}>
                     Unduh Template
                   </button>
+                  <button onClick={downloadEntitlementData}>Unduh Data</button>
                   <label className="uploadButton">
                     Upload Data
                     <input
@@ -8401,7 +10409,11 @@ export default function Home() {
                   operational relationships, formulas, API mapping, reports, and
                   audit data remain available.
                 </div>
-                <div className="subTabs portalTabs">
+                <div
+                  className="subTabs portalTabs"
+                  role="tablist"
+                  aria-label="Portal management sections"
+                >
                   {[
                     "Dashboard Manager",
                     "Menu & Table Manager",
@@ -8410,6 +10422,8 @@ export default function Home() {
                   ].map((section) => (
                     <button
                       key={section}
+                      role="tab"
+                      aria-selected={portalSection === section}
                       className={portalSection === section ? "selected" : ""}
                       onClick={() => setPortalSection(section)}
                     >
@@ -9048,7 +11062,7 @@ export default function Home() {
             <article className="card tableCard">
               <div className="miniHead">
                 <h2>Activity Log</h2>
-                <span>Simulasi audit trail</span>
+                <span>Audit trail operasional, visitor, ruangan, display, user, dan notification</span>
               </div>
               <MasterFilterBar
                 query={masterQuery}
@@ -9131,10 +11145,242 @@ export default function Home() {
                 </div>
               </div>
               <SubTabs
-                items={["Daily Flight", "Seasonal Schedule", "Irregularity"]}
+                items={[
+                  "Daily Flight",
+                  "Seasonal Schedule",
+                  "Irregularity",
+                  "Passenger Volume",
+                ]}
                 value={flightTab}
                 setValue={setFlightTab}
               />
+              {flightTab === "Passenger Volume" && (
+                <article className="card passengerVolumeCard">
+                  <div className="actionTitle miniHead">
+                    <div>
+                      <p>FLIGHT-LEVEL PASSENGER DATA</p>
+                      <h2>Passenger Volume</h2>
+                      <span>
+                        Denominator Lounge Utilization per flight dan cabin
+                        class. Dashboard hanya memakai flight berstatus
+                        DEPARTED.
+                      </span>
+                    </div>
+                    <div>
+                      <button onClick={downloadPassengerVolumeTemplate}>
+                        Unduh Template
+                      </button>
+                      <label className="uploadButton">
+                        Upload Excel/CSV
+                        <input
+                          type="file"
+                          accept=".csv,.xlsx,.xls"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) void previewPassengerVolumeFile(file);
+                            event.target.value = "";
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  {dashboardImportNotice && (
+                    <Notice
+                      n={dashboardImportNotice}
+                      close={() => setDashboardImportNotice(null)}
+                    />
+                  )}
+                  <div className="filters passengerVolumeFilters">
+                    <FilterField label="Flight Date">
+                      <input
+                        type="date"
+                        value={flightDateFilter}
+                        onChange={(event) =>
+                          setFlightDateFilter(event.target.value)
+                        }
+                      />
+                    </FilterField>
+                    <FilterField label="Station">
+                      <SearchableSelect
+                        value={isGlobalAdmin ? flightFilter : station}
+                        disabled={!isGlobalAdmin}
+                        onChange={setFlightFilter}
+                        options={[
+                          "Semua",
+                          ...new Set(
+                            passengerVolumes.map((row) => row.station),
+                          ),
+                        ]}
+                        placeholder="Station"
+                      />
+                    </FilterField>
+                    <FilterField label="Flight Status">
+                      <SearchableSelect
+                        value={flightStatusFilter}
+                        onChange={setFlightStatusFilter}
+                        options={[
+                          "Semua",
+                          ...new Set(passengerVolumes.map((row) => row.status)),
+                        ]}
+                        placeholder="Flight Status"
+                      />
+                    </FilterField>
+                    <FilterField label="Search Flight">
+                      <input
+                        value={flightQuery}
+                        onChange={(event) => setFlightQuery(event.target.value)}
+                        placeholder="Flight / route"
+                      />
+                    </FilterField>
+                  </div>
+                  {passengerVolumePreview.length > 0 && (
+                    <section className="passengerPreview">
+                      <div>
+                        <span>
+                          Preview <b>{passengerVolumeFileName}</b> ·{" "}
+                          {passengerVolumePreview.length} flight
+                        </span>
+                        <div className="rowAct">
+                          <button
+                            onClick={() => {
+                              setPassengerVolumePreview([]);
+                              setPassengerVolumeFileName("");
+                            }}
+                          >
+                            Batal
+                          </button>
+                          <button
+                            className="primary"
+                            onClick={() => void savePassengerVolumePreview()}
+                          >
+                            Simpan Data
+                          </button>
+                        </div>
+                      </div>
+                      <div className="tableWrap">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Flight</th>
+                              <th>Route</th>
+                              <th>Status</th>
+                              <th>Capacity F/C/Y</th>
+                              <th>Pax F/C/Y</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {passengerVolumePreview.slice(0, 25).map((row) => (
+                              <tr key={row.id}>
+                                <td>{row.flightDate}</td>
+                                <td>{row.flight}</td>
+                                <td>
+                                  {row.origin}–{row.destination}
+                                </td>
+                                <td>{row.status}</td>
+                                <td>
+                                  {row.capacityF}/{row.capacityC}/
+                                  {row.capacityY}
+                                </td>
+                                <td>
+                                  {row.passengerF}/{row.passengerC}/
+                                  {row.passengerY}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  )}
+                  <div className="passengerVolumeSummary">
+                    <span>
+                      <b>{passengerVolumes.length}</b> Flight tersimpan
+                    </span>
+                    <span>
+                      <b>
+                        {
+                          passengerVolumes.filter(
+                            (row) => row.status === "DEPARTED",
+                          ).length
+                        }
+                      </b>{" "}
+                      Departed
+                    </span>
+                    <span>
+                      <b>
+                        {passengerVolumes
+                          .filter((row) => row.status === "DEPARTED")
+                          .reduce(
+                            (total, row) => total + row.totalPassengers,
+                            0,
+                          )
+                          .toLocaleString("id-ID")}
+                      </b>{" "}
+                      Total pax
+                    </span>
+                  </div>
+                  <div className="tableWrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Station</th>
+                          <th>Flight</th>
+                          <th>To</th>
+                          <th>Status</th>
+                          <th>Aircraft</th>
+                          <th>Capacity F/C/Y</th>
+                          <th>Pax F/C/Y</th>
+                          <th>Source</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {passengerVolumes
+                          .filter(
+                            (row) =>
+                              (isGlobalAdmin || row.station === station) &&
+                              (!flightDateFilter ||
+                                row.flightDate === flightDateFilter) &&
+                              (flightFilter === "Semua" ||
+                                row.station === flightFilter) &&
+                              (flightStatusFilter === "Semua" ||
+                                row.status === flightStatusFilter) &&
+                              (!flightQuery ||
+                                `${row.flight} ${row.station} ${row.destination}`
+                                  .toLowerCase()
+                                  .includes(flightQuery.toLowerCase())),
+                          )
+                          .sort((a, b) =>
+                            `${b.flightDate}-${b.flight}`.localeCompare(
+                              `${a.flightDate}-${a.flight}`,
+                            ),
+                          )
+                          .map((row) => (
+                            <tr key={row.id}>
+                              <td>{row.flightDate}</td>
+                              <td>{row.station}</td>
+                              <td>
+                                <b>{row.flight}</b>
+                              </td>
+                              <td>{row.destination}</td>
+                              <td>{row.status}</td>
+                              <td>{row.aircraft || "—"}</td>
+                              <td>
+                                {row.capacityF}/{row.capacityC}/{row.capacityY}
+                              </td>
+                              <td>
+                                {row.passengerF}/{row.passengerC}/
+                                {row.passengerY}
+                              </td>
+                              <td>{row.sourceFile || row.source}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </article>
+              )}
               {flightTab === "Seasonal Schedule" && (
                 <article className="card seasonCard">
                   <CardTitle
@@ -9329,7 +11575,13 @@ export default function Home() {
                   )}
                 </article>
               )}
-              <div className="flightTools">
+              <div
+                className={
+                  flightTab === "Passenger Volume"
+                    ? "passengerVolumeHidden"
+                    : "flightTools"
+                }
+              >
                 <button type="button" onClick={downloadFlightTemplate}>
                   Unduh Template Flight
                 </button>
@@ -9381,7 +11633,13 @@ export default function Home() {
                   dan tanggal dapat dibaca dari header.
                 </span>
               </div>
-              <div className="fallbackExplanation">
+              <div
+                className={
+                  flightTab === "Passenger Volume"
+                    ? "passengerVolumeHidden"
+                    : "fallbackExplanation"
+                }
+              >
                 <b>Passenger List — Manual Import</b>
                 <span>
                   Dipakai oleh petugas berwenang hanya jika Passenger List/DCS
@@ -9404,14 +11662,22 @@ export default function Home() {
                   close={() => setPassengerImportNotice("")}
                 />
               )}
-              <div className="info">
+              <div
+                className={
+                  flightTab === "Passenger Volume"
+                    ? "passengerVolumeHidden"
+                    : "info"
+                }
+              >
                 <b>Hak pengelolaan data</b>
                 <br />
                 Super Admin, Admin/HO, dan BO dapat upload atau menambah flight.
                 Lounge Officer dapat menambah flight operasional station-nya,
                 tetapi perubahan ETD/status tetap dibatasi kepada Admin/HO/BO.
               </div>
-              <article className="card tableCard flightCard">
+              <article
+                className={`card tableCard flightCard ${flightTab === "Passenger Volume" ? "passengerVolumeHidden" : ""}`}
+              >
                 <div className="filters threeFilters">
                   <FilterField label="Flight Date">
                     <input
@@ -9709,6 +11975,25 @@ export default function Home() {
                     if (item.type === "PASSWORD_RESET_REQUEST") {
                       setMasterTab("User & Role");
                       setTab("master");
+                    } else if (
+                      ["ROOM_BOOKING_APPROVAL", "ROOM_BOOKING_STATUS"].includes(
+                        item.type,
+                      )
+                    ) {
+                      setFacilityRoute({
+                        tab: "Room Booking",
+                        targetId: item.targetId,
+                        nonce: Date.now(),
+                      });
+                      setTab("facility");
+                    } else if (item.type === "VISITOR_VERIFICATION") {
+                      setReconTab("Verifier Review");
+                      setTab("reconciliation");
+                    } else if (
+                      ["VISITOR_DISPUTE", "VISITOR_STATUS"].includes(item.type)
+                    ) {
+                      setReconTab("Dispute & Correction");
+                      setTab("reconciliation");
                     }
                     setShowInbox(false);
                   }}
@@ -9722,67 +12007,9 @@ export default function Home() {
                   <span>{item.text}</span>
                 </button>
               ))}
-              {verificationQueue
-                .filter(
-                  (v) =>
-                    v.boStatus === "Pending" &&
-                    !readNotificationIds.has(`verify-${v.id}`),
-                )
-                .map((v) => (
-                  <button
-                    key={`verify-${v.id}`}
-                    onClick={() => {
-                      markNotificationRead(`verify-${v.id}`);
-                      setReconTab("Verifier Review");
-                      setTab("reconciliation");
-                      setShowInbox(false);
-                    }}
-                  >
-                    <i>VERIFY</i>
-                    <b>
-                      {v.name} · {v.flight}
-                    </b>
-                    <span>
-                      {v.category} menunggu verifikasi {v.verifier}
-                    </span>
-                  </button>
-                ))}
-              {shown
-                .filter(
-                  (v) =>
-                    v.boStatus === "Rejected" &&
-                    v.reconciliationStatus !== "Final" &&
-                    !readNotificationIds.has(`dispute-${v.id}`),
-                )
-                .map((v) => (
-                  <button
-                    key={`dispute-${v.id}`}
-                    onClick={() => {
-                      markNotificationRead(`dispute-${v.id}`);
-                      setReconTab("Dispute & Correction");
-                      setTab("reconciliation");
-                      setShowInbox(false);
-                    }}
-                  >
-                    <i>DISPUTE</i>
-                    <b>
-                      {v.name} · {v.disputeCode || "Koreksi"}
-                    </b>
-                    <span>{v.boReason}</span>
-                  </button>
-                ))}
-              {!portalNotifications.length &&
-                !verificationQueue.some(
-                  (v) =>
-                    v.boStatus === "Pending" &&
-                    !readNotificationIds.has(`verify-${v.id}`),
-                ) &&
-                !shown.some(
-                  (v) =>
-                    v.boStatus === "Rejected" &&
-                    v.reconciliationStatus !== "Final" &&
-                    !readNotificationIds.has(`dispute-${v.id}`),
-                ) && <div className="empty">Tidak ada aktivitas baru.</div>}
+              {!portalNotifications.length && (
+                <div className="empty">Tidak ada aktivitas baru.</div>
+              )}
             </div>
           </section>
         </div>
@@ -9918,7 +12145,12 @@ export default function Home() {
                   vendorStatus: "Pending",
                   reconciliationStatus: "Open",
                 };
-                await saveRecord("visitors", updated);
+                if (!firebaseUser) throw new Error("Sesi Firebase tidak aktif.");
+                await manageVisitor(firebaseUser, {
+                  action: "update",
+                  id: updated.id,
+                  visitor: updated,
+                });
                 setVisitors((xs) =>
                   xs.map((x) => (x.id === updated.id ? updated : x)),
                 );
@@ -11667,7 +13899,10 @@ export default function Home() {
                   min="0"
                   value={loungeDraft.capacity || 0}
                   onChange={(e) =>
-                    setLoungeDraft({ ...loungeDraft, capacity: Number(e.target.value) || 0 })
+                    setLoungeDraft({
+                      ...loungeDraft,
+                      capacity: Number(e.target.value) || 0,
+                    })
                   }
                 />
               </label>
@@ -11677,25 +13912,111 @@ export default function Home() {
                   type="date"
                   value={loungeDraft.capacityEffectiveFrom || localDate()}
                   onChange={(e) =>
-                    setLoungeDraft({ ...loungeDraft, capacityEffectiveFrom: e.target.value })
+                    setLoungeDraft({
+                      ...loungeDraft,
+                      capacityEffectiveFrom: e.target.value,
+                    })
                   }
                 />
               </label>
               <div className="full" style={{ marginTop: 8 }}>
                 <strong>Periode Harga</strong>
                 <div className="info" style={{ marginTop: 8 }}>
-                  Harga dapat memiliki beberapa periode. Dashboard menggunakan harga yang berlaku pada Date of Travel visitor.
+                  Harga dapat memiliki beberapa periode. Dashboard menggunakan
+                  harga yang berlaku pada Date of Travel visitor.
                 </div>
                 {(loungeDraft.pricePeriods?.length
                   ? loungeDraft.pricePeriods
-                  : [{ id: "default", currency: loungeDraft.currency, price: loungeDraft.price, start: loungeDraft.start, end: loungeDraft.end }]
+                  : [
+                      {
+                        id: "default",
+                        currency: loungeDraft.currency,
+                        price: loungeDraft.price,
+                        start: loungeDraft.start,
+                        end: loungeDraft.end,
+                      },
+                    ]
                 ).map((period, index, source) => (
-                  <div className="form" key={period.id} style={{ marginTop: 8 }}>
-                    <label>Currency<input value={period.currency} onChange={(e) => { const rows = source.map((item) => ({ ...item })); rows[index].currency = e.target.value.toUpperCase(); setLoungeDraft({ ...loungeDraft, pricePeriods: rows }); }} /></label>
-                    <label>Harga per Pax<input type="number" min="0" value={period.price} onChange={(e) => { const rows = source.map((item) => ({ ...item })); rows[index].price = Number(e.target.value) || 0; setLoungeDraft({ ...loungeDraft, pricePeriods: rows }); }} /></label>
-                    <label>Tanggal Mulai<input type="date" value={period.start} onChange={(e) => { const rows = source.map((item) => ({ ...item })); rows[index].start = e.target.value; setLoungeDraft({ ...loungeDraft, pricePeriods: rows }); }} /></label>
-                    <label>Tanggal Berakhir<input type="date" value={period.end} onChange={(e) => { const rows = source.map((item) => ({ ...item })); rows[index].end = e.target.value; setLoungeDraft({ ...loungeDraft, pricePeriods: rows }); }} /></label>
-                    {source.length > 1 && <button type="button" onClick={() => setLoungeDraft({ ...loungeDraft, pricePeriods: source.filter((_, rowIndex) => rowIndex !== index) })}>Hapus Periode</button>}
+                  <div
+                    className="form"
+                    key={period.id}
+                    style={{ marginTop: 8 }}
+                  >
+                    <label>
+                      Currency
+                      <input
+                        value={period.currency}
+                        onChange={(e) => {
+                          const rows = source.map((item) => ({ ...item }));
+                          rows[index].currency = e.target.value.toUpperCase();
+                          setLoungeDraft({
+                            ...loungeDraft,
+                            pricePeriods: rows,
+                          });
+                        }}
+                      />
+                    </label>
+                    <label>
+                      Harga per Pax
+                      <input
+                        type="number"
+                        min="0"
+                        value={period.price}
+                        onChange={(e) => {
+                          const rows = source.map((item) => ({ ...item }));
+                          rows[index].price = Number(e.target.value) || 0;
+                          setLoungeDraft({
+                            ...loungeDraft,
+                            pricePeriods: rows,
+                          });
+                        }}
+                      />
+                    </label>
+                    <label>
+                      Tanggal Mulai
+                      <input
+                        type="date"
+                        value={period.start}
+                        onChange={(e) => {
+                          const rows = source.map((item) => ({ ...item }));
+                          rows[index].start = e.target.value;
+                          setLoungeDraft({
+                            ...loungeDraft,
+                            pricePeriods: rows,
+                          });
+                        }}
+                      />
+                    </label>
+                    <label>
+                      Tanggal Berakhir
+                      <input
+                        type="date"
+                        value={period.end}
+                        onChange={(e) => {
+                          const rows = source.map((item) => ({ ...item }));
+                          rows[index].end = e.target.value;
+                          setLoungeDraft({
+                            ...loungeDraft,
+                            pricePeriods: rows,
+                          });
+                        }}
+                      />
+                    </label>
+                    {source.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLoungeDraft({
+                            ...loungeDraft,
+                            pricePeriods: source.filter(
+                              (_, rowIndex) => rowIndex !== index,
+                            ),
+                          })
+                        }
+                      >
+                        Hapus Periode
+                      </button>
+                    )}
                   </div>
                 ))}
                 <button
@@ -11703,9 +14024,25 @@ export default function Home() {
                   onClick={() => {
                     const rows = loungeDraft.pricePeriods?.length
                       ? [...loungeDraft.pricePeriods]
-                      : [{ id: crypto.randomUUID(), currency: loungeDraft.currency, price: loungeDraft.price, start: loungeDraft.start, end: loungeDraft.end }];
-                    const nextStart = loungeDraft.end ? addDays(loungeDraft.end, 1) : localDate();
-                    rows.push({ id: crypto.randomUUID(), currency: loungeDraft.currency, price: loungeDraft.price, start: nextStart, end: addDays(nextStart, 30) });
+                      : [
+                          {
+                            id: crypto.randomUUID(),
+                            currency: loungeDraft.currency,
+                            price: loungeDraft.price,
+                            start: loungeDraft.start,
+                            end: loungeDraft.end,
+                          },
+                        ];
+                    const nextStart = loungeDraft.end
+                      ? addDays(loungeDraft.end, 1)
+                      : localDate();
+                    rows.push({
+                      id: crypto.randomUUID(),
+                      currency: loungeDraft.currency,
+                      price: loungeDraft.price,
+                      start: nextStart,
+                      end: addDays(nextStart, 30),
+                    });
                     setLoungeDraft({ ...loungeDraft, pricePeriods: rows });
                   }}
                 >
@@ -11860,6 +14197,60 @@ export default function Home() {
           </form>
         </div>
       )}
+      {visitorImportPreview.length > 0 && (
+        <div className="back" onMouseDown={() => setVisitorImportPreview([])}>
+          <div className="modal visitorImportModal" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="modalHead">
+              <div>
+                <span>VISITOR BUNDLE PREVIEW</span>
+                <h2>Periksa Data Sebelum Upload</h2>
+                <small>{visitorImportFileName} · {visitorImportPreview.length} baris</small>
+              </div>
+              <button type="button" onClick={() => setVisitorImportPreview([])}>×</button>
+            </div>
+            <div className="trafficSummary importSummary">
+              <span>Total <b>{visitorImportPreview.length}</b></span>
+              <span>
+                Siap diverifikasi{" "}
+                <b>{visitorImportPreview.filter((row) => row.name && row.flight && row.seq && row.travelDate && row.lounge && row.eligible === "Y").length}</b>
+              </span>
+              <span>
+                Perlu dilengkapi{" "}
+                <b>{visitorImportPreview.filter((row) => !(row.name && row.flight && row.seq && row.travelDate && row.lounge && row.eligible === "Y")).length}</b>
+              </span>
+            </div>
+            <div className="tableWrap importPreviewTable">
+              <table>
+                <thead>
+                  <tr><th>No.</th><th>Passenger</th><th>DOT</th><th>Airport/Lounge</th><th>Flight</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                  {visitorImportPreview.slice(0, 25).map((row, index) => {
+                    const complete = Boolean(row.name && row.flight && row.seq && row.travelDate && row.lounge && row.eligible === "Y");
+                    return (
+                      <tr key={`${String(row.name)}-${index}`}>
+                        <td>{index + 1}</td>
+                        <td>{String(row.name || "Belum diisi")}</td>
+                        <td>{String(row.travelDate || "Belum diisi")}</td>
+                        <td>{String(row.airport || station)}<small>{String(row.lounge || "Lounge belum diisi")}</small></td>
+                        <td>{String(row.flight || "Belum diisi")}<small>Seq. {String(row.seq || "—")}</small></td>
+                        <td><mark className={complete ? "green" : "yellow"}>{complete ? "READY" : "NEEDS COMPLETION"}</mark></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {visitorImportPreview.length > 25 && <small>Preview menampilkan 25 baris pertama.</small>}
+            </div>
+            <div className="modalActions">
+              <button type="button" onClick={() => setVisitorImportPreview([])}>Batal</button>
+              <button className="primary" type="button" disabled={visitorImportSaving} onClick={() => void confirmVisitorBundle()}>
+                {visitorImportSaving ? "Mengunggah..." : "Konfirmasi Upload"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {rejected && (
         <div className="back">
           <div className="modal rejectModal">
@@ -11876,15 +14267,15 @@ export default function Home() {
                       ? "Di Luar Waktu Akses"
                       : rejected.reason === "lounge"
                         ? "Jenis Lounge Tidak Sesuai"
-                        : "Tidak Eligible Lounge"}
+                        : "Kriteria Akses Belum Terpenuhi"}
             </h2>
             <p>
               {rejected.detail ||
                 (rejected.reason === "N"
-                  ? "Bagian akhir hasil scan tidak mengandung huruf Y. Penumpang dinyatakan tidak eligible."
+                  ? "Berdasarkan hasil validasi boarding pass dan ketentuan layanan yang berlaku, akses lounge belum dapat diberikan. Silakan periksa kembali data perjalanan atau lakukan verifikasi manual sesuai kewenangan petugas."
                   : rejected.reason === "airport"
                     ? `Rute penerbangan dimulai dari ${rejected.origin}, sedangkan scan dilakukan di ${airport}. Akses lounge/tenant hanya berlaku di airport keberangkatan awal.`
-                    : "Huruf Y tidak ditemukan pada bagian akhir boarding pass. Akses otomatis ditolak.")}
+                    : "Status kelayakan akses belum dapat dikonfirmasi dari data yang tersedia. Silakan pindai ulang boarding pass atau lakukan verifikasi manual sesuai kewenangan petugas.")}
             </p>
             <div className="modalActions rejectActions">
               <button
@@ -11903,6 +14294,19 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => {
+                    if (firebaseUser) {
+                      void recordPortalActivity(firebaseUser, {
+                        action: "EXCEPTIONAL_ACCESS_REQUESTED",
+                        module: "Lounge/Tenant Access",
+                        station: airport,
+                        loungeId,
+                        loungeName: lounges.find((item) => item.id === loungeId)?.name || "",
+                        targetType: "Passenger Access",
+                        targetName: `${pass.name || "Passenger"} · ${pass.flight || "Flight unavailable"}`,
+                        result: "Pending Approval",
+                        detail: "Exceptional access requested after automated access denial.",
+                      }).catch(() => undefined);
+                    }
                     setRejected(null);
                     setNotice({
                       kind: "warn",
@@ -11918,6 +14322,19 @@ export default function Home() {
                   type="button"
                   className="primary"
                   onClick={() => {
+                    if (firebaseUser) {
+                      void recordPortalActivity(firebaseUser, {
+                        action: "EXCEPTIONAL_ACCESS_GRANTED",
+                        module: "Lounge/Tenant Access",
+                        station: airport,
+                        loungeId,
+                        loungeName: lounges.find((item) => item.id === loungeId)?.name || "",
+                        targetType: "Passenger Access",
+                        targetName: `${pass.name || "Passenger"} · ${pass.flight || "Flight unavailable"}`,
+                        result: "Provisional",
+                        detail: "Provisional access granted; final verification and evidence remain required.",
+                      }).catch(() => undefined);
+                    }
                     setPass((p) => ({ ...p, eligible: "Y" }));
                     setRejected(null);
                     setNotice({
@@ -11941,18 +14358,30 @@ export default function Home() {
             onSubmit={async (e) => {
               e.preventDefault();
               const normalized = normalizeVisitor(
-                edit as unknown as Record<string, unknown>,
+                {
+                  ...edit,
+                  importStatus:
+                    edit.importBatchId &&
+                    (!edit.flight || !edit.seq || !edit.travelDate || !edit.lounge || edit.eligible !== "Y")
+                      ? "Needs Data Completion"
+                      : edit.importStatus,
+                } as unknown as Record<string, unknown>,
               );
-              if (!normalized || !edit.seq.trim()) {
+              if (!normalized) {
                 setActionDialog({
                   kind: "warn",
-                  text: "Nama, flight, sequence, Date of Travel, dan airport harus valid. Data belum disimpan.",
+                  text: "Nama dan airport harus valid. Field lainnya dapat dilengkapi kemudian untuk data hasil bundle upload.",
                 });
                 return;
               }
               try {
                 const updated = normalized as Visitor;
-                await saveRecord("visitors", updated);
+                if (!firebaseUser) throw new Error("Sesi Firebase tidak aktif.");
+                await manageVisitor(firebaseUser, {
+                  action: "update",
+                  id: updated.id,
+                  visitor: updated,
+                });
                 setVisitors((rows) =>
                   rows.map((visitor) =>
                     visitor.id === updated.id ? updated : visitor,
@@ -12020,6 +14449,51 @@ export default function Home() {
                     })
                   }
                 />
+              </label>
+              <label>
+                Airport
+                <select value={edit.airport} onChange={(e) => setEdit({ ...edit, airport: e.target.value, lounge: "", loungeId: "" })}>
+                  {stations.map((item) => <option key={item.code} value={item.code}>{item.code} — {item.name}</option>)}
+                </select>
+              </label>
+              <label>
+                Lounge/Tenant
+                <select
+                  value={edit.loungeId || ""}
+                  onChange={(e) => {
+                    const selected = lounges.find((item) => item.id === e.target.value);
+                    setEdit({ ...edit, loungeId: e.target.value, lounge: selected?.name || "" });
+                  }}
+                >
+                  <option value="">Pilih lounge/tenant</option>
+                  {lounges.filter((item) => item.airport === edit.airport).map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Route
+                <input value={edit.route} onChange={(e) => setEdit({ ...edit, route: e.target.value.toUpperCase() })} />
+              </label>
+              <label>
+                Cabin Class
+                <select value={edit.cabin} onChange={(e) => setEdit({ ...edit, cabin: e.target.value })}>
+                  <option value="">Pilih kelas</option><option value="C">C — Business Class</option><option value="Y">Y — Economy Class</option>
+                </select>
+              </label>
+              <label>
+                Seat Number
+                <input value={edit.seat} onChange={(e) => setEdit({ ...edit, seat: e.target.value.toUpperCase() })} />
+              </label>
+              <label>
+                Ticket Number
+                <input value={edit.ticket} onChange={(e) => setEdit({ ...edit, ticket: e.target.value })} />
+              </label>
+              <label>
+                Eligibility Indicator
+                <select value={edit.eligible} onChange={(e) => setEdit({ ...edit, eligible: e.target.value as Eligibility })}>
+                  <option value="">Belum diverifikasi</option><option value="Y">Y — Eligible</option><option value="N">N — Not Eligible</option>
+                </select>
               </label>
               <label>
                 Kategori
@@ -12125,10 +14599,12 @@ function SubTabs({
   setValue: (v: string) => void;
 }) {
   return (
-    <div className="subTabs">
+    <div className="subTabs" role="tablist">
       {items.map((item) => (
         <button
           key={item}
+          role="tab"
+          aria-selected={value === item}
           className={value === item ? "selected" : ""}
           onClick={() => setValue(item)}
         >
@@ -12186,10 +14662,10 @@ function DonutChart({
   onSelect?: (name: string) => void;
 }) {
   const colors = [
-    "#087c96",
-    "#32a6b1",
-    "#1c5f82",
-    "#70c7c9",
+    "#062b5c",
+    "#2e6597",
+    "#174a7e",
+    "#6f94bb",
     "#eea84a",
     "#8067a7",
     "#d76969",

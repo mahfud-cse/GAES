@@ -6,6 +6,7 @@ import {
   targetAuth,
   targetDb,
 } from "./_firebase-admin.mjs";
+import { writeAudit } from "./_audit.mjs";
 
 const allowedRoles = new Set([
   "Super Admin",
@@ -78,11 +79,13 @@ export async function createUserRecord(input, actor) {
   const batch = db.batch();
   batch.set(db.collection("users").doc(record.uid), profile);
   batch.set(usernameRef, { uid: record.uid, email, active: profile.active });
-  batch.set(db.collection("auditLogs").doc(), {
+  writeAudit(batch, db, actor, {
     action: "CREATE_USER",
+    module: "User & Role",
+    station: profile.station,
+    targetType: "User",
     targetId: record.uid,
-    actorId: actor.decoded.uid,
-    createdAt: new Date(),
+    targetName: `${profile.name} · ${profile.role}`,
   });
   try {
     await batch.commit();

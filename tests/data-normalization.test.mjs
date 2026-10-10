@@ -2,13 +2,26 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  deduplicateLounges,
+  isSynchronizedRecord,
   isoDate,
   numberValue,
   normalizeFlight,
+  normalizeLounge,
+  normalizePassengerVolume,
+  normalizeStation,
   normalizeVisitor,
   timeValue,
 } from "../lib/data-normalization.ts";
 import { parseBoardingPass } from "../lib/boarding-pass.ts";
+import {
+  addRecurrence,
+  buildSlots,
+  localDateInZone,
+  localTimeInZone,
+  parseRange,
+} from "../netlify/functions/manage-room-booking.mjs";
+import { healthFor } from "../netlify/functions/sweep-display-health.mjs";
 
 test("normalizes spreadsheet dates, times, and Indonesian currency", () => {
   assert.equal(isoDate("20/09/2026"), "2026-09-20");
@@ -46,6 +59,26 @@ test("accepts a valid flight and rejects an incomplete row", () => {
   assert.equal(normalizeFlight({ Date: "", Flight: "GA204" }), null);
 });
 
+test("normalizes flight-level passenger volume with First, Business, and Economy", () => {
+  const row = normalizePassengerVolume({
+    Date: "2026-09-24",
+    Flight: "GA 204",
+    From: "cgk",
+    To: "jog",
+    "Flight Status": "departed",
+    capacityF: 8,
+    capacityC: 26,
+    capacityY: 267,
+    passengerF: 0,
+    passengerC: 18,
+    passengerY: 201,
+  });
+  assert.equal(row?.id, "pax-2026-09-24-ga204-cgk-jog");
+  assert.equal(row?.status, "DEPARTED");
+  assert.equal(row?.totalPassengers, 219);
+  assert.equal(normalizePassengerVolume({ Date: "", Flight: "GA204" }), null);
+});
+
 test("skips corrupt visitor documents instead of exposing them to the page", () => {
   assert.equal(
     normalizeVisitor({ id: "bad", name: "A", flight: "GA204" }),
@@ -61,6 +94,15 @@ test("skips corrupt visitor documents instead of exposing them to the page", () 
     })?.airport,
     "CGK",
   );
+  const incompleteImport = normalizeVisitor({
+    id: "imported",
+    name: "Passenger Pending",
+    airport: "CGK",
+    date: "2026-10-07",
+    importStatus: "Needs Data Completion",
+  });
+  assert.equal(incompleteImport?.flight, "");
+  assert.equal(incompleteImport?.travelDate, "");
 });
 
 test("parses arbitrary IATA BCBP and labelled QR payloads", () => {
@@ -73,4 +115,139 @@ test("parses arbitrary IATA BCBP and labelled QR payloads", () => {
 
   const unknown = parseBoardingPass("ANOTHER-UNSUPPORTED-CODE");
   assert.equal(unknown.recognized, false);
+});
+
+test("eligibility wildcard accepts any final indicator beginning with Y", () => {
+  for (const indicator of ["Y", "YS", "Y1", "YAA"]) {
+    const parsed = parseBoardingPass(
+      `name=DOE/JOHN;flight=GA204;route=CGK-JOG;seq=001;cabin=Y;${indicator}`,
+    );
+    assert.equal(parsed.eligible, "Y");
+  }
+  assert.equal(
+    parseBoardingPass(
+      "name=DOE/JOHN;flight=GA204;route=CGK-JOG;seq=001;cabin=Y;N",
+    ).eligible,
+    "N",
+  );
+});
+
+test("recognizes legacy synchronized lounge metadata and deduplicates its card", () => {
+  const legacy = normalizeLounge({
+    id: "legacy-lounge",
+    airport: "CGK",
+    name: "Blue Sky Lounge",
+    type: "Lounge",
+    sourceProject: "ground-experience-portal",
+    sourceStatus: "SOURCE_NOT_FOUND",
+  });
+  const synced = normalizeLounge({
+    id: "sync-lounge-current",
+    airport: "CGK",
+    name: "Blue Sky Lounge",
+    type: "Lounge",
+    dataOrigin: "SYNC",
+    readOnly: true,
+    sourceRecordId: "1001",
+    pricePeriods: [
+      {
+        id: "period-1",
+        start: "2026-01-01",
+        end: "2026-12-31",
+        currency: "IDR",
+        price: 120000,
+      },
+    ],
+  });
+
+  assert.equal(legacy?.dataOrigin, "SYNC");
+  assert.equal(legacy?.readOnly, true);
+  const result = deduplicateLounges([legacy, synced].filter(Boolean));
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, "sync-lounge-current");
+  assert.equal(result[0].dataOrigin, "SYNC");
+  assert.equal(result[0].pricePeriods.length, 1);
+});
+
+test("keeps every synchronized station read-only, including legacy metadata", () => {
+  for (const metadata of [
+    { dataOrigin: "SYNC" },
+    { readOnly: true },
+    { sourceProject: "ground-experience-portal" },
+    { sourceRecordId: "airport-cgk" },
+    { sourcePath: "portalData/airports/records/airport-cgk" },
+    { sourceStatus: "SOURCE_NOT_FOUND" },
+  ]) {
+    const station = normalizeStation({
+      code: "CGK",
+      name: "Soekarno-Hatta",
+      ...metadata,
+    });
+    assert.equal(station?.dataOrigin, "SYNC");
+    assert.equal(station?.readOnly, true);
+    assert.equal(isSynchronizedRecord(station), true);
+  }
+
+  const manual = normalizeStation({ code: "DPS", name: "I Gusti Ngurah Rai" });
+  assert.equal(manual?.dataOrigin, "MANUAL");
+  assert.equal(manual?.readOnly, false);
+  assert.equal(isSynchronizedRecord(manual), false);
+});
+
+test("builds deterministic 15-minute room locks including cleaning buffers", () => {
+  const start = new Date("2026-10-05T02:00:00.000Z");
+  const end = new Date("2026-10-05T03:00:00.000Z");
+  const first = buildSlots("room-cgk-01", start, end, 15, 15);
+  const second = buildSlots("room-cgk-01", start, end, 15, 15);
+  assert.equal(first.length, 6);
+  assert.deepEqual(first, second);
+  assert.equal(first[0].startsAt, "2026-10-05T01:45:00.000Z");
+  assert.equal(first.at(-1).startsAt, "2026-10-05T03:00:00.000Z");
+});
+
+test("keeps recurrence and station-local booking time consistent", () => {
+  const start = new Date("2026-10-05T02:00:00.000Z");
+  assert.equal(
+    addRecurrence(start, "Weekly", 2).toISOString(),
+    "2026-10-19T02:00:00.000Z",
+  );
+  assert.equal(localDateInZone(start, "Asia/Jakarta"), "2026-10-05");
+  assert.equal(localTimeInZone(start, "Asia/Jakarta"), "09:00");
+  assert.doesNotThrow(() =>
+    parseRange({
+      startAt: "2026-10-05T02:00:00.000Z",
+      endAt: "2026-10-05T03:00:00.000Z",
+    }),
+  );
+  assert.throws(() =>
+    parseRange({
+      startAt: "2026-10-05T02:00:00.000Z",
+      endAt: "2026-10-05T12:00:00.000Z",
+    }),
+  );
+});
+
+test("classifies display heartbeat health without trusting stale device status", () => {
+  const now = Date.parse("2026-10-05T00:10:00.000Z");
+  assert.deepEqual(
+    healthFor(
+      { lastHeartbeat: "2026-10-05T00:09:50.000Z", lastError: "" },
+      now,
+    ),
+    { status: "Online", healthStatus: "Healthy" },
+  );
+  assert.deepEqual(
+    healthFor(
+      { lastHeartbeat: "2026-10-05T00:09:30.000Z", lastError: "" },
+      now,
+    ),
+    { status: "Degraded", healthStatus: "Degraded" },
+  );
+  assert.deepEqual(
+    healthFor(
+      { lastHeartbeat: "2026-10-05T00:08:50.000Z", lastError: "" },
+      now,
+    ),
+    { status: "Offline", healthStatus: "Offline" },
+  );
 });

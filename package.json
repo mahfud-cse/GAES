@@ -1,20 +1,21 @@
 {
   "name": "lounge-tenant-test",
-  "version": "0.22.3",
+  "version": "0.23.1",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
   },
   "scripts": {
-    "install:ci": "bash scripts/install-ci.sh",
-    "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vite",
-    "build": "bash scripts/build-verified.sh",
-    "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs",
-    "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test:logic": "node --experimental-strip-types --test tests/data-normalization.test.mjs",
+    "test:ui": "node --test tests/ui-foundation.test.mjs tests/rendered-html.test.mjs",
+    "test": "npm run test:logic && npm run test:ui && npm run lint && npm run build",
+    "lint": "eslint . --ignore-pattern source --ignore-pattern static-build --ignore-pattern .next"
   },
   "dependencies": {
+    "@types/qrcode": "^1.5.5",
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
     "drizzle-orm": "0.45.2",
@@ -23,6 +24,7 @@
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "next": "16.2.6",
+    "qrcode": "^1.5.4",
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "xlsx": "^0.18.5"
