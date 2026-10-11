@@ -769,3 +769,26 @@ test("consolidates visitor output, group remote control, and lounge wayfinding",
   assert.match(css, /\.publicLoungeMap/);
   assert.match(css, /@media \(max-width: 720px\)/);
 });
+
+test("declares lounge capacity helper before Firebase-backed render calculations", async () => {
+  const page = await read("../app/page.tsx");
+  const declaration = page.indexOf("function loungeCapacityForDate(");
+  const filteredLounges = page.indexOf("const filteredLounges =");
+  assert.ok(declaration >= 0, "lounge capacity helper must be a hoisted function");
+  assert.ok(
+    declaration < filteredLounges,
+    "Firebase lounge rows must not trigger a temporal-dead-zone render error",
+  );
+  assert.doesNotMatch(page, /loungeCapacityForDate\s*=\s*\(/);
+});
+
+test("shows deterministic feedback while display device inventory is saved", async () => {
+  const facility = await read("../app/facility-operations.tsx");
+  assert.match(facility, /const \[savingDevice, setSavingDevice\]/);
+  assert.match(facility, /const \[deviceFeedback, setDeviceFeedback\]/);
+  assert.match(facility, /result\.status !== "Saved"/);
+  assert.match(facility, /Saving Device\.\.\./);
+  assert.match(facility, /Role akun tidak memiliki akses konfigurasi perangkat/);
+  assert.match(facility, /Station perangkat berada di luar scope akun/);
+  assert.match(facility, /error instanceof Error[\s\S]*?error\.message/);
+});

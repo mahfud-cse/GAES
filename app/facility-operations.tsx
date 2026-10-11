@@ -901,6 +901,8 @@ export default function FacilityOperations({
   const [editingDevice, setEditingDevice] = useState<string | null>(null);
   const [showRoomForm, setShowRoomForm] = useState(false);
   const [showDeviceForm, setShowDeviceForm] = useState(false);
+  const [savingDevice, setSavingDevice] = useState(false);
+  const [deviceFeedback, setDeviceFeedback] = useState<Notice | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [bookingView, setBookingView] = useState<
     "Day" | "Week" | "Month" | "List"
@@ -1716,30 +1718,59 @@ export default function FacilityOperations({
 
   async function saveDevice(event: FormEvent) {
     event.preventDefault();
-    if (!canConfigure || !permittedStation(deviceDraft.station)) return;
+    setDeviceFeedback(null);
+    if (!canConfigure) {
+      setDeviceFeedback({
+        kind: "error",
+        text: "Role akun tidak memiliki akses konfigurasi perangkat.",
+      });
+      return;
+    }
+    if (!permittedStation(deviceDraft.station)) {
+      setDeviceFeedback({
+        kind: "error",
+        text: "Station perangkat berada di luar scope akun.",
+      });
+      return;
+    }
     if (!deviceDraft.name.trim()) {
-      setNotice({ kind: "warn", text: "Nama device wajib diisi." });
+      setDeviceFeedback({ kind: "warn", text: "Nama device wajib diisi." });
       return;
     }
     const id = editingDevice || recordId("display");
-    await manageDisplayDevice(user, {
-      action: "savedevice",
-      device: {
-        id,
-        ...deviceDraft,
-        approvalStatus: canonicalApprovalStatus(deviceDraft.approvalStatus),
-      },
-    });
-    setNotice({
-      kind: "ok",
-      text: `Device ${deviceDraft.name} berhasil disimpan sebagai inventory. Lanjutkan approval dan enrollment melalui TV & Digital Signage > Monitor.`,
-    });
-    setDeviceDraft({
-      ...EMPTY_DEVICE,
-      station: globalScope ? "CGK" : account.station,
-    });
-    setEditingDevice(null);
-    setShowDeviceForm(false);
+    setSavingDevice(true);
+    try {
+      const result = await manageDisplayDevice(user, {
+        action: "savedevice",
+        device: {
+          id,
+          ...deviceDraft,
+          approvalStatus: canonicalApprovalStatus(deviceDraft.approvalStatus),
+        },
+      });
+      if (result.status !== "Saved")
+        throw new Error("Server belum mengonfirmasi penyimpanan perangkat.");
+      setNotice({
+        kind: "ok",
+        text: `Device ${deviceDraft.name} berhasil disimpan sebagai inventory. Lanjutkan approval dan enrollment melalui TV & Digital Signage > Monitor.`,
+      });
+      setDeviceDraft({
+        ...EMPTY_DEVICE,
+        station: globalScope ? "CGK" : account.station,
+      });
+      setEditingDevice(null);
+      setShowDeviceForm(false);
+    } catch (error) {
+      setDeviceFeedback({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Perangkat tidak dapat disimpan.",
+      });
+    } finally {
+      setSavingDevice(false);
+    }
   }
 
   async function approveDevice(device: DeviceRecord) {
@@ -3704,6 +3735,7 @@ export default function FacilityOperations({
                         ...EMPTY_DEVICE,
                         station: globalScope ? "CGK" : account.station,
                       });
+                      setDeviceFeedback(null);
                       setShowDeviceForm(true);
                     }}
                   >
@@ -4121,6 +4153,7 @@ export default function FacilityOperations({
                                           device.approvalStatus,
                                         ),
                                       });
+                                      setDeviceFeedback(null);
                                       setShowDeviceForm(true);
                                     }}
                                   >
@@ -4937,6 +4970,7 @@ export default function FacilityOperations({
                       ...EMPTY_DEVICE,
                       station: globalScope ? "CGK" : account.station,
                     });
+                    setDeviceFeedback(null);
                     setShowDeviceForm(true);
                   }}
                 >
@@ -5080,6 +5114,7 @@ export default function FacilityOperations({
                                     device.approvalStatus,
                                   ),
                                 });
+                                setDeviceFeedback(null);
                                 setShowDeviceForm(true);
                               }}
                             >
@@ -8149,8 +8184,17 @@ export default function FacilityOperations({
                   </li>
                 </ol>
               </div>
+              {deviceFeedback && (
+                <div className={`notice ${deviceFeedback.kind} full`} role="alert">
+                  <span>{deviceFeedback.text}</span>
+                </div>
+              )}
               <div className="modalActions full">
-                <button type="button" onClick={() => setShowDeviceForm(false)}>
+                <button
+                  type="button"
+                  disabled={savingDevice}
+                  onClick={() => setShowDeviceForm(false)}
+                >
                   Cancel
                 </button>
                 {editingDeviceRecord &&
@@ -8179,8 +8223,8 @@ export default function FacilityOperations({
                       : "Delete Device"}
                   </button>
                 )}
-                <button className="primary" type="submit">
-                  Save Device
+                <button className="primary" type="submit" disabled={savingDevice}>
+                  {savingDevice ? "Saving Device..." : "Save Device"}
                 </button>
               </div>
             </form>

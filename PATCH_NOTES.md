@@ -17,6 +17,8 @@
 - Passenger QR links can identify the current zone (`You are here`). Selecting another facility draws a simple visual direction line and opens its service/photo information.
 - Login data recovery now sanitizes user profiles, notifications, activity logs, and dashboard configuration before rendering. A malformed legacy record is skipped or given a safe fallback instead of taking down the whole page.
 - The recovery page now exposes a safe copyable diagnostic code and the actual client-render error message. It no longer labels every application failure as a Firebase data-format problem.
+- Fixed the authenticated dashboard crash `can't access lexical declaration before initialization`: lounge sorting previously invoked the capacity helper before its render-local declaration. The helper is now hoisted and covered by a non-empty Firebase-data regression check.
+- Device inventory save now has an in-progress state, explicit server acknowledgement, inline role/station validation, and visible backend error feedback. The modal no longer appears unresponsive when a Netlify Function or permission check rejects the request.
 - Responsive rules were consolidated for facility tabs, display controls, output groups, dialogs, tables, layout editor, photo galleries, and the public passenger map.
 
 ## Deployment
