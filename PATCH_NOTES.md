@@ -1,5 +1,17 @@
 # Patch Notes
 
+## Lounge Layout dan Passenger Wayfinding
+
+- Path relatif seperti `/lounge-layouts/nama-file.png` kini dapat disimpan tanpa ditolak validasi URL browser; URL HTTP/HTTPS tetap didukung.
+- Preview internal menampilkan status kegagalan gambar yang jelas dan memuat ulang saat lounge/layout dipilih.
+- Marker mempertahankan koordinat ketika hover, focus, dan click; efek tombol global tidak lagi menggeser marker.
+- Hasil klik denah dibulatkan otomatis menjadi dua desimal. Position X/Y menggunakan langkah `0.01` hanya untuk fine-tuning.
+- Edit dan hapus area tersedia secara eksplisit, dengan konfirmasi dan feedback hasil operasi.
+- Passenger view memakai panel detail kanan dengan foto utama 16:9, carousel multi-foto, indikator jumlah, dan lightbox.
+- Pada HP, detail area menjadi bottom sheet yang dapat ditutup dengan tombol, Escape, klik, atau swipe ke bawah.
+- Hanya area dengan Passenger Visibility `Visible` yang dikirim oleh public endpoint; area internal tetap tidak terekspos.
+- Tombol close dibuat bulat dan memenuhi minimum touch target 44 x 44 px.
+
 ## Koreksi autentikasi Deploy Preview
 
 - Memperbaiki HTTP 401 pada Simpan Perangkat, rename/simpan Output Group, dan aksi backend lain ketika Deploy Preview Netlify memakai proteksi akses.

@@ -799,3 +799,27 @@ test("Firebase API calls preserve Netlify deploy-preview authentication", async 
   assert.match(api, /"X-Firebase-ID-Token": token/);
   assert.doesNotMatch(api, /Authorization:\s*`Bearer/);
 });
+
+test("stabilizes lounge layout editing and passenger area details", async () => {
+  const [facility, publicMap, css, publicBackend] = await Promise.all([
+    read("../app/facility-operations.tsx"),
+    read("../app/lounge-map/[id]/page.tsx"),
+    read("../app/globals.css"),
+    read("../netlify/functions/public-lounge-layout.mjs"),
+  ]);
+  assert.match(facility, /function validLayoutAssetUrl/);
+  assert.match(facility, /\/\^\\\/\(\?!\\\/\)\//);
+  assert.match(facility, /roundLayoutPosition/);
+  assert.match(facility, /step="0\.01"/);
+  assert.match(facility, /deleteLayoutArea/);
+  assert.match(facility, /layoutPreviewError/);
+  assert.doesNotMatch(facility, /Layout Image URL<\/span><input type="url"/);
+  assert.match(publicMap, /publicAreaDetailPanel/);
+  assert.match(publicMap, /publicPhotoCarousel/);
+  assert.match(publicMap, /fullScreenPhoto/);
+  assert.match(publicMap, /end - start > 60/);
+  assert.match(css, /transform:\s*translate\(-50%, -50%\)/);
+  assert.match(css, /\.publicAreaPanel\.detailOpen/);
+  assert.match(css, /min-width:\s*44px/);
+  assert.match(publicBackend, /area\?\.publicVisible === true/);
+});
