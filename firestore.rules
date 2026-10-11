@@ -5,7 +5,10 @@ service cloud.firestore {
     function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function active() { return signedIn() && profile().active == true; }
     function roleIs(roles) { return active() && profile().role in roles; }
-    function sameStation(data) { return profile().station == 'ALL' || data.airport == profile().station || data.station == profile().station; }
+    function globalScope() {
+      return roleIs(['Super Admin','Admin','HO Admin','HO Ancillary Coordinator','HO Ancillary Verifier','Report Viewer']);
+    }
+    function sameStation(data) { return globalScope() || data.airport == profile().station || data.station == profile().station; }
     function assignedLounge(data) { return profile().loungeId != null && profile().loungeId != '' && data.loungeId == profile().loungeId; }
 
     match /usernames/{username} { allow read, write: if false; }
@@ -15,13 +18,9 @@ service cloud.firestore {
     }
     match /visitors/{id} {
       allow read: if active() && (roleIs(['Super Admin','Admin','HO Admin','HO Ancillary Coordinator','Report Viewer']) || sameStation(resource.data));
-      allow create: if active() && sameStation(request.resource.data);
-      allow update: if active() && (
-        roleIs(['Super Admin','Admin','HO Ancillary Verifier','Airline Verifier']) ||
-        (roleIs(['BO Admin','Lounge Manager']) && sameStation(resource.data) && sameStation(request.resource.data))
-      );
-      allow delete: if roleIs(['Super Admin','Admin']) ||
-        (roleIs(['BO Admin','Lounge Manager']) && sameStation(resource.data));
+      // Visitor mutations must pass the audited Netlify functions. This avoids
+      // bypassing duplicate, eligibility, role, and station validation.
+      allow create, update, delete: if false;
     }
     match /lounges/{id} {
       allow read: if active();
@@ -199,5 +198,6 @@ service cloud.firestore {
       allow create, delete: if false;
     }
     match /auditLogs/{id} { allow read: if roleIs(['Super Admin','Admin']); allow write: if false; }
+    match /securityRateLimits/{id} { allow read, write: if false; }
   }
 }

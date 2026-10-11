@@ -1,55 +1,55 @@
 # Patch Notes
 
-## Lounge Layout dan Passenger Wayfinding
+## Patch 1 — Operational Stability & Security
 
-- Path relatif seperti `/lounge-layouts/nama-file.png` kini dapat disimpan tanpa ditolak validasi URL browser; URL HTTP/HTTPS tetap didukung.
-- Preview internal menampilkan status kegagalan gambar yang jelas dan memuat ulang saat lounge/layout dipilih.
-- Marker mempertahankan koordinat ketika hover, focus, dan click; efek tombol global tidak lagi menggeser marker.
-- Hasil klik denah dibulatkan otomatis menjadi dua desimal. Position X/Y menggunakan langkah `0.01` hanya untuk fine-tuning.
-- Edit dan hapus area tersedia secara eksplisit, dengan konfirmasi dan feedback hasil operasi.
-- Passenger view memakai panel detail kanan dengan foto utama 16:9, carousel multi-foto, indikator jumlah, dan lightbox.
-- Pada HP, detail area menjadi bottom sheet yang dapat ditutup dengan tombol, Escape, klik, atau swipe ke bawah.
-- Hanya area dengan Passenger Visibility `Visible` yang dikirim oleh public endpoint; area internal tetap tidak terekspos.
-- Tombol close dibuat bulat dan memenuhi minimum touch target 44 x 44 px.
+### Authentication and public endpoints
 
-## Koreksi autentikasi Deploy Preview
+- Firebase ID tokens remain separated from Netlify Deploy Preview authorization through `X-Firebase-ID-Token`.
+- Username resolution, password reset requests, and initial Super Admin setup now have server-side rate limits.
+- Initial setup token comparison uses constant-time comparison, validates bootstrap input, and rolls back the Firebase Auth account if the Firestore bootstrap commit fails.
+- Global security headers now include HSTS and a restrictive Permissions Policy while retaining camera access for same-origin boarding-pass scanning.
 
-- Memperbaiki HTTP 401 pada Simpan Perangkat, rename/simpan Output Group, dan aksi backend lain ketika Deploy Preview Netlify memakai proteksi akses.
-- Firebase ID token sekarang dikirim melalui `X-Firebase-ID-Token`, sehingga tidak menimpa header autentikasi milik Netlify.
-- Request fungsi menggunakan kredensial same-origin dan tetap melakukan satu kali refresh token Firebase ketika sesi kedaluwarsa.
+### Role and station enforcement
 
-## Scope
+- Airline Coordinator and Airline Verifier are station-scoped, as confirmed for this patch.
+- BO Admin, Lounge Officer, Lounge Manager, Airline Coordinator, and Airline Verifier can no longer be created or updated with station `ALL`.
+- Firestore `sameStation` no longer treats `ALL` as globally trusted for every role. Only approved HO/global roles receive cross-station scope.
+- Visitor creation validates role, station, assigned lounge, selected lounge master, eligibility, and identity on the server.
 
-- Lounge/Tenant Access now displays **Final Destination** in Steps 2–3. Scan results remain read-only; manual entry uses the airport reference list.
-- Multi-leg data keeps the active flight segment for schedule validation while storing the last encoded destination separately.
-- Eligibility wildcard follows the operational rule: a final indicator beginning with `Y` is eligible (`Y`, `YS`, `Y1`, and similar values).
-- Access-denial messages use professional service language and no longer expose the technical `Y` indicator rule to passengers or officers.
-- Camera scan requests higher resolution and continuous focus, provides torch/zoom controls when supported, and adds still-image decoding at 0°, 90°, 180°, and 270° with a contrast-enhanced retry.
-- Visitor upload accepts the official report headers, the previous template headers, and common aliases.
-- Visitor export uses the official header order: separate First/Last Name, Flight Origin/Destination, Guest Name, and the remaining reconciliation fields.
-- Spreadsheet support is loaded statically to avoid an upload-only dynamic chunk failure. The application error page now identifies stale deployment chunks and offers **Muat Versi Terbaru**.
-- Output Groups now provide group-level remote commands. Commands fan out to enrolled devices and retain per-device Pending/Executed/Failed/Expired acknowledgement monitoring.
-- Master Lounge/Tenant now separates Facility Type, Operational Status, and computed Agreement Validity (Valid, Expiring Soon, Expired, Not Yet Valid, Invalid Data).
-- Master Lounge/Tenant, Station, and Airline tables support column sorting. Existing data can be downloaded separately from upload templates for Lounge/Tenant, Station, Airline, User & Role, and Access Entitlement.
-- Added **Lounge Layout & Service Map** for uploading an existing lounge floor plan as the map background, with URL fallback, interactive service points, operational status, service tags, area photo galleries, passenger preview, publication control, location-specific QR codes, and a public mobile passenger page.
-- Passenger QR links can identify the current zone (`You are here`). Selecting another facility draws a simple visual direction line and opens its service/photo information.
-- Login data recovery now sanitizes user profiles, notifications, activity logs, and dashboard configuration before rendering. A malformed legacy record is skipped or given a safe fallback instead of taking down the whole page.
-- The recovery page now exposes a safe copyable diagnostic code and the actual client-render error message. It no longer labels every application failure as a Firebase data-format problem.
-- Fixed the authenticated dashboard crash `can't access lexical declaration before initialization`: lounge sorting previously invoked the capacity helper before its render-local declaration. The helper is now hoisted and covered by a non-empty Firebase-data regression check.
-- Device inventory save now has an in-progress state, explicit server acknowledgement, inline role/station validation, and visible backend error feedback. The modal no longer appears unresponsive when a Netlify Function or permission check rejects the request.
-- Responsive rules were consolidated for facility tabs, display controls, output groups, dialogs, tables, layout editor, photo galleries, and the public passenger map.
+### Visitor data integrity
+
+- Direct Firestore create/update/delete access to `visitors` is closed. All mutations must pass audited backend functions.
+- New visitor payloads are allow-listed and server-owned statuses are forced to their safe initial values.
+- Visitor updates use an editable-field allow-list, preserve the original station, protect workflow statuses, validate lounge moves, and re-check duplicate passenger identity.
+- Evidence resubmission returns the visitor to Pending verification without allowing the browser payload to forge an Accepted/Final status.
+
+### Evidence protection
+
+- Evidence Storage access now checks the visitor record, user role, and station scope.
+- New evidence uploads store the protected Firebase Storage path instead of persisting a public download-token URL.
+- Direct client access to security rate-limit records is denied.
+
+### Audit trail
+
+- Every recognized boarding-pass scan now records `BOARDING_PASS_READ` with the signed-in user, role, station, lounge, passenger/flight target, and scan source.
+- Accepted, rejected, created, updated, imported, deleted, notification, room, and display events continue using their existing server-owned audit records.
 
 ## Deployment
 
-1. Upload the delta files to the same repository paths.
-2. Deploy `firestore.rules` and `storage.rules` because the patch adds the `loungeLayouts` collection and `lounge-layouts/` storage path.
-3. Ensure Firebase Storage is enabled to upload denah and photos through the webapp. Before Storage is enabled, local UAT assets can be placed under `public/lounge-layouts/` and referenced as `/lounge-layouts/file-name.png`.
-4. Keep the existing Netlify Firebase environment variables. The public passenger view is served through `/.netlify/functions/public-lounge-layout` and only returns layouts marked **Published**.
-5. No new Firestore composite index is required.
+1. Copy only the files in this delta to the same repository paths.
+2. Push the repository so Netlify rebuilds the application and Functions.
+3. Deploy both Firebase rule files from the project root:
+
+   ```bash
+   firebase deploy --only firestore:rules,storage
+   ```
+
+4. Existing station-bound Airline accounts configured as `ALL` must be assigned a valid three-letter station code before they are edited again.
+5. No Firebase data migration or new composite index is required.
 
 ## Verification
 
-- Logic tests cover normalization, visitor data, room operations, display health, and the `Y*` eligibility wildcard.
-- UI regression tests cover the canonical UI foundation, mobile dialogs, hover contrast, booking, display player, output routing, quick announcements, visitor bundle upload, and portrait signage.
-- ESLint completes with zero errors; existing baseline warnings remain unchanged.
-- The production Next.js build completes successfully, including `/lounge-map/[id]`.
+- 11 logic tests passed.
+- 37 UI/security regression tests passed.
+- ESLint completed with 0 errors; 24 pre-existing warnings remain.
+- Next.js production build completed successfully for `/`, `/player`, and `/lounge-map/[id]`.

@@ -6,6 +6,7 @@ import {
   targetDb,
 } from "./_firebase-admin.mjs";
 import { writeAudit } from "./_audit.mjs";
+import { createHash } from "node:crypto";
 
 const MANAGER_ROLES = new Set([
   "Super Admin",
@@ -23,6 +24,41 @@ const DECISION_ROLES = new Set([
 ]);
 const DISPUTE_ROLES = new Set(["Super Admin", "Admin", "Lounge Officer", "Lounge Manager"]);
 const text = (value, max = 1000) => String(value || "").trim().slice(0, max);
+const EDITABLE_TEXT_FIELDS = new Map([
+  ["date", 20], ["time", 12], ["travelDate", 20], ["scanTimestamp", 40],
+  ["dateSource", 20], ["lounge", 180], ["loungeId", 160], ["name", 160],
+  ["flight", 24], ["route", 20], ["finalDestination", 3], ["cabin", 4],
+  ["seat", 12], ["seq", 30], ["ticket", 40], ["eligible", 1],
+  ["category", 100], ["reference", 180], ["currency", 3], ["agreementId", 160],
+  ["pricePeriodId", 160], ["priceSource", 20], ["pricingDate", 20], ["source", 80],
+  ["companionCategory", 100], ["companionMembership", 120], ["verifier", 160],
+  ["verifierOrganization", 180], ["rawScan", 4000], ["normalizedScan", 4000],
+  ["evidenceName", 240], ["evidenceUrl", 1500], ["evidenceType", 40],
+  ["evidenceStoragePath", 500], ["evidenceUploadedAt", 40], ["membership", 120], ["notes", 800],
+  ["firstName", 80], ["lastName", 80], ["confirmationNumber", 120],
+  ["sourceIssuingConfirmation", 160], ["accessGrantedBy", 160],
+  ["ffpAirlineCode", 3], ["guestName", 240], ["paymentId", 160],
+]);
+
+function editableVisitorPayload(source) {
+  const result = {};
+  EDITABLE_TEXT_FIELDS.forEach((max, field) => {
+    if (Object.hasOwn(source, field)) result[field] = text(source[field], max);
+  });
+  if (Object.hasOwn(source, "price")) result.price = Math.max(0, Number(source.price) || 0);
+  if (Object.hasOwn(source, "companionCount"))
+    result.companionCount = Math.max(0, Math.min(20, Number(source.companionCount) || 0));
+  return result;
+}
+
+const duplicateHash = (row) =>
+  createHash("sha256")
+    .update(
+      [row.name, row.flight, row.seq, row.travelDate || row.date]
+        .map((value) => text(value, 180).toUpperCase().replace(/\s+/g, " "))
+        .join("|"),
+    )
+    .digest("hex");
 
 const handler = async (request) => {
   try {
@@ -140,9 +176,14 @@ const handler = async (request) => {
       return json(200, { id, status: boStatus });
     }
     if (action === "update") {
-      const visitor = input.visitor || {};
+      const visitor = editableVisitorPayload(input.visitor || {});
       if (!text(visitor.name, 160))
         throw httpError(400, "Nama visitor wajib tersedia.");
+      if (visitor.loungeId && visitor.loungeId !== current.loungeId) {
+        const lounge = await db.collection("lounges").doc(visitor.loungeId).get();
+        if (!lounge.exists || lounge.data()?.airport !== current.airport)
+          throw httpError(409, "Lounge/Tenant tidak tersedia pada station visitor.");
+      }
       const missingFields = [
         !text(visitor.travelDate || visitor.date, 20) && "Date of Travel",
         !text(visitor.flight, 24) && "Flight Number",
@@ -150,18 +191,56 @@ const handler = async (request) => {
         !text(visitor.lounge, 180) && "Lounge/Tenant",
         visitor.eligible !== "Y" && "Eligibility Indicator",
       ].filter(Boolean);
+      const nextIdentity = { ...current, ...visitor };
+      const identityComplete = Boolean(
+        nextIdentity.name &&
+          nextIdentity.flight &&
+          nextIdentity.seq &&
+          (nextIdentity.travelDate || nextIdentity.date),
+      );
+      const nextDuplicateKey = identityComplete ? duplicateHash(nextIdentity) : "";
+      if (nextDuplicateKey && nextDuplicateKey !== current.duplicateKey) {
+        const duplicateReference = db.collection("uniquePassengers").doc(nextDuplicateKey);
+        if ((await duplicateReference.get()).exists)
+          throw httpError(409, "Penumpang sudah terdaftar pada penerbangan dan tanggal tersebut.");
+        batch.create(duplicateReference, {
+          visitorId: id,
+          identity: [
+            nextIdentity.name,
+            nextIdentity.flight,
+            nextIdentity.seq,
+            nextIdentity.travelDate || nextIdentity.date,
+          ],
+          createdAt: new Date(),
+        });
+        if (current.duplicateKey)
+          batch.delete(db.collection("uniquePassengers").doc(current.duplicateKey));
+      }
+      const evidenceResubmitted = Boolean(
+        (visitor.evidenceStoragePath &&
+          visitor.evidenceStoragePath !== current.evidenceStoragePath) ||
+          (visitor.evidenceUrl && visitor.evidenceUrl !== current.evidenceUrl),
+      );
       batch.set(
         reference,
         {
           ...visitor,
           id,
+          airport: current.airport,
           importStatus: current.importBatchId
             ? missingFields.length
               ? "Needs Data Completion"
               : "Ready for Verification"
             : visitor.importStatus || current.importStatus || "",
           missingFields,
-          duplicateKey: current.duplicateKey || "",
+          duplicateKey: nextDuplicateKey || current.duplicateKey || "",
+          boStatus: evidenceResubmitted ? "Pending" : current.boStatus,
+          boReason: current.boReason || "",
+          vendorStatus: evidenceResubmitted ? "Pending" : current.vendorStatus,
+          reconciliationStatus: evidenceResubmitted
+            ? "Open"
+            : current.reconciliationStatus,
+          exceptionalStatus: current.exceptionalStatus || "Not Requested",
           createdBy: current.createdBy || "",
           createdAt: current.createdAt || new Date(),
           updatedAt: new Date(),

@@ -1,10 +1,22 @@
-import { failure, json, targetAuth, targetDb } from "./_firebase-admin.mjs";
+import {
+  enforceRateLimit,
+  failure,
+  httpError,
+  json,
+  secretMatches,
+  targetAuth,
+  targetDb,
+} from "./_firebase-admin.mjs";
 
 export default async (request) => {
   try {
     if (request.method !== "POST") return json(405, { error: "Method not allowed." });
     const input = await request.json();
-    if (!process.env.INITIAL_SETUP_TOKEN || input.setupToken !== process.env.INITIAL_SETUP_TOKEN) {
+    await enforceRateLimit(request, "setup-superadmin", {
+      limit: 5,
+      windowMs: 15 * 60 * 1000,
+    });
+    if (!secretMatches(input.setupToken, process.env.INITIAL_SETUP_TOKEN)) {
       return json(403, { error: "Setup token tidak valid." });
     }
 
@@ -17,15 +29,25 @@ export default async (request) => {
 
     const email = String(input.email || "").trim().toLowerCase();
     const username = String(input.username || "").trim().toLowerCase();
-    const user = await targetAuth().createUser({
+    const password = String(input.password || "");
+    const name = String(input.name || "").trim();
+    if (
+      !name ||
+      !email.includes("@") ||
+      !/^[a-z0-9._-]{3,40}$/.test(username) ||
+      password.length < 8
+    )
+      throw httpError(400, "Nama, email, username, atau password awal tidak valid.");
+    const auth = targetAuth();
+    const user = await auth.createUser({
       email,
-      password: input.password,
-      displayName: input.name,
+      password,
+      displayName: name,
     });
     const batch = db.batch();
     batch.set(db.collection("users").doc(user.uid), {
       uid: user.uid,
-      name: input.name,
+      name,
       email,
       username,
       role: "Super Admin",
@@ -42,7 +64,12 @@ export default async (request) => {
       completedAt: new Date(),
       uid: user.uid,
     });
-    await batch.commit();
+    try {
+      await batch.commit();
+    } catch (error) {
+      await auth.deleteUser(user.uid).catch(() => undefined);
+      throw error;
+    }
     return json(201, { uid: user.uid });
   } catch (error) {
     return failure(error);

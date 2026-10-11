@@ -21,6 +21,13 @@ const allowedRoles = new Set([
   "Airline Verifier",
   "Report Viewer",
 ]);
+const STATION_BOUND_ROLES = new Set([
+  "BO Admin",
+  "Lounge Officer",
+  "Lounge Manager",
+  "Airline Coordinator",
+  "Airline Verifier",
+]);
 
 export async function createUserRecord(input, actor) {
   const username = String(input.username || "")
@@ -45,6 +52,11 @@ export async function createUserRecord(input, actor) {
   if (actor.profile.role !== "Super Admin" && input.role === "Super Admin") {
     throw httpError(403, "Hanya Super Admin yang dapat membuat Super Admin.");
   }
+  const station = String(input.station || "ALL").trim().toUpperCase();
+  if (STATION_BOUND_ROLES.has(input.role) && !/^[A-Z]{3}$/.test(station))
+    throw httpError(400, "Role operasional dan Airline wajib memiliki satu station IATA.");
+  if (station !== "ALL" && !/^[A-Z]{3}$/.test(station))
+    throw httpError(400, "Station akun harus ALL atau kode IATA 3 huruf.");
 
   const db = targetDb();
   const usernameRef = db.collection("usernames").doc(username);
@@ -64,7 +76,7 @@ export async function createUserRecord(input, actor) {
     email,
     username,
     role: input.role,
-    station: input.station || "ALL",
+    station,
     scope: input.scope || "Seluruh Station",
     organization: input.organization || "Garuda Indonesia",
     loungeId: input.loungeId || "",

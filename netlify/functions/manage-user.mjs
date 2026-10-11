@@ -20,6 +20,13 @@ const allowedRoles = new Set([
   "Airline Verifier",
   "Report Viewer",
 ]);
+const STATION_BOUND_ROLES = new Set([
+  "BO Admin",
+  "Lounge Officer",
+  "Lounge Manager",
+  "Airline Coordinator",
+  "Airline Verifier",
+]);
 
 export default async (request) => {
   try {
@@ -114,13 +121,21 @@ export default async (request) => {
       .trim()
       .toLowerCase();
     const nextRole = String(input.role || before.role);
+    const nextStation = String(input.station || before.station || "ALL")
+      .trim()
+      .toUpperCase();
     if (
       !/^[a-z0-9._-]{3,40}$/.test(username) ||
       !email.includes("@") ||
-      !allowedRoles.has(nextRole)
+      !allowedRoles.has(nextRole) ||
+      (nextStation !== "ALL" && !/^[A-Z]{3}$/.test(nextStation))
     ) {
-      return json(400, { error: "Email, username, atau role tidak valid." });
+      return json(400, { error: "Email, username, role, atau station tidak valid." });
     }
+    if (STATION_BOUND_ROLES.has(nextRole) && !/^[A-Z]{3}$/.test(nextStation))
+      return json(400, {
+        error: "Role operasional dan Airline wajib memiliki satu station IATA.",
+      });
     if (username !== before.username) {
       const owner = await db.collection("usernames").doc(username).get();
       if (owner.exists && owner.data()?.uid !== uid)
@@ -144,7 +159,7 @@ export default async (request) => {
         username,
         email,
         role: nextRole,
-        station: input.station,
+        station: nextStation,
         scope: input.scope,
         organization: input.organization,
         loungeId: input.loungeId || "",
@@ -158,7 +173,7 @@ export default async (request) => {
     writeAudit(batch, db, actor, {
       action: active ? "UPDATE_USER" : "DEACTIVATE_USER",
       module: "User & Role",
-      station: input.station,
+      station: nextStation,
       targetType: "User",
       targetId: uid,
       targetName: `${input.name || before.name || before.username} · ${nextRole}`,

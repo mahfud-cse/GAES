@@ -823,3 +823,61 @@ test("stabilizes lounge layout editing and passenger area details", async () => 
   assert.match(css, /min-width:\s*44px/);
   assert.match(publicBackend, /area\?\.publicVisible === true/);
 });
+
+test("hardens Patch 1 authentication, station scope, visitor evidence, and audit", async () => {
+  const [
+    page,
+    firestoreRules,
+    storageRules,
+    authBackend,
+    createUserBackend,
+    manageUserBackend,
+    createVisitorBackend,
+    manageVisitorBackend,
+    resolveBackend,
+    resetBackend,
+    setupBackend,
+    evidence,
+    netlify,
+  ] = await Promise.all([
+    read("../app/page.tsx"),
+    read("../firestore.rules"),
+    read("../storage.rules"),
+    read("../netlify/functions/_firebase-admin.mjs"),
+    read("../netlify/functions/create-user.mjs"),
+    read("../netlify/functions/manage-user.mjs"),
+    read("../netlify/functions/create-visitor.mjs"),
+    read("../netlify/functions/manage-visitor.mjs"),
+    read("../netlify/functions/resolve-username.mjs"),
+    read("../netlify/functions/request-password-reset.mjs"),
+    read("../netlify/functions/setup-superadmin.mjs"),
+    read("../lib/firebase/evidence.ts"),
+    read("../netlify.toml"),
+  ]);
+  assert.match(firestoreRules, /match \/visitors\/\{id\}[\s\S]*?allow create, update, delete: if false/);
+  assert.match(firestoreRules, /function globalScope\(\)/);
+  assert.match(firestoreRules, /match \/securityRateLimits\/\{id\} \{ allow read, write: if false; \}/);
+  assert.match(storageRules, /visitorInScope\(visitorId\)/);
+  assert.match(storageRules, /Lounge Officer','Lounge Manager/);
+  assert.match(authBackend, /export async function enforceRateLimit/);
+  assert.match(authBackend, /timingSafeEqual/);
+  assert.match(createUserBackend, /STATION_BOUND_ROLES/);
+  assert.match(manageUserBackend, /STATION_BOUND_ROLES/);
+  assert.match(createVisitorBackend, /CREATE_ROLES/);
+  assert.match(createVisitorBackend, /actor\.profile\.station !== visitor\.airport/);
+  assert.match(createVisitorBackend, /boStatus: "Pending"/);
+  assert.match(manageVisitorBackend, /EDITABLE_TEXT_FIELDS/);
+  assert.match(manageVisitorBackend, /airport: current\.airport/);
+  assert.match(manageVisitorBackend, /evidenceResubmitted/);
+  assert.match(resolveBackend, /enforceRateLimit\(request, "resolve-username"/);
+  assert.match(resetBackend, /enforceRateLimit\(request, "password-reset-client"/);
+  assert.match(resetBackend, /enforceRateLimit\(request, "password-reset-account"/);
+  assert.match(setupBackend, /secretMatches/);
+  const uploadEvidence = evidence.match(/export async function uploadEvidence[\s\S]*?\n\}/)?.[0] || "";
+  assert.match(uploadEvidence, /storagePath/);
+  assert.doesNotMatch(uploadEvidence, /getDownloadURL/);
+  assert.match(page, /BOARDING_PASS_READ: "Membaca boarding pass"/);
+  assert.match(page, /action: "BOARDING_PASS_READ"/);
+  assert.match(netlify, /Strict-Transport-Security/);
+  assert.match(netlify, /Permissions-Policy/);
+});

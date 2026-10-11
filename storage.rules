@@ -4,9 +4,22 @@ service firebase.storage {
     function active() {
       return request.auth != null && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.active == true;
     }
+    function profile() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+    function globalRole() {
+      return profile().role in ['Super Admin','Admin','HO Admin','HO Ancillary Coordinator','HO Ancillary Verifier','Report Viewer'];
+    }
+    function visitorInScope(visitorId) {
+      return firestore.exists(/databases/(default)/documents/visitors/$(visitorId))
+        && (globalRole()
+          || firestore.get(/databases/(default)/documents/visitors/$(visitorId)).data.airport == profile().station);
+    }
     match /evidence/{visitorId}/{fileName} {
-      allow read: if active();
-      allow write: if active() && request.resource.size < 10 * 1024 * 1024
+      allow read: if active() && visitorInScope(visitorId);
+      allow write: if active() && visitorInScope(visitorId)
+        && profile().role in ['Super Admin','Admin','BO Admin','Lounge Officer','Lounge Manager']
+        && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('(application/pdf|image/jpeg|image/png)');
     }
     match /display-content/{station}/{contentId}/{fileName} {

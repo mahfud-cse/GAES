@@ -117,6 +117,7 @@ type Visitor = {
   disputeCode?: string;
   evidenceName?: string;
   evidenceUrl?: string;
+  evidenceStoragePath?: string;
   reconciliationStatus?: "Open" | "Final";
   rawScan?: string;
   normalizedScan?: string;
@@ -1300,6 +1301,7 @@ function portalActivityMillis(value: unknown) {
 }
 
 const portalActivityLabels: Record<string, string> = {
+  BOARDING_PASS_READ: "Membaca boarding pass",
   CREATE_VISITOR: "Menambahkan visitor",
   IMPORT_VISITOR: "Mengimpor visitor",
   IMPORT_VISITOR_BUNDLE: "Mengunggah visitor bundle",
@@ -3921,6 +3923,19 @@ export default function Home() {
     const [origin, destination] = data.route
       .split("–")
       .map((x) => x.trim().toUpperCase());
+    if (firebaseUser) {
+      void recordPortalActivity(firebaseUser, {
+        action: "BOARDING_PASS_READ",
+        module: "Lounge/Tenant Access",
+        result: "Read",
+        station: airport,
+        loungeId,
+        loungeName: lounges.find((item) => item.id === loungeId)?.name || "",
+        targetType: "Boarding Pass",
+        targetName: `${data.name || "Passenger"} · ${data.flight || "Flight unavailable"}`,
+        detail: `${source} · ${origin || "Origin unavailable"}–${destination || "Destination unavailable"}`,
+      }).catch(() => undefined);
+    }
     const deny = (
       reason:
         | "N"
@@ -12138,7 +12153,8 @@ export default function Home() {
                 const updated: Visitor = {
                   ...evidenceVisitor,
                   evidenceName: uploaded.name,
-                  evidenceUrl: uploaded.url,
+                  evidenceUrl: "",
+                  evidenceStoragePath: uploaded.storagePath,
                   evidenceType,
                   evidenceUploadedAt: new Date().toISOString(),
                   boStatus: "Pending",
