@@ -1,5 +1,11 @@
 # Patch Notes
 
+## Koreksi autentikasi Deploy Preview
+
+- Memperbaiki HTTP 401 pada Simpan Perangkat, rename/simpan Output Group, dan aksi backend lain ketika Deploy Preview Netlify memakai proteksi akses.
+- Firebase ID token sekarang dikirim melalui `X-Firebase-ID-Token`, sehingga tidak menimpa header autentikasi milik Netlify.
+- Request fungsi menggunakan kredensial same-origin dan tetap melakukan satu kali refresh token Firebase ketika sesi kedaluwarsa.
+
 ## Scope
 
 - Lounge/Tenant Access now displays **Final Destination** in Steps 2–3. Scan results remain read-only; manual entry uses the airport reference list.

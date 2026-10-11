@@ -792,3 +792,10 @@ test("shows deterministic feedback while display device inventory is saved", asy
   assert.match(facility, /Station perangkat berada di luar scope akun/);
   assert.match(facility, /error instanceof Error[\s\S]*?error\.message/);
 });
+
+test("Firebase API calls preserve Netlify deploy-preview authentication", async () => {
+  const api = await read("../lib/firebase/api.ts");
+  assert.match(api, /credentials:\s*"same-origin"/);
+  assert.match(api, /"X-Firebase-ID-Token": token/);
+  assert.doesNotMatch(api, /Authorization:\s*`Bearer/);
+});

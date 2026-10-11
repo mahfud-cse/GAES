@@ -8,11 +8,11 @@ async function call<T>(
   let token = user ? await user.getIdToken() : "";
   let response = await fetch(`/.netlify/functions/${path}`, {
     method: "POST",
+    credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
       ...(token
         ? {
-            Authorization: `Bearer ${token}`,
             "X-Firebase-ID-Token": token,
           }
         : {}),
@@ -27,11 +27,11 @@ async function call<T>(
     token = await user.getIdToken(true);
     response = await fetch(`/.netlify/functions/${path}`, {
       method: "POST",
+      credentials: "same-origin",
       headers: {
         "Content-Type": "application/json",
         ...(token
           ? {
-              Authorization: `Bearer ${token}`,
               "X-Firebase-ID-Token": token,
             }
           : {}),
