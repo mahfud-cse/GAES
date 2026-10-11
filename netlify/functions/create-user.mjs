@@ -6,6 +6,7 @@ import {
   targetAuth,
   targetDb,
 } from "./_firebase-admin.mjs";
+import { writeAudit } from "./_audit.mjs";
 
 const allowedRoles = new Set([
   "Super Admin",
@@ -19,6 +20,13 @@ const allowedRoles = new Set([
   "Airline Coordinator",
   "Airline Verifier",
   "Report Viewer",
+]);
+const STATION_BOUND_ROLES = new Set([
+  "BO Admin",
+  "Lounge Officer",
+  "Lounge Manager",
+  "Airline Coordinator",
+  "Airline Verifier",
 ]);
 
 export async function createUserRecord(input, actor) {
@@ -44,6 +52,11 @@ export async function createUserRecord(input, actor) {
   if (actor.profile.role !== "Super Admin" && input.role === "Super Admin") {
     throw httpError(403, "Hanya Super Admin yang dapat membuat Super Admin.");
   }
+  const station = String(input.station || "ALL").trim().toUpperCase();
+  if (STATION_BOUND_ROLES.has(input.role) && !/^[A-Z]{3}$/.test(station))
+    throw httpError(400, "Role operasional dan Airline wajib memiliki satu station IATA.");
+  if (station !== "ALL" && !/^[A-Z]{3}$/.test(station))
+    throw httpError(400, "Station akun harus ALL atau kode IATA 3 huruf.");
 
   const db = targetDb();
   const usernameRef = db.collection("usernames").doc(username);
@@ -63,7 +76,7 @@ export async function createUserRecord(input, actor) {
     email,
     username,
     role: input.role,
-    station: input.station || "ALL",
+    station,
     scope: input.scope || "Seluruh Station",
     organization: input.organization || "Garuda Indonesia",
     loungeId: input.loungeId || "",
@@ -78,11 +91,13 @@ export async function createUserRecord(input, actor) {
   const batch = db.batch();
   batch.set(db.collection("users").doc(record.uid), profile);
   batch.set(usernameRef, { uid: record.uid, email, active: profile.active });
-  batch.set(db.collection("auditLogs").doc(), {
+  writeAudit(batch, db, actor, {
     action: "CREATE_USER",
+    module: "User & Role",
+    station: profile.station,
+    targetType: "User",
     targetId: record.uid,
-    actorId: actor.decoded.uid,
-    createdAt: new Date(),
+    targetName: `${profile.name} · ${profile.role}`,
   });
   try {
     await batch.commit();

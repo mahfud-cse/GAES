@@ -26,8 +26,29 @@ export type GaesCollection =
   | "auditLogs"
   | "portalConfiguration"
   | "monitoringRows"
+  | "passengerVolumes"
   | "loungeCapacityHistory"
-  | "loungePriceHistory";
+  | "loungePriceHistory"
+  | "rooms"
+  | "roomFacilities"
+  | "displayDevices"
+  | "displayContents"
+  | "displayChannels"
+  | "displaySchedules"
+  | "displayCommands"
+  | "displayAnnouncementTemplates"
+  | "displayAnnouncements"
+  | "displayOutputGroups"
+  | "displayActivityLogs"
+  | "displayPilotTests"
+  | "displayRolloutApprovals"
+  | "roomBookings"
+  | "roomOperations"
+  | "roomMaintenance"
+  | "roomIncidents"
+  | "roomActivityLogs"
+  | "shiftHandovers"
+  | "loungeLayouts";
 
 function clean<T extends Record<string, unknown>>(value: T): T {
   const sanitized = Object.fromEntries(
@@ -93,7 +114,10 @@ export function subscribeLoungeCapacityHistory<T>(
 ) {
   if (!db || !loungeId) return () => undefined;
   return onSnapshot(
-    query(collection(db, "loungeCapacityHistory"), where("loungeId", "==", loungeId)),
+    query(
+      collection(db, "loungeCapacityHistory"),
+      where("loungeId", "==", loungeId),
+    ),
     (snapshot) =>
       callback(
         snapshot.docs.map((item: QueryDocumentSnapshot<DocumentData>) => ({
@@ -112,8 +136,17 @@ export function subscribeLoungePriceHistory<T>(
 ) {
   if (!db || !loungeId) return () => undefined;
   return onSnapshot(
-    query(collection(db, "loungePriceHistory"), where("loungeId", "==", loungeId)),
-    (snapshot) => callback(snapshot.docs.map((item: QueryDocumentSnapshot<DocumentData>) => ({ id: item.id, ...item.data() })) as T[]),
+    query(
+      collection(db, "loungePriceHistory"),
+      where("loungeId", "==", loungeId),
+    ),
+    (snapshot) =>
+      callback(
+        snapshot.docs.map((item: QueryDocumentSnapshot<DocumentData>) => ({
+          id: item.id,
+          ...item.data(),
+        })) as T[],
+      ),
     (error) => onError?.(error),
   );
 }
@@ -128,6 +161,51 @@ export function subscribeVisitors<T>(
   const source =
     station && station !== "ALL"
       ? query(base, where("airport", "==", station))
+      : base;
+  return onSnapshot(
+    source,
+    (snapshot) =>
+      callback(
+        snapshot.docs.map((item: QueryDocumentSnapshot<DocumentData>) => ({
+          id: item.id,
+          ...item.data(),
+        })) as T[],
+      ),
+    (error) => onError?.(error),
+  );
+}
+
+export function subscribeStationCollection<T>(
+  name:
+    | "rooms"
+    | "roomFacilities"
+    | "roomBookings"
+    | "roomOperations"
+    | "roomMaintenance"
+    | "roomIncidents"
+    | "roomActivityLogs"
+    | "shiftHandovers"
+    | "displayDevices"
+    | "displayContents"
+    | "displayChannels"
+    | "displaySchedules"
+    | "displayCommands"
+    | "displayAnnouncementTemplates"
+    | "displayAnnouncements"
+    | "displayOutputGroups"
+    | "displayActivityLogs"
+    | "displayPilotTests"
+    | "displayRolloutApprovals"
+    | "loungeLayouts",
+  station: string,
+  callback: (rows: T[]) => void,
+  onError?: (error: Error) => void,
+) {
+  if (!db) return () => undefined;
+  const base = collection(db, name);
+  const source =
+    station && station !== "ALL"
+      ? query(base, where("station", "==", station))
       : base;
   return onSnapshot(
     source,

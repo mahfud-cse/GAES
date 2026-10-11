@@ -3,6 +3,7 @@ export type BoardingPassResult = {
   name: string;
   flight: string;
   route: string;
+  finalDestination: string;
   cabin: string;
   seat: string;
   seq: string;
@@ -22,12 +23,25 @@ function eligibleFromTail(value: string): "Y" | "N" {
       .split(/[\s|;,]+/)
       .filter(Boolean)
       .at(-1) || "";
-  return /^YA*$/i.test(finalToken) ? "Y" : "N";
+  // Operational rule: "Y*" means any final indicator beginning with Y.
+  // It is a wildcard rule, not the literal characters Y and asterisk.
+  return /^Y/i.test(finalToken) ? "Y" : "N";
 }
 
 function passengerName(value: string) {
   const [surname, ...given] = value.trim().replace(/\s+/g, " ").split("/");
   return given.length ? `${given.join(" ")} ${surname}`.trim() : surname;
+}
+
+function destinationFromRoute(value: string) {
+  return (
+    value
+      .toUpperCase()
+      .trim()
+      .split(/\s*(?:–|—|-|\/|>)\s*/)
+      .filter((item) => /^[A-Z]{3}$/.test(item))
+      .at(-1) || ""
+  );
 }
 
 /** Parse IATA BCBP fixed fields independently from camera decoding. */
@@ -58,11 +72,22 @@ function parseIataBcbp(normalized: string): BoardingPassResult | null {
     return null;
 
   const ticket = text.match(/2A(\d{13,14})/)?.[1] || "";
+  const encodedLegs = [...text.slice(23).matchAll(/([A-Z]{3})([A-Z]{3})([A-Z0-9]{2,3})\s*(\d{1,5})\s*(\d{3})/g)]
+    .filter((match) => {
+      const day = Number(match[5]);
+      return day >= 1 && day <= 366;
+    })
+    .slice(0, legs);
+  const finalDestination =
+    encodedLegs.length === legs
+      ? encodedLegs.at(-1)?.[2] || destination
+      : destination;
   return {
     recognized: true,
     name: passengerName(name),
     flight: `${carrier}${Number(flightNumber)}`,
     route: `${origin}–${destination}`,
+    finalDestination,
     cabin,
     seat: seat.replace(/^0+/, ""),
     seq: String(Number(seq)),
@@ -90,6 +115,12 @@ function parseLabelled(normalized: string): BoardingPassResult | null {
   const name = fields.name || fields.nama || fields.passenger || "";
   const flight = fields.flight || fields.penerbangan || "";
   const route = fields.route || fields.rute || "";
+  const finalDestination =
+    fields.finaldestination ||
+    fields.tujuanakhir ||
+    fields.destination ||
+    fields.tujuan ||
+    destinationFromRoute(route);
   const seq = fields.sequence || fields.seq || fields.urutan || "";
   if (!name || !flight || !route || !seq) return null;
   return {
@@ -97,6 +128,7 @@ function parseLabelled(normalized: string): BoardingPassResult | null {
     name,
     flight,
     route,
+    finalDestination,
     cabin: fields.cabin || fields.kelas || "",
     seat: fields.seat || fields.kursi || "",
     seq,
@@ -116,6 +148,7 @@ export function parseBoardingPass(raw: string): BoardingPassResult {
       name: "",
       flight: "",
       route: "",
+      finalDestination: "",
       cabin: "",
       seat: "",
       seq: "",

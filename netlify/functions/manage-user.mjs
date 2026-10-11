@@ -5,6 +5,7 @@ import {
   targetAuth,
   targetDb,
 } from "./_firebase-admin.mjs";
+import { auditRecord, writeAudit } from "./_audit.mjs";
 
 const allowedRoles = new Set([
   "Super Admin",
@@ -18,6 +19,13 @@ const allowedRoles = new Set([
   "Airline Coordinator",
   "Airline Verifier",
   "Report Viewer",
+]);
+const STATION_BOUND_ROLES = new Set([
+  "BO Admin",
+  "Lounge Officer",
+  "Lounge Manager",
+  "Airline Coordinator",
+  "Airline Verifier",
 ]);
 
 export default async (request) => {
@@ -58,10 +66,14 @@ export default async (request) => {
         { merge: true },
       );
       await db.collection("auditLogs").add({
-        action: "RESET_USER_PASSWORD",
-        targetId: uid,
-        actorId: actor.decoded.uid,
-        createdAt: new Date(),
+        ...auditRecord(actor, {
+          action: "RESET_USER_PASSWORD",
+          module: "User & Role",
+          station: before.station,
+          targetType: "User",
+          targetId: uid,
+          targetName: `${before.name || before.username} · ${before.role}`,
+        }),
       });
       return json(200, { uid });
     }
@@ -70,12 +82,13 @@ export default async (request) => {
       if (before.username)
         batch.delete(db.collection("usernames").doc(before.username));
       batch.delete(db.collection("users").doc(uid));
-      batch.set(db.collection("auditLogs").doc(), {
+      writeAudit(batch, db, actor, {
         action: "DELETE_USER",
+        module: "User & Role",
+        station: before.station,
+        targetType: "User",
         targetId: uid,
-        actorId: actor.decoded.uid,
-        before,
-        createdAt: new Date(),
+        targetName: `${before.name || before.username} · ${before.role}`,
       });
       await auth.updateUser(uid, { disabled: true });
       let firestoreDeleted = false;
@@ -108,13 +121,21 @@ export default async (request) => {
       .trim()
       .toLowerCase();
     const nextRole = String(input.role || before.role);
+    const nextStation = String(input.station || before.station || "ALL")
+      .trim()
+      .toUpperCase();
     if (
       !/^[a-z0-9._-]{3,40}$/.test(username) ||
       !email.includes("@") ||
-      !allowedRoles.has(nextRole)
+      !allowedRoles.has(nextRole) ||
+      (nextStation !== "ALL" && !/^[A-Z]{3}$/.test(nextStation))
     ) {
-      return json(400, { error: "Email, username, atau role tidak valid." });
+      return json(400, { error: "Email, username, role, atau station tidak valid." });
     }
+    if (STATION_BOUND_ROLES.has(nextRole) && !/^[A-Z]{3}$/.test(nextStation))
+      return json(400, {
+        error: "Role operasional dan Airline wajib memiliki satu station IATA.",
+      });
     if (username !== before.username) {
       const owner = await db.collection("usernames").doc(username).get();
       if (owner.exists && owner.data()?.uid !== uid)
@@ -138,7 +159,7 @@ export default async (request) => {
         username,
         email,
         role: nextRole,
-        station: input.station,
+        station: nextStation,
         scope: input.scope,
         organization: input.organization,
         loungeId: input.loungeId || "",
@@ -149,12 +170,13 @@ export default async (request) => {
       },
       { merge: true },
     );
-    batch.set(db.collection("auditLogs").doc(), {
+    writeAudit(batch, db, actor, {
       action: active ? "UPDATE_USER" : "DEACTIVATE_USER",
+      module: "User & Role",
+      station: nextStation,
+      targetType: "User",
       targetId: uid,
-      actorId: actor.decoded.uid,
-      before,
-      createdAt: new Date(),
+      targetName: `${input.name || before.name || before.username} · ${nextRole}`,
     });
     try {
       await batch.commit();

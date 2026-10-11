@@ -1,4 +1,9 @@
-import { failure, json, targetDb } from "./_firebase-admin.mjs";
+import {
+  enforceRateLimit,
+  failure,
+  json,
+  targetDb,
+} from "./_firebase-admin.mjs";
 
 export default async (request) => {
   try {
@@ -13,6 +18,15 @@ export default async (request) => {
       .slice(0, 500);
     if (!identity)
       return json(400, { error: "Email atau username wajib diisi." });
+    await enforceRateLimit(request, "password-reset-client", {
+      limit: 20,
+      windowMs: 15 * 60 * 1000,
+    });
+    await enforceRateLimit(request, "password-reset-account", {
+      limit: 3,
+      windowMs: 15 * 60 * 1000,
+      identity,
+    });
 
     const db = targetDb();
     let targetUid = "";
