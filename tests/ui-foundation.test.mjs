@@ -881,3 +881,36 @@ test("hardens Patch 1 authentication, station scope, visitor evidence, and audit
   assert.match(netlify, /Strict-Transport-Security/);
   assert.match(netlify, /Permissions-Policy/);
 });
+
+test("consolidates Patch 2 operational display control and acknowledgments", async () => {
+  const [facility, deviceBackend, contentBackend, playerBackend, css] =
+    await Promise.all([
+      read("../app/facility-operations.tsx"),
+      read("../netlify/functions/manage-display-device.mjs"),
+      read("../netlify/functions/manage-display-content.mjs"),
+      read("../netlify/functions/display-player.mjs"),
+      read("../app/globals.css"),
+    ]);
+  const onlineHelper = facility.match(
+    /function isOnline\(device: DeviceRecord\)[\s\S]*?\n\}/,
+  )?.[0];
+  assert.ok(onlineHelper);
+  assert.match(onlineHelper, /if \(!device\.lastHeartbeat\) return false/);
+  assert.doesNotMatch(onlineHelper, /device\.status === "Online"/);
+  assert.match(facility, /COMMAND ACKNOWLEDGMENT/);
+  assert.match(facility, /Recent Remote Commands/);
+  assert.match(facility, /stopKnownOutputShare/);
+  assert.match(facility, /Stop Active Share/);
+  assert.match(facility, /Output Group \(optional\)/);
+  assert.match(facility, /Device dari group disalin saat schedule disimpan/);
+  assert.match(deviceBackend, /outputGroupId: text\(input\.outputGroupId/);
+  assert.match(deviceBackend, /Device masih digunakan oleh Output Group/);
+  assert.match(deviceBackend, /Device masih digunakan oleh schedule/);
+  assert.match(contentBackend, /const outputGroupId = text\(input\.outputGroupId/);
+  assert.match(contentBackend, /Output Group tidak aktif atau berada di station berbeda/);
+  assert.match(contentBackend, /outputGroupName/);
+  assert.match(playerBackend, /acknowledgedAt: new Date\(\)/);
+  assert.match(css, /\.displayCommandLedger/);
+  assert.match(css, /\.commandStatusSummary/);
+  assert.match(css, /\.command-executed/);
+});

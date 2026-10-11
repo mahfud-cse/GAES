@@ -213,6 +213,8 @@ type DisplaySchedule = {
   title: string;
   channelId: string;
   channelName: string;
+  outputGroupId?: string;
+  outputGroupName?: string;
   deviceIds: string[];
   startDate: string;
   endDate: string;
@@ -228,10 +230,12 @@ type DisplayCommand = {
   id: string;
   deviceId: string;
   station: string;
+  outputGroupId?: string;
   type: string;
   status: "Pending" | "Executed" | "Failed" | "Expired";
   message?: string;
   createdAt?: unknown;
+  acknowledgedAt?: unknown;
 };
 type FlightReference = {
   id: string;
@@ -698,6 +702,8 @@ const EMPTY_SCHEDULE: Omit<DisplaySchedule, "id" | "channelName"> = {
   station: "CGK",
   title: "",
   channelId: "",
+  outputGroupId: "",
+  outputGroupName: "",
   deviceIds: [],
   startDate: localToday(),
   endDate: localToday(),
@@ -757,7 +763,8 @@ function recordId(prefix: string) {
 
 function isOnline(device: DeviceRecord) {
   if (device.status === "Disabled" || !isDeviceApproved(device)) return false;
-  if (!device.lastHeartbeat) return device.status === "Online";
+  // A stored label is not proof that the Player is still connected.
+  if (!device.lastHeartbeat) return false;
   const heartbeat = activityMillis(device.lastHeartbeat);
   return heartbeat > 0 && Date.now() - heartbeat < 20_000;
 }
@@ -1553,6 +1560,14 @@ export default function FacilityOperations({
       .sort(
         (a, b) => activityMillis(b.createdAt) - activityMillis(a.createdAt),
       )[0];
+  const recentDisplayCommands = displayCommands
+    .filter(
+      (row) => stationFilter === "ALL" || row.station === stationFilter,
+    )
+    .sort(
+      (a, b) => activityMillis(b.createdAt) - activityMillis(a.createdAt),
+    )
+    .slice(0, 20);
   const pilotResult = (deviceId: string, checkId: string) =>
     displayPilotTests.find(
       (row) => row.deviceId === deviceId && row.checkId === checkId,
@@ -2122,6 +2137,38 @@ export default function FacilityOperations({
     const groupIds = [...shareRuntimes.current.keys()];
     await Promise.all(groupIds.map((groupId) => stopOutputShare(groupId, true)));
     setNotice({ kind: "ok", text: "Semua live screen share dihentikan." });
+  }
+
+  async function stopKnownOutputShare(group: DisplayOutputGroup) {
+    if (activeShares[group.id]) {
+      await stopOutputShare(group.id);
+      return;
+    }
+    if (!group.activeShareSessionId) {
+      setNotice({
+        kind: "warn",
+        text: "Session ID tidak tersedia. Tunggu sinkronisasi status lalu coba kembali.",
+      });
+      return;
+    }
+    try {
+      await manageDisplayDevice(user, {
+        action: "stopsharesession",
+        sessionId: group.activeShareSessionId,
+      });
+      setNotice({
+        kind: "ok",
+        text: `Live screen share ${group.name} berhasil dihentikan.`,
+      });
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Screen share tidak dapat dihentikan.",
+      });
+    }
   }
 
   function stopSharesUsingStream(stream: MediaStream) {
@@ -4268,6 +4315,77 @@ export default function FacilityOperations({
                   </table>
                 </div>
               )}
+              <section className="displayCommandLedger">
+                <div className="announcementQueueHeading">
+                  <div>
+                    <small>COMMAND ACKNOWLEDGMENT</small>
+                    <h3>Recent Remote Commands</h3>
+                  </div>
+                  <div className="commandStatusSummary">
+                    {(["Pending", "Executed", "Failed", "Expired"] as const).map(
+                      (status) => (
+                        <span key={status} className={`command-${status.toLowerCase()}`}>
+                          {status} {recentDisplayCommands.filter((row) => row.status === status).length}
+                        </span>
+                      ),
+                    )}
+                  </div>
+                </div>
+                {recentDisplayCommands.length ? (
+                  <div className="tableWrap">
+                    <table className="facilityTable compactCommandTable">
+                      <thead>
+                        <tr>
+                          <th>Sent</th>
+                          <th>Target</th>
+                          <th>Command</th>
+                          <th>Status</th>
+                          <th>Acknowledged</th>
+                          <th>Result</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recentDisplayCommands.map((command) => {
+                          const device = devices.find(
+                            (row) => row.id === command.deviceId,
+                          );
+                          const group = displayOutputGroups.find(
+                            (row) => row.id === command.outputGroupId,
+                          );
+                          return (
+                            <tr key={command.id}>
+                              <td>{readableHeartbeat(command.createdAt)}</td>
+                              <td>
+                                <b>{device?.name || command.deviceId}</b>
+                                <small>
+                                  {group ? `${group.name} · ` : ""}
+                                  {command.station}
+                                </small>
+                              </td>
+                              <td>{command.type.replaceAll("_", " ")}</td>
+                              <td>
+                                <span className={`commandState command-${command.status.toLowerCase()}`}>
+                                  {command.status}
+                                </span>
+                              </td>
+                              <td>
+                                {command.acknowledgedAt
+                                  ? readableHeartbeat(command.acknowledgedAt)
+                                  : "Waiting for Player"}
+                              </td>
+                              <td>{command.message || "—"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="announcementQueueEmpty">
+                    Belum ada remote command pada scope ini.
+                  </p>
+                )}
+              </section>
             </article>
           )}
 
@@ -4438,6 +4556,15 @@ export default function FacilityOperations({
                           >
                             Group Control
                           </button>
+                          {group.sessionStatus === "Sharing" && canControl && (
+                            <button
+                              className="danger"
+                              type="button"
+                              onClick={() => void stopKnownOutputShare(group)}
+                            >
+                              Stop Active Share
+                            </button>
+                          )}
                           {canConfigure && (
                             <>
                               <button
@@ -4516,7 +4643,12 @@ export default function FacilityOperations({
                                 .join(", ") || "—"}
                             </small>
                           </td>
-                          <td>{stringArray(row.deviceIds).length} device</td>
+                          <td>
+                            {stringArray(row.deviceIds).length} device
+                            {row.outputGroupName && (
+                              <small>{row.outputGroupName}</small>
+                            )}
+                          </td>
                           <td>
                             {row.overlayEnabled
                               ? row.overlayText || "Enabled"
@@ -6882,6 +7014,8 @@ export default function FacilityOperations({
                         setScheduleDraft({
                           ...scheduleDraft,
                           station: event.target.value,
+                          outputGroupId: "",
+                          outputGroupName: "",
                           deviceIds: [],
                         })
                       }
@@ -7013,6 +7147,39 @@ export default function FacilityOperations({
                       ))}
                     </div>
                   </div>
+                  <label className="full">
+                    <span>Output Group (optional)</span>
+                    <select
+                      value={scheduleDraft.outputGroupId || ""}
+                      onChange={(event) => {
+                        const group = displayOutputGroups.find(
+                          (row) => row.id === event.target.value,
+                        );
+                        setScheduleDraft({
+                          ...scheduleDraft,
+                          outputGroupId: group?.id || "",
+                          outputGroupName: group?.name || "",
+                          deviceIds: group ? stringArray(group.deviceIds) : [],
+                        });
+                      }}
+                    >
+                      <option value="">Select devices manually</option>
+                      {displayOutputGroups
+                        .filter(
+                          (group) =>
+                            group.station === scheduleDraft.station &&
+                            group.status === "Active",
+                        )
+                        .map((group) => (
+                          <option key={group.id} value={group.id}>
+                            {group.name} · {stringArray(group.deviceIds).length} device
+                          </option>
+                        ))}
+                    </select>
+                    <small>
+                      Device dari group disalin saat schedule disimpan. Edit schedule setelah komposisi group berubah.
+                    </small>
+                  </label>
                   <div className="checklistPanel full">
                     <b>Target Devices</b>
                     {devices
@@ -7026,9 +7193,12 @@ export default function FacilityOperations({
                           <input
                             type="checkbox"
                             checked={scheduleDraft.deviceIds.includes(row.id)}
+                            disabled={Boolean(scheduleDraft.outputGroupId)}
                             onChange={(event) =>
                               setScheduleDraft({
                                 ...scheduleDraft,
+                                outputGroupId: "",
+                                outputGroupName: "",
                                 deviceIds: event.target.checked
                                   ? [...scheduleDraft.deviceIds, row.id]
                                   : scheduleDraft.deviceIds.filter(

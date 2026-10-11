@@ -239,13 +239,38 @@ async function saveSchedule(db, actor, input) {
   const id = text(input.id, 160) || stableId(actor, text(input.requestId, 120));
   const title = text(input.title, 120);
   const channelId = text(input.channelId, 160);
-  const deviceIds = [
+  const outputGroupId = text(input.outputGroupId, 160);
+  let outputGroupName = "";
+  let deviceIds = [
     ...new Set(
       Array.isArray(input.deviceIds)
         ? input.deviceIds.map((value) => text(value, 160)).filter(Boolean)
         : [],
     ),
   ];
+  if (outputGroupId) {
+    const group = await db
+      .collection("displayOutputGroups")
+      .doc(outputGroupId)
+      .get();
+    if (
+      !group.exists ||
+      group.data()?.station !== station ||
+      group.data()?.status !== "Active"
+    )
+      throw httpError(
+        409,
+        "Output Group tidak aktif atau berada di station berbeda.",
+      );
+    outputGroupName = text(group.data()?.name, 120);
+    deviceIds = [
+      ...new Set(
+        (Array.isArray(group.data()?.deviceIds) ? group.data().deviceIds : [])
+          .map((value) => text(value, 160))
+          .filter(Boolean),
+      ),
+    ];
+  }
   const range = validateSchedule(input);
   if (!title || !channelId || !deviceIds.length)
     throw httpError(
@@ -306,6 +331,8 @@ async function saveSchedule(db, actor, input) {
       title,
       channelId,
       channelName: channel.data().name,
+      outputGroupId,
+      outputGroupName,
       deviceIds,
       ...range,
       overlayEnabled: input.overlayEnabled === true,

@@ -892,6 +892,51 @@
   text-transform: uppercase;
 }
 
+.displayCommandLedger {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 14px;
+}
+
+.commandStatusSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.commandStatusSummary span,
+.commandState {
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.command-pending {
+  background: var(--color-warning-soft);
+  color: var(--color-warning-700);
+}
+
+.command-executed {
+  background: var(--color-success-soft);
+  color: var(--color-success-700);
+}
+
+.command-failed,
+.command-expired {
+  background: var(--color-danger-soft);
+  color: var(--color-danger-700);
+}
+
+.compactCommandTable td {
+  vertical-align: top;
+}
+
 .announcementTemplateConfig {
   border-top: 1px solid var(--color-border);
   margin-top: 20px;

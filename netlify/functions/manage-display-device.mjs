@@ -273,6 +273,7 @@ async function sendCommand(db, actor, input) {
     id: commandId,
     deviceId,
     station: device.station,
+    outputGroupId: text(input.outputGroupId, 160),
     type,
     payload,
     status: "Pending",
@@ -647,6 +648,32 @@ async function deleteDevice(db, actor, input) {
   requireConfigurator(actor);
   const deviceId = text(input.deviceId, 160);
   const device = await loadDevice(db, actor, deviceId);
+  const [groups, schedules] = await Promise.all([
+    db
+      .collection("displayOutputGroups")
+      .where("station", "==", device.station)
+      .get(),
+    db
+      .collection("displaySchedules")
+      .where("station", "==", device.station)
+      .get(),
+  ]);
+  const usedByGroup = groups.docs.find((snapshot) =>
+    (snapshot.data()?.deviceIds || []).includes(deviceId),
+  );
+  if (usedByGroup)
+    throw httpError(
+      409,
+      `Device masih digunakan oleh Output Group ${text(usedByGroup.data()?.name, 120)}. Keluarkan device dari group terlebih dahulu.`,
+    );
+  const usedBySchedule = schedules.docs.find((snapshot) =>
+    (snapshot.data()?.deviceIds || []).includes(deviceId),
+  );
+  if (usedBySchedule)
+    throw httpError(
+      409,
+      `Device masih digunakan oleh schedule ${text(usedBySchedule.data()?.title, 120)}. Ubah atau hapus schedule terlebih dahulu.`,
+    );
   const enrollments = await db
     .collection("displayEnrollments")
     .where("deviceId", "==", deviceId)
