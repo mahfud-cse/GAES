@@ -914,3 +914,35 @@ test("consolidates Patch 2 operational display control and acknowledgments", asy
   assert.match(css, /\.commandStatusSummary/);
   assert.match(css, /\.command-executed/);
 });
+
+test("adds Patch 3 shift handover and business continuity controls", async () => {
+  const [facility, backend, api, repository, rules, css] = await Promise.all([
+    read("../app/facility-operations.tsx"),
+    read("../netlify/functions/manage-shift-handover.mjs"),
+    read("../lib/firebase/api.ts"),
+    read("../lib/firebase/repository.ts"),
+    read("../firestore.rules"),
+    read("../app/globals.css"),
+  ]);
+  assert.match(facility, /"Shift Handover"/);
+  assert.match(facility, /Operational Continuity Snapshot/);
+  assert.match(facility, /Mandatory continuity checklist/);
+  assert.match(facility, /Download Offline Continuity Pack/);
+  assert.match(facility, /gaes-shift-handover-draft:/);
+  assert.match(facility, /Pending Acknowledgment/);
+  assert.match(facility, /manageShiftHandover\(user/);
+  assert.match(backend, /async function continuitySnapshot/);
+  assert.match(backend, /CHECKS\.every\(\(key\) => checklist\[key\] === true\)/);
+  assert.match(backend, /Masih ada shift handover yang menunggu acknowledgment/);
+  assert.match(backend, /collection\("shiftHandoverLocks"\)/);
+  assert.match(backend, /Shift penerima harus menggunakan akun berbeda/);
+  assert.match(backend, /SHIFT_HANDOVER_SUBMITTED/);
+  assert.match(backend, /SHIFT_HANDOVER_ACKNOWLEDGED/);
+  assert.match(api, /"manage-shift-handover"/);
+  assert.match(repository, /\| "shiftHandovers"/);
+  assert.match(rules, /match \/shiftHandovers\/\{id\}[\s\S]*?allow write: if false/);
+  assert.match(rules, /match \/shiftHandoverLocks\/\{id\}[\s\S]*?allow read, write: if false/);
+  assert.match(css, /\.continuitySnapshotGrid/);
+  assert.match(css, /\.shiftHandoverCard/);
+  assert.match(css, /\.shiftContinuityColumns/);
+});

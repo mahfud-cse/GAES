@@ -159,6 +159,16 @@ export const manageRoomOperation = (
     payload,
   );
 
+export const manageShiftHandover = (
+  user: User,
+  payload: Record<string, unknown>,
+) =>
+  call<{ id: string; status: string; replayed?: boolean }>(
+    "manage-shift-handover",
+    user,
+    payload,
+  );
+
 export const manageDisplayContent = (
   user: User,
   payload: Record<string, unknown>,

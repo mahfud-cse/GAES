@@ -19,6 +19,7 @@ import {
   manageDisplayPilot,
   manageRoomBooking,
   manageRoomOperation,
+  manageShiftHandover,
   recordPortalActivity,
 } from "../lib/firebase/api";
 import { uploadDisplayMedia, uploadLoungeLayoutAsset } from "../lib/firebase/evidence";
@@ -408,6 +409,50 @@ type RoomActivity = {
   reason?: string;
   createdAt?: unknown;
 };
+type ShiftContinuitySnapshot = {
+  capturedAt?: unknown;
+  occupiedRooms: number;
+  cleaningRooms: number;
+  maintenanceRooms: number;
+  openIncidents: number;
+  enrolledDevices: number;
+  offlineDevices: number;
+  activeAnnouncements: number;
+  pendingCommands: number;
+};
+type ShiftHandover = {
+  id: string;
+  station: string;
+  shiftDate: string;
+  shiftName: string;
+  handoverTo: string;
+  summary: string;
+  priorityNote: string;
+  status: "Pending" | "Acknowledged";
+  outgoingUserId: string;
+  outgoingName: string;
+  acknowledgedByName?: string;
+  acknowledgmentNote?: string;
+  acknowledgedAt?: unknown;
+  createdAt?: unknown;
+  snapshot: ShiftContinuitySnapshot;
+};
+type ShiftHandoverDraft = {
+  station: string;
+  shiftDate: string;
+  shiftName: string;
+  handoverTo: string;
+  summary: string;
+  priorityNote: string;
+  checklist: {
+    roomsReviewed: boolean;
+    incidentsReviewed: boolean;
+    devicesReviewed: boolean;
+    announcementsReviewed: boolean;
+    offlinePlanConfirmed: boolean;
+    emergencyContactsConfirmed: boolean;
+  };
+};
 type OperationDialog = {
   type:
     "checkin" | "checkout" | "cleaning" | "move" | "maintenance" | "incident";
@@ -441,6 +486,7 @@ type ModuleTab =
   | "Overview"
   | "Room Booking"
   | "Room Operations"
+  | "Shift Handover"
   | "TV & Digital Signage"
   | "Lounge Layout"
   | "Master & Configuration"
@@ -468,6 +514,14 @@ const APPROVER_ROLES: FacilityRole[] = [
   "BO Admin",
   "Lounge Manager",
 ];
+const SHIFT_CONTINUITY_CHECKS = [
+  { key: "roomsReviewed", label: "Room, booking, cleaning, dan maintenance sudah direview" },
+  { key: "incidentsReviewed", label: "Open incident dan prioritas tindak lanjut sudah direview" },
+  { key: "devicesReviewed", label: "Status Player, heartbeat, dan pending command sudah direview" },
+  { key: "announcementsReviewed", label: "Running text dan announcement aktif sudah direview" },
+  { key: "offlinePlanConfirmed", label: "Offline continuity pack sudah diperbarui" },
+  { key: "emergencyContactsConfirmed", label: "Kontak eskalasi operasional sudah dikonfirmasi" },
+] as const;
 
 const DISPLAY_UAT_CHECKS = [
   { id: "enrollment", label: "Secure enrollment", required: true },
@@ -757,6 +811,25 @@ const EMPTY_OPERATION: OperationForm = {
   description: "",
 };
 
+function emptyShiftHandover(station: string): ShiftHandoverDraft {
+  return {
+    station,
+    shiftDate: localToday(),
+    shiftName: "Morning Shift",
+    handoverTo: "",
+    summary: "",
+    priorityNote: "",
+    checklist: {
+      roomsReviewed: false,
+      incidentsReviewed: false,
+      devicesReviewed: false,
+      announcementsReviewed: false,
+      offlinePlanConfirmed: false,
+      emergencyContactsConfirmed: false,
+    },
+  };
+}
+
 function recordId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -913,6 +986,7 @@ export default function FacilityOperations({
   const [maintenanceRows, setMaintenanceRows] = useState<RoomMaintenance[]>([]);
   const [incidents, setIncidents] = useState<RoomIncident[]>([]);
   const [roomActivities, setRoomActivities] = useState<RoomActivity[]>([]);
+  const [shiftHandovers, setShiftHandovers] = useState<ShiftHandover[]>([]);
   const [stationFilter, setStationFilter] = useState(
     GLOBAL_ROLES.includes(account.role) ? "ALL" : account.station,
   );
@@ -953,6 +1027,15 @@ export default function FacilityOperations({
     useState<OperationForm>(EMPTY_OPERATION);
   const [operationRequestId, setOperationRequestId] = useState("");
   const [savingOperation, setSavingOperation] = useState(false);
+  const [shiftDraft, setShiftDraft] = useState<ShiftHandoverDraft>(() =>
+    emptyShiftHandover(account.station === "ALL" ? "CGK" : account.station),
+  );
+  const [shiftRequestId, setShiftRequestId] = useState(() =>
+    recordId("shift-handover"),
+  );
+  const [savingShift, setSavingShift] = useState(false);
+  const [acknowledgingShiftId, setAcknowledgingShiftId] = useState("");
+  const [acknowledgmentNote, setAcknowledgmentNote] = useState("");
   const [activityQuery, setActivityQuery] = useState("");
   const [displaySection, setDisplaySection] = useState<
     | "Monitor"
@@ -1213,9 +1296,45 @@ export default function FacilityOperations({
             setRoomActivities,
             onError,
           ),
+      account.role === "HO Admin"
+        ? () => undefined
+        : subscribeStationCollection<ShiftHandover>(
+            "shiftHandovers",
+            globalScope ? "ALL" : account.station,
+            setShiftHandovers,
+            onError,
+          ),
     ];
     return () => stops.forEach((stop) => stop());
   }, [account.role, account.station, globalScope]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const stored = window.localStorage.getItem(
+          `gaes-shift-handover-draft:${account.id}`,
+        );
+        if (!stored) return;
+        const parsed = JSON.parse(stored) as ShiftHandoverDraft;
+        if (parsed?.station && permittedStation(parsed.station))
+          setShiftDraft(parsed);
+      } catch {
+        // A malformed local draft must never block the operational page.
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [account.id, permittedStation]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        `gaes-shift-handover-draft:${account.id}`,
+        JSON.stringify(shiftDraft),
+      );
+    } catch {
+      // Private browsing can disable local storage; online handover still works.
+    }
+  }, [account.id, shiftDraft]);
 
   useEffect(() => {
     if (!["HO Admin", "Lounge Officer"].includes(account.role)) return;
@@ -1448,6 +1567,58 @@ export default function FacilityOperations({
         (a, b) => activityMillis(b.createdAt) - activityMillis(a.createdAt),
       );
   }, [activityQuery, permittedStation, roomActivities, stationFilter]);
+  const scopedShiftHandovers = useMemo(
+    () =>
+      shiftHandovers
+        .filter(
+          (row) =>
+            permittedStation(row.station) &&
+            (stationFilter === "ALL" || row.station === stationFilter),
+        )
+        .sort(
+          (a, b) => activityMillis(b.createdAt) - activityMillis(a.createdAt),
+        ),
+    [permittedStation, shiftHandovers, stationFilter],
+  );
+  const continuitySnapshot = useMemo(() => {
+    const station = shiftDraft.station;
+    const stationRooms = rooms.filter((row) => row.station === station);
+    const stationDevices = devices.filter(
+      (row) => row.station === station && isDeviceEnrolled(row),
+    );
+    return {
+      occupiedRooms: stationRooms.filter(
+        (row) => row.operationalState === "Occupied",
+      ).length,
+      cleaningRooms: stationRooms.filter(
+        (row) => row.operationalState === "Cleaning",
+      ).length,
+      maintenanceRooms: maintenanceRows.filter(
+        (row) => row.station === station && row.status === "Open",
+      ).length,
+      openIncidents: incidents.filter(
+        (row) => row.station === station && row.status === "Open",
+      ).length,
+      enrolledDevices: stationDevices.length,
+      offlineDevices: stationDevices.filter(
+        (row) => playerOperationalStatus(row) === "Offline",
+      ).length,
+      activeAnnouncements: displayAnnouncements.filter(
+        (row) => row.station === station && row.status === "Active",
+      ).length,
+      pendingCommands: displayCommands.filter(
+        (row) => row.station === station && row.status === "Pending",
+      ).length,
+    };
+  }, [
+    devices,
+    displayAnnouncements,
+    displayCommands,
+    incidents,
+    maintenanceRows,
+    rooms,
+    shiftDraft.station,
+  ]);
 
   const usageBookings = useMemo(
     () =>
@@ -2963,6 +3134,151 @@ export default function FacilityOperations({
     }
   }
 
+  async function submitShiftHandover(event: FormEvent) {
+    event.preventDefault();
+    if (!permittedStation(shiftDraft.station)) return;
+    setSavingShift(true);
+    try {
+      await manageShiftHandover(user, {
+        action: "create",
+        requestId: shiftRequestId,
+        ...shiftDraft,
+      });
+      setNotice({
+        kind: "ok",
+        text: `Handover ${shiftDraft.shiftName} tersimpan dan menunggu acknowledgment ${shiftDraft.handoverTo}.`,
+      });
+      const next = emptyShiftHandover(shiftDraft.station);
+      setShiftDraft(next);
+      setShiftRequestId(recordId("shift-handover"));
+      window.localStorage.removeItem(
+        `gaes-shift-handover-draft:${account.id}`,
+      );
+      setAcknowledgingShiftId("");
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Shift handover tidak dapat disimpan.",
+      });
+    } finally {
+      setSavingShift(false);
+    }
+  }
+
+  async function acknowledgeShiftHandover(handover: ShiftHandover) {
+    setSavingShift(true);
+    try {
+      await manageShiftHandover(user, {
+        action: "acknowledge",
+        id: handover.id,
+        acknowledgmentNote,
+      });
+      setNotice({
+        kind: "ok",
+        text: `Handover ${handover.shiftName} telah diakui oleh ${account.name}.`,
+      });
+      setAcknowledgingShiftId("");
+      setAcknowledgmentNote("");
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Acknowledgment tidak dapat diproses.",
+      });
+    } finally {
+      setSavingShift(false);
+    }
+  }
+
+  function downloadContinuityPack() {
+    const station = shiftDraft.station;
+    const workbook = XLSX.utils.book_new();
+    const append = (name: string, rows: Array<Record<string, unknown>>) =>
+      XLSX.utils.book_append_sheet(
+        workbook,
+        XLSX.utils.json_to_sheet(rows.length ? rows : [{ Status: "No data" }]),
+        name,
+      );
+    append("Continuity Summary", [
+      {
+        Station: station,
+        "Generated At": new Date().toISOString(),
+        "Occupied Rooms": continuitySnapshot.occupiedRooms,
+        "Cleaning Rooms": continuitySnapshot.cleaningRooms,
+        "Open Maintenance": continuitySnapshot.maintenanceRooms,
+        "Open Incidents": continuitySnapshot.openIncidents,
+        "Enrolled Devices": continuitySnapshot.enrolledDevices,
+        "Offline Devices": continuitySnapshot.offlineDevices,
+        "Active Announcements": continuitySnapshot.activeAnnouncements,
+        "Pending Commands": continuitySnapshot.pendingCommands,
+      },
+    ]);
+    append(
+      "Active Bookings",
+      bookings
+        .filter(
+          (row) =>
+            row.station === station &&
+            ["Approved", "Checked-in"].includes(row.status),
+        )
+        .map((row) => ({
+          Room: row.roomName,
+          Booking: row.title,
+          Organizer: row.organizer,
+          Start: row.startAt,
+          End: row.endAt,
+          Status: row.status,
+        })),
+    );
+    append(
+      "Open Incidents",
+      incidents
+        .filter((row) => row.station === station && row.status === "Open")
+        .map((row) => ({
+          Room: row.roomName,
+          Category: row.category,
+          Severity: row.severity,
+          Description: row.description,
+        })),
+    );
+    append(
+      "Display Devices",
+      devices
+        .filter((row) => row.station === station)
+        .map((row) => ({
+          Device: row.name,
+          Room: roomName(row.roomId),
+          Status: playerOperationalStatus(row),
+          "Now Playing": row.nowPlaying || "—",
+          "Last Heartbeat": readableHeartbeat(row.lastHeartbeat),
+        })),
+    );
+    append(
+      "Shift History",
+      shiftHandovers
+        .filter((row) => row.station === station)
+        .slice(0, 20)
+        .map((row) => ({
+          Date: row.shiftDate,
+          Shift: row.shiftName,
+          From: row.outgoingName,
+          To: row.handoverTo,
+          Status: row.status,
+          Summary: row.summary,
+          Priority: row.priorityNote || "—",
+        })),
+    );
+    XLSX.writeFile(
+      workbook,
+      `GAES_Offline_Continuity_${station}_${localToday()}.xlsx`,
+    );
+  }
+
   function moveBookingAnchor(direction: -1 | 1) {
     const date = new Date(`${bookingAnchor}T00:00:00`);
     if (bookingView === "Day") date.setDate(date.getDate() + direction);
@@ -3061,6 +3377,7 @@ export default function FacilityOperations({
     "Overview",
     "Room Booking",
     "Room Operations",
+    "Shift Handover",
     "TV & Digital Signage",
     "Lounge Layout",
     "Master & Configuration",
@@ -3788,6 +4105,340 @@ export default function FacilityOperations({
               ) : (
                 <EmptyState text="Tidak ada incident terbuka." />
               )}
+            </div>
+          </article>
+        </div>
+      )}
+
+      {activeTab === "Shift Handover" && (
+        <div className="shiftContinuityPage">
+          <article className="card facilitySectionCard">
+            <div className="facilitySectionHeader">
+              <div>
+                <small>SHIFT &amp; BUSINESS CONTINUITY</small>
+                <h2>Operational Continuity Snapshot</h2>
+                <p>
+                  Kondisi operasional aktif untuk station yang akan diserahkan
+                  kepada shift berikutnya.
+                </p>
+              </div>
+              <div className="facilityHeaderActions">
+                <label className="continuityStationSelect">
+                  <span>Continuity Station</span>
+                  <select
+                    value={shiftDraft.station}
+                    onChange={(event) =>
+                      setShiftDraft((current) => ({
+                        ...current,
+                        station: event.target.value,
+                      }))
+                    }
+                    disabled={!globalScope}
+                  >
+                    {activeStations.map((station) => (
+                      <option key={station.code} value={station.code}>
+                        {station.code} — {station.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button type="button" onClick={downloadContinuityPack}>
+                  Download Offline Continuity Pack
+                </button>
+              </div>
+            </div>
+            <div className="continuitySnapshotGrid">
+              <div>
+                <span>Occupied / Cleaning</span>
+                <strong>
+                  {continuitySnapshot.occupiedRooms} / {continuitySnapshot.cleaningRooms}
+                </strong>
+              </div>
+              <div className={continuitySnapshot.maintenanceRooms ? "attention" : ""}>
+                <span>Open Maintenance</span>
+                <strong>{continuitySnapshot.maintenanceRooms}</strong>
+              </div>
+              <div className={continuitySnapshot.openIncidents ? "attention" : ""}>
+                <span>Open Incidents</span>
+                <strong>{continuitySnapshot.openIncidents}</strong>
+              </div>
+              <div className={continuitySnapshot.offlineDevices ? "critical" : ""}>
+                <span>Offline / Enrolled Player</span>
+                <strong>
+                  {continuitySnapshot.offlineDevices} / {continuitySnapshot.enrolledDevices}
+                </strong>
+              </div>
+              <div>
+                <span>Active Announcements</span>
+                <strong>{continuitySnapshot.activeAnnouncements}</strong>
+              </div>
+              <div className={continuitySnapshot.pendingCommands ? "attention" : ""}>
+                <span>Pending Commands</span>
+                <strong>{continuitySnapshot.pendingCommands}</strong>
+              </div>
+            </div>
+          </article>
+
+          <div className="shiftContinuityColumns">
+            <article className="card facilitySectionCard">
+              <div className="facilitySectionHeader compact">
+                <div>
+                  <small>OUTGOING SHIFT</small>
+                  <h2>Create Shift Handover</h2>
+                </div>
+                <span className="scopeBadge">Draft saved locally</span>
+              </div>
+              <form className="shiftHandoverForm" onSubmit={submitShiftHandover}>
+                <div className="formGrid two">
+                  <label>
+                    <span>Shift Date</span>
+                    <input
+                      type="date"
+                      value={shiftDraft.shiftDate}
+                      onChange={(event) =>
+                        setShiftDraft((current) => ({
+                          ...current,
+                          shiftDate: event.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span>Shift</span>
+                    <select
+                      value={shiftDraft.shiftName}
+                      onChange={(event) =>
+                        setShiftDraft((current) => ({
+                          ...current,
+                          shiftName: event.target.value,
+                        }))
+                      }
+                    >
+                      <option>Morning Shift</option>
+                      <option>Evening Shift</option>
+                      <option>Night Shift</option>
+                      <option>Special Operation</option>
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  <span>Handover To</span>
+                  <input
+                    value={shiftDraft.handoverTo}
+                    onChange={(event) =>
+                      setShiftDraft((current) => ({
+                        ...current,
+                        handoverTo: event.target.value,
+                      }))
+                    }
+                    placeholder="Nama petugas atau shift penerima"
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Operational Summary</span>
+                  <textarea
+                    rows={4}
+                    value={shiftDraft.summary}
+                    onChange={(event) =>
+                      setShiftDraft((current) => ({
+                        ...current,
+                        summary: event.target.value,
+                      }))
+                    }
+                    placeholder="Kondisi ruangan, kegiatan aktif, dan pekerjaan yang perlu dilanjutkan"
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Priority / Escalation Note</span>
+                  <textarea
+                    rows={3}
+                    value={shiftDraft.priorityNote}
+                    onChange={(event) =>
+                      setShiftDraft((current) => ({
+                        ...current,
+                        priorityNote: event.target.value,
+                      }))
+                    }
+                    placeholder="Isu prioritas, PIC, target waktu, atau eskalasi yang diperlukan"
+                  />
+                </label>
+                <fieldset className="continuityChecklist">
+                  <legend>Mandatory continuity checklist</legend>
+                  {SHIFT_CONTINUITY_CHECKS.map((check) => (
+                    <label key={check.key}>
+                      <input
+                        type="checkbox"
+                        checked={shiftDraft.checklist[check.key]}
+                        onChange={(event) =>
+                          setShiftDraft((current) => ({
+                            ...current,
+                            checklist: {
+                              ...current.checklist,
+                              [check.key]: event.target.checked,
+                            },
+                          }))
+                        }
+                      />
+                      <span>{check.label}</span>
+                    </label>
+                  ))}
+                </fieldset>
+                <button
+                  className="primary"
+                  type="submit"
+                  disabled={
+                    savingShift ||
+                    shiftHandovers.some(
+                      (row) =>
+                        row.station === shiftDraft.station &&
+                        row.status === "Pending",
+                    )
+                  }
+                >
+                  {savingShift ? "Saving…" : "Submit Handover"}
+                </button>
+                {shiftHandovers.some(
+                  (row) =>
+                    row.station === shiftDraft.station && row.status === "Pending",
+                ) && (
+                  <small className="handoverBlockedNote">
+                    Selesaikan acknowledgment handover yang masih Pending sebelum
+                    membuat handover baru.
+                  </small>
+                )}
+              </form>
+            </article>
+
+            <article className="card facilitySectionCard">
+              <div className="facilitySectionHeader compact">
+                <div>
+                  <small>INCOMING SHIFT</small>
+                  <h2>Pending Acknowledgment</h2>
+                </div>
+                <span className="scopeBadge">
+                  {scopedShiftHandovers.filter((row) => row.status === "Pending").length} pending
+                </span>
+              </div>
+              <div className="shiftHandoverQueue">
+                {scopedShiftHandovers.filter((row) => row.status === "Pending").length ? (
+                  scopedShiftHandovers
+                    .filter((row) => row.status === "Pending")
+                    .map((row) => (
+                      <section key={row.id} className="shiftHandoverCard pending">
+                        <header>
+                          <div>
+                            <b>{row.station} · {row.shiftName}</b>
+                            <small>{row.shiftDate} · {formatActivityTime(row.createdAt)}</small>
+                          </div>
+                          <span>Pending</span>
+                        </header>
+                        <p>{row.summary}</p>
+                        {row.priorityNote && (
+                          <div className="handoverPriority">
+                            <b>Priority</b>
+                            <span>{row.priorityNote}</span>
+                          </div>
+                        )}
+                        <div className="handoverPeople">
+                          <span>From <b>{row.outgoingName}</b></span>
+                          <span>To <b>{row.handoverTo}</b></span>
+                        </div>
+                        {acknowledgingShiftId === row.id ? (
+                          <div className="handoverAcknowledge">
+                            <textarea
+                              rows={2}
+                              value={acknowledgmentNote}
+                              onChange={(event) => setAcknowledgmentNote(event.target.value)}
+                              placeholder="Catatan penerimaan atau tindak lanjut awal (opsional)"
+                            />
+                            <div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAcknowledgingShiftId("");
+                                  setAcknowledgmentNote("");
+                                }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                className="primary"
+                                type="button"
+                                disabled={savingShift}
+                                onClick={() => void acknowledgeShiftHandover(row)}
+                              >
+                                Confirm Acknowledgment
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={
+                              row.outgoingUserId === account.id &&
+                              !["Super Admin", "Admin"].includes(account.role)
+                            }
+                            onClick={() => setAcknowledgingShiftId(row.id)}
+                          >
+                            Acknowledge Handover
+                          </button>
+                        )}
+                      </section>
+                    ))
+                ) : (
+                  <EmptyState text="Tidak ada shift handover yang menunggu acknowledgment." />
+                )}
+              </div>
+            </article>
+          </div>
+
+          <article className="card facilitySectionCard">
+            <div className="facilitySectionHeader compact">
+              <div>
+                <small>CONTINUITY HISTORY</small>
+                <h2>Shift Handover Register</h2>
+              </div>
+            </div>
+            <div className="tableWrap">
+              <table className="facilityTable compactHandoverTable">
+                <thead>
+                  <tr>
+                    <th>Date / Shift</th>
+                    <th>Station</th>
+                    <th>Outgoing → Incoming</th>
+                    <th>Continuity Snapshot</th>
+                    <th>Status</th>
+                    <th>Acknowledged By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {scopedShiftHandovers.length ? (
+                    scopedShiftHandovers.slice(0, 30).map((row) => (
+                      <tr key={row.id}>
+                        <td><b>{row.shiftDate}</b><small>{row.shiftName}</small></td>
+                        <td>{row.station}</td>
+                        <td>{row.outgoingName}<small>to {row.handoverTo}</small></td>
+                        <td>
+                          {row.snapshot?.openIncidents || 0} incident · {row.snapshot?.maintenanceRooms || 0} maintenance
+                          <small>{row.snapshot?.offlineDevices || 0} offline player · {row.snapshot?.pendingCommands || 0} pending command</small>
+                        </td>
+                        <td><span className={`handoverStatus ${row.status.toLowerCase()}`}>{row.status}</span></td>
+                        <td>
+                          {row.acknowledgedByName || "—"}
+                          {Boolean(row.acknowledgedAt) && (
+                            <small>{formatActivityTime(row.acknowledgedAt)}</small>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr><td colSpan={6}><div className="tableEmpty">Belum ada shift handover pada scope ini.</div></td></tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </article>
         </div>

@@ -1,40 +1,46 @@
 # Patch Notes
 
-## Patch 2 — Operational Control Center
+## Patch 3 — Shift & Business Continuity
 
-### Device health and command visibility
+### Shift handover workflow
 
-- A device is no longer considered online only because its saved status says `Online`. A recent Player heartbeat is now required.
-- The existing health thresholds remain: a delayed heartbeat becomes a warning after 20 seconds and offline after 60 seconds.
-- The device monitor now includes a Recent Remote Commands ledger with Pending, Executed, Failed, and Expired summaries.
-- Each command record shows the send time, target device or output group, command type, acknowledgment time, and Player result.
-- Output-group commands retain their group identity, so operators can trace where a remote command originated.
+- Facility & Room Operations now includes a dedicated `Shift Handover` tab.
+- The outgoing shift records the shift date, shift name, receiving officer/shift, operational summary, and priority or escalation notes.
+- A mandatory continuity checklist covers rooms, bookings, cleaning, maintenance, incidents, display Players, active announcements, offline preparation, and escalation contacts.
+- An unfinished handover draft is retained locally in the current browser so an accidental refresh does not erase the operator's work.
+- Only one Pending handover can exist per station. A server-side transactional station lock prevents simultaneous submissions from creating parallel pending handovers.
 
-### Output group control
+### Incoming shift acknowledgment
 
-- An active share session can now be stopped directly from its Output Group card.
-- Stopping a share is not limited to the browser that originally opened it, subject to the existing backend role and station authorization.
-- Device deletion is blocked when the device is still referenced by an Output Group or display schedule, preventing broken operational configuration.
+- Pending handovers are presented separately to the incoming shift.
+- A non-administrator cannot acknowledge a handover using the same account that submitted it.
+- The receiving shift can add an initial follow-up note before acknowledgment.
+- Submission and acknowledgment create immutable backend-owned Room Activity records.
+- The handover register retains the outgoing user, intended recipient, acknowledgment user, time, status, and operational snapshot.
 
-### Group-based scheduling
+### Continuity snapshot and offline pack
 
-- Display schedules can now target an active Output Group instead of selecting devices one by one.
-- The backend validates that the group is active and belongs to the schedule station.
-- Device membership is resolved authoritatively from the selected group when the schedule is saved.
-- The saved schedule retains a device snapshot so an existing schedule remains predictable if the group membership changes later.
-- Operators can edit the schedule after changing a group's membership when they intentionally want to refresh that snapshot.
+- The continuity dashboard summarizes occupied and cleaning rooms, open maintenance, open incidents, enrolled/offline Players, active announcements, and pending commands.
+- The authoritative snapshot stored with the handover is recalculated by the backend from current station data; browser-supplied totals are not trusted.
+- Operators can download an Offline Continuity Pack in XLSX format containing the current summary, active bookings, open incidents, display device state, and recent shift history.
+- The layout is responsive for desktop and mobile and uses the consolidated UI foundation.
 
 ## Deployment
 
 1. Copy only the files contained in this delta to the same repository paths.
 2. Push the repository so Netlify rebuilds the application and Netlify Functions.
-3. No Firebase Rules deployment is required for Patch 2.
-4. No Firebase data migration or new composite index is required.
-5. The Firebase Rules delivered in Patch 1 must already be active before operational use.
+3. Deploy the updated Firestore Rules from the project root:
+
+   ```bash
+   firebase deploy --only firestore:rules
+   ```
+
+4. No Firebase Storage Rules deployment is required for Patch 3.
+5. No Firebase data migration or new composite index is required.
 
 ## Verification
 
 - 11 logic tests passed.
-- 38 UI/security regression tests passed.
+- 39 UI/security regression tests passed.
 - ESLint completed with 0 errors; 24 pre-existing warnings remain.
 - Next.js production build completed successfully for `/`, `/player`, and `/lounge-map/[id]`.

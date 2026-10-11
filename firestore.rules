@@ -117,6 +117,15 @@ service cloud.firestore {
         && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
       allow write: if false;
     }
+    match /shiftHandovers/{id} {
+      allow read: if roleIs(['Super Admin','Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
+      // Creation and acknowledgment must pass the audited backend workflow.
+      allow write: if false;
+    }
+    match /shiftHandoverLocks/{id} {
+      allow read, write: if false;
+    }
     match /displayDevices/{id} {
       allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
         && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));

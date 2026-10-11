@@ -47,6 +47,7 @@ export type GaesCollection =
   | "roomMaintenance"
   | "roomIncidents"
   | "roomActivityLogs"
+  | "shiftHandovers"
   | "loungeLayouts";
 
 function clean<T extends Record<string, unknown>>(value: T): T {
@@ -183,6 +184,7 @@ export function subscribeStationCollection<T>(
     | "roomMaintenance"
     | "roomIncidents"
     | "roomActivityLogs"
+    | "shiftHandovers"
     | "displayDevices"
     | "displayContents"
     | "displayChannels"
