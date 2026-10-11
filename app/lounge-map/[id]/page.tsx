@@ -4,6 +4,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 
+const PASSENGER_ACCESS_CATEGORIES = [
+  "All Guests",
+  "Business Class",
+  "First Class",
+  "GarudaMiles Platinum",
+  "SkyTeam Elite Plus",
+  "VIP / CIP",
+] as const;
+
 type PublicArea = {
   id: string;
   name: string;
@@ -14,6 +23,7 @@ type PublicArea = {
   y: number;
   status: "Available" | "In Use" | "Temporarily Closed";
   photoUrls: string[];
+  accessCategories: string[];
 };
 type PublicLayout = {
   id: string;
@@ -33,10 +43,17 @@ export default function PassengerLoungeMap() {
   const currentAreaId = search.get("from") || "";
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All Services");
+  const requestedAccess = search.get("access") || "";
+  const [accessProfile, setAccessProfile] = useState(
+    PASSENGER_ACCESS_CATEGORIES.some((item) => item === requestedAccess)
+      ? requestedAccess
+      : "All Guests",
+  );
   const [language, setLanguage] = useState<"ID" | "EN">("ID");
   const [error, setError] = useState("");
   const [photoIndex, setPhotoIndex] = useState(0);
   const [fullScreenPhoto, setFullScreenPhoto] = useState("");
+  const [shareFeedback, setShareFeedback] = useState("");
   const sheetTouchStartY = useRef<number | null>(null);
 
   useEffect(() => {
@@ -65,14 +82,37 @@ export default function PassengerLoungeMap() {
     () => ["All Services", ...new Set((layout?.areas || []).map((area) => area.category))],
     [layout],
   );
+  const accessProfiles = useMemo(
+    () => [
+      ...PASSENGER_ACCESS_CATEGORIES,
+      ...new Set(
+        (layout?.areas || [])
+          .flatMap((area) => area.accessCategories || [])
+          .filter(
+            (access) =>
+              access &&
+              !PASSENGER_ACCESS_CATEGORIES.some((item) => item === access),
+          ),
+      ),
+    ],
+    [layout],
+  );
   const visibleAreas = (layout?.areas || []).filter(
     (area) =>
+      (area.id === currentAreaId ||
+        (area.accessCategories?.length
+          ? area.accessCategories
+          : ["All Guests"]
+        ).some(
+          (access) =>
+            access === "All Guests" || access === accessProfile,
+        )) &&
       (category === "All Services" || area.category === category) &&
       `${area.name} ${area.category} ${area.services.join(" ")}`
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
-  const selected = layout?.areas.find((area) => area.id === selectedId) || null;
+  const selected = visibleAreas.find((area) => area.id === selectedId) || null;
   const activePhotoIndex = selected?.photoUrls.length
     ? Math.min(photoIndex, selected.photoUrls.length - 1)
     : 0;
@@ -81,6 +121,21 @@ export default function PassengerLoungeMap() {
   const selectArea = (id: string) => {
     setPhotoIndex(0);
     setSelectedId(id);
+  };
+  const shareMap = async () => {
+    const url = new URL(window.location.href);
+    if (accessProfile === "All Guests") url.searchParams.delete("access");
+    else url.searchParams.set("access", accessProfile);
+    try {
+      if (navigator.share)
+        await navigator.share({ title: layout?.loungeName || "Lounge Map", url: url.toString() });
+      else await navigator.clipboard.writeText(url.toString());
+      setShareFeedback(t("Tautan siap dibagikan", "Link ready to share"));
+      window.setTimeout(() => setShareFeedback(""), 2500);
+    } catch (reason) {
+      if ((reason as { name?: string })?.name !== "AbortError")
+        setShareFeedback(t("Tautan tidak dapat dibagikan", "Unable to share link"));
+    }
   };
 
   if (error)
@@ -93,13 +148,18 @@ export default function PassengerLoungeMap() {
       <header>
         <img src="/garuda-indonesia-logo.png" alt="Garuda Indonesia" />
         <div><small>{layout.station} · {layout.floorName}</small><h1>{layout.loungeName}</h1><p>{t("Temukan layanan dan area lounge", "Find lounge services and areas")}</p></div>
-        <button type="button" onClick={() => setLanguage(language === "ID" ? "EN" : "ID")}>{language === "ID" ? "EN" : "ID"}</button>
+        <div className="publicMapHeaderActions">
+          <button type="button" onClick={() => void shareMap()}>{t("Bagikan", "Share")}</button>
+          <button type="button" onClick={() => setLanguage(language === "ID" ? "EN" : "ID")}>{language === "ID" ? "EN" : "ID"}</button>
+          {shareFeedback && <small role="status">{shareFeedback}</small>}
+        </div>
       </header>
       <section className="publicMapFilters">
         <label><span>{t("Cari fasilitas", "Search facilities")}</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("Contoh: shower, buffet, charging", "Example: shower, buffet, charging")} /></label>
         <label><span>{t("Kategori", "Category")}</span><select value={category} onChange={(event) => setCategory(event.target.value)}>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <label><span>{t("Akses Anda", "Your Access")}</span><select value={accessProfile} onChange={(event) => { setAccessProfile(event.target.value); setSelectedId(""); }}>{accessProfiles.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <p className="publicMapHint">{t("Pilih marker atau fasilitas untuk melihat detail area, layanan, foto, dan petunjuk lokasinya.", "Select a marker or facility to view area details, services, photos, and location guidance.")}</p>
       </section>
-      <p className="publicMapHint">{t("Pilih marker atau daftar fasilitas untuk melihat detail area, layanan, dan foto.", "Select a marker or facility list item to view area details, services, and photos.")}</p>
       {currentArea && (
         <div className="publicCurrentLocation">
           <span aria-hidden="true">◉</span>
@@ -153,6 +213,12 @@ export default function PassengerLoungeMap() {
                 <span className={`publicAreaStatus status-${selected.status.toLowerCase().replaceAll(" ", "-")}`}>{selected.status}</span>
                 <p>{selected.description || t("Informasi area belum tersedia.", "Area information is not available yet.")}</p>
                 <div className="publicServiceTags">{selected.services.map((service) => <span key={service}>{service}</span>)}</div>
+                <div className="publicAccessInformation">
+                  <small>{t("AKSES PENUMPANG", "PASSENGER ACCESS")}</small>
+                  <div className="publicServiceTags">
+                    {(selected.accessCategories?.length ? selected.accessCategories : ["All Guests"]).map((access) => <span key={access}>{access}</span>)}
+                  </div>
+                </div>
                 <button className="publicLocateArea" type="button" onClick={() => document.querySelector(".publicMapCanvas")?.scrollIntoView({ behavior: "smooth", block: "center" })}>{t("Tampilkan pada Denah", "Show on Map")}</button>
               </div>
             </section>

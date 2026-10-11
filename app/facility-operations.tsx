@@ -64,6 +64,7 @@ type LoungeMapArea = {
   status: "Available" | "In Use" | "Temporarily Closed";
   publicVisible: boolean;
   photoUrls: string[];
+  accessCategories: string[];
 };
 
 type LoungeLayout = {
@@ -522,6 +523,14 @@ const SHIFT_CONTINUITY_CHECKS = [
   { key: "offlinePlanConfirmed", label: "Offline continuity pack sudah diperbarui" },
   { key: "emergencyContactsConfirmed", label: "Kontak eskalasi operasional sudah dikonfirmasi" },
 ] as const;
+const PASSENGER_ACCESS_CATEGORIES = [
+  "All Guests",
+  "Business Class",
+  "First Class",
+  "GarudaMiles Platinum",
+  "SkyTeam Elite Plus",
+  "VIP / CIP",
+] as const;
 
 const DISPLAY_UAT_CHECKS = [
   { id: "enrollment", label: "Secure enrollment", required: true },
@@ -750,6 +759,7 @@ const EMPTY_LOUNGE_AREA: LoungeMapArea = {
   status: "Available",
   publicVisible: true,
   photoUrls: [],
+  accessCategories: ["All Guests"],
 };
 
 const EMPTY_SCHEDULE: Omit<DisplaySchedule, "id" | "channelName"> = {
@@ -1127,6 +1137,8 @@ export default function FacilityOperations({
   const [selectedPublicAreaId, setSelectedPublicAreaId] = useState("");
   const [layoutQrDataUrl, setLayoutQrDataUrl] = useState("");
   const [layoutQrAreaId, setLayoutQrAreaId] = useState("");
+  const [layoutQrAccessCategory, setLayoutQrAccessCategory] =
+    useState("All Guests");
   const [layoutPreviewError, setLayoutPreviewError] = useState("");
   const handledRouteNonce = useRef<number | null>(null);
 
@@ -1492,14 +1504,18 @@ export default function FacilityOperations({
       const timer = window.setTimeout(() => setLayoutQrDataUrl(""), 0);
       return () => window.clearTimeout(timer);
     }
-    const url = `${window.location.origin}/lounge-map/${selectedLoungeLayout.id}${layoutQrAreaId ? `?from=${encodeURIComponent(layoutQrAreaId)}` : ""}`;
+    const query = new URLSearchParams();
+    if (layoutQrAreaId) query.set("from", layoutQrAreaId);
+    if (layoutQrAccessCategory !== "All Guests")
+      query.set("access", layoutQrAccessCategory);
+    const url = `${window.location.origin}/lounge-map/${selectedLoungeLayout.id}${query.size ? `?${query.toString()}` : ""}`;
     void QRCode.toDataURL(url, {
       width: 240,
       margin: 2,
       color: { dark: "#062b5c", light: "#ffffff" },
       errorCorrectionLevel: "M",
     }).then(setLayoutQrDataUrl, () => setLayoutQrDataUrl(""));
-  }, [layoutQrAreaId, selectedLoungeLayout]);
+  }, [layoutQrAccessCategory, layoutQrAreaId, selectedLoungeLayout]);
   const scopedBookings = useMemo(
     () =>
       bookings
@@ -1886,6 +1902,9 @@ export default function FacilityOperations({
       x: roundLayoutPosition(layoutAreaDraft.x),
       y: roundLayoutPosition(layoutAreaDraft.y),
       services,
+      accessCategories: stringArray(layoutAreaDraft.accessCategories).length
+        ? stringArray(layoutAreaDraft.accessCategories)
+        : ["All Guests"],
     };
     const areas = selectedLoungeLayout.areas.some((row) => row.id === area.id)
       ? selectedLoungeLayout.areas.map((row) => (row.id === area.id ? area : row))
@@ -1949,6 +1968,15 @@ export default function FacilityOperations({
     await removeRecord("loungeLayouts", layout.id);
     setSelectedLayoutId("");
     setNotice({ kind: "ok", text: `Layout ${layout.title} berhasil dihapus.` });
+  }
+
+  function passengerMapPath() {
+    if (!selectedLoungeLayout) return "#";
+    const query = new URLSearchParams();
+    if (layoutQrAreaId) query.set("from", layoutQrAreaId);
+    if (layoutQrAccessCategory !== "All Guests")
+      query.set("access", layoutQrAccessCategory);
+    return `/lounge-map/${selectedLoungeLayout.id}${query.size ? `?${query.toString()}` : ""}`;
   }
 
   async function saveDevice(event: FormEvent) {
@@ -4122,7 +4150,7 @@ export default function FacilityOperations({
                   kepada shift berikutnya.
                 </p>
               </div>
-              <div className="facilityHeaderActions">
+              <div className="facilityHeaderActions continuityHeaderActions">
                 <label className="continuityStationSelect">
                   <span>Continuity Station</span>
                   <select
@@ -5741,6 +5769,15 @@ export default function FacilityOperations({
                           <span className={`bookingStatus status-${area.status.toLowerCase().replaceAll(" ", "-")}`}>{area.status}</span>
                           <p>{area.description || "Informasi area belum tersedia."}</p>
                           <div className="layoutServiceTags">{area.services.map((service) => <span key={service}>{service}</span>)}</div>
+                          <div className="layoutAccessSummary">
+                            <small>Passenger Access</small>
+                            <div className="layoutServiceTags">
+                              {(stringArray(area.accessCategories).length
+                                ? stringArray(area.accessCategories)
+                                : ["All Guests"]
+                              ).map((access) => <span key={access}>{access}</span>)}
+                            </div>
+                          </div>
                           {layoutView === "Editor" && canManageLayout && (
                             <div className="layoutAreaActions">
                               <button type="button" onClick={() => {
@@ -5782,8 +5819,14 @@ export default function FacilityOperations({
                     {selectedLoungeLayout.areas.filter((area) => area.publicVisible).map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
                   </select>
                 </label>
-                <a href={`/lounge-map/${selectedLoungeLayout.id}`} target="_blank" rel="noreferrer">Open Passenger View</a>
-                <button type="button" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}/lounge-map/${selectedLoungeLayout.id}${layoutQrAreaId ? `?from=${encodeURIComponent(layoutQrAreaId)}` : ""}`)}>Copy Passenger Link</button>
+                <label>
+                  Passenger Access
+                  <select value={layoutQrAccessCategory} onChange={(event) => setLayoutQrAccessCategory(event.target.value)}>
+                    {PASSENGER_ACCESS_CATEGORIES.map((access) => <option key={access}>{access}</option>)}
+                  </select>
+                </label>
+                <a href={passengerMapPath()} target="_blank" rel="noreferrer">Open Passenger View</a>
+                <button type="button" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}${passengerMapPath()}`)}>Copy Passenger Link</button>
                 <small>Hanya layout berstatus Published yang dapat dibuka tanpa login.</small>
               </aside>
             )}
@@ -8748,6 +8791,34 @@ export default function FacilityOperations({
               <label><span>Passenger Visibility</span><select value={layoutAreaDraft.publicVisible ? "Visible" : "Internal Only"} onChange={(event) => setLayoutAreaDraft({ ...layoutAreaDraft, publicVisible: event.target.value === "Visible" })}><option>Visible</option><option>Internal Only</option></select></label>
               <label className="full"><span>Description</span><textarea value={layoutAreaDraft.description} onChange={(event) => setLayoutAreaDraft({ ...layoutAreaDraft, description: event.target.value })} placeholder="Apa yang dapat diharapkan penumpang di area ini?" /></label>
               <label className="full"><span>Services (separate with commas)</span><input value={layoutServicesInput} onChange={(event) => setLayoutServicesInput(event.target.value)} placeholder="Wi-Fi, charging, buffet, wheelchair access" /></label>
+              <fieldset className="full layoutAccessPicker">
+                <legend>Passenger Access</legend>
+                <small>Pilih profil penumpang yang dapat melihat dan menggunakan area ini. All Guests akan selalu ditampilkan untuk seluruh penumpang.</small>
+                <div>
+                  {PASSENGER_ACCESS_CATEGORIES.map((access) => {
+                    const selected = (stringArray(layoutAreaDraft.accessCategories).length
+                      ? stringArray(layoutAreaDraft.accessCategories)
+                      : ["All Guests"]
+                    ).includes(access);
+                    return (
+                      <label key={access}>
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={(event) => {
+                            const current = stringArray(layoutAreaDraft.accessCategories);
+                            const next = event.target.checked
+                              ? [...new Set([...current, access])]
+                              : current.filter((item) => item !== access);
+                            setLayoutAreaDraft({ ...layoutAreaDraft, accessCategories: next });
+                          }}
+                        />
+                        <span>{access}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
               <label><span>Position X (%)</span><input type="number" min="0" max="100" step="0.01" value={layoutAreaDraft.x} onChange={(event) => setLayoutAreaDraft({ ...layoutAreaDraft, x: roundLayoutPosition(Number(event.target.value)) })} /><small>Terisi otomatis dari posisi klik; gunakan untuk penyesuaian halus.</small></label>
               <label><span>Position Y (%)</span><input type="number" min="0" max="100" step="0.01" value={layoutAreaDraft.y} onChange={(event) => setLayoutAreaDraft({ ...layoutAreaDraft, y: roundLayoutPosition(Number(event.target.value)) })} /><small>Terisi otomatis dari posisi klik; gunakan untuk penyesuaian halus.</small></label>
               <label className="full layoutUploadDrop"><span>Area Photos</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { const files = [...(event.target.files || [])]; files.forEach((file) => void uploadLayoutAreaPhoto(file)); event.target.value = ""; }} /><small>Tambahkan foto agar penumpang dapat melihat suasana dan fasilitas sebelum menuju area.</small></label>

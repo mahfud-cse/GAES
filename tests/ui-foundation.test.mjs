@@ -946,3 +946,26 @@ test("adds Patch 3 shift handover and business continuity controls", async () =>
   assert.match(css, /\.shiftHandoverCard/);
   assert.match(css, /\.shiftContinuityColumns/);
 });
+
+test("adds Patch 4 passenger access-aware lounge experience", async () => {
+  const [facility, publicMap, publicBackend, css] = await Promise.all([
+    read("../app/facility-operations.tsx"),
+    read("../app/lounge-map/[id]/page.tsx"),
+    read("../netlify/functions/public-lounge-layout.mjs"),
+    read("../app/globals.css"),
+  ]);
+  assert.match(facility, /PASSENGER_ACCESS_CATEGORIES/);
+  assert.match(facility, /accessCategories: \["All Guests"\]/);
+  assert.match(facility, /layoutQrAccessCategory/);
+  assert.match(facility, /query\.set\("access", layoutQrAccessCategory\)/);
+  assert.match(facility, /Passenger Access/);
+  assert.match(publicMap, /Akses Anda/);
+  assert.match(publicMap, /access === "All Guests" \|\| access === accessProfile/);
+  assert.match(publicMap, /navigator\.share/);
+  assert.match(publicMap, /publicMapHeaderActions/);
+  assert.match(publicBackend, /accessCategories/);
+  assert.match(css, /\.continuityHeaderActions > button[\s\S]*?height: var\(--control-height\)/);
+  assert.match(css, /\.layoutAccessPicker/);
+  assert.match(css, /\.publicAccessInformation/);
+  assert.match(css, /\.publicMapHint[\s\S]*?grid-column: 1 \/ -1/);
+});

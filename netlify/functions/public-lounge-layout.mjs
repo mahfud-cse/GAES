@@ -38,6 +38,14 @@ const handler = async (request) => {
             .map((photo) => text(photo, 2000))
             .filter(Boolean)
             .slice(0, 12),
+          accessCategories: (
+            Array.isArray(area.accessCategories) && area.accessCategories.length
+              ? area.accessCategories
+              : ["All Guests"]
+          )
+            .map((access) => text(access, 100))
+            .filter(Boolean)
+            .slice(0, 12),
         })),
     });
   } catch (error) {
