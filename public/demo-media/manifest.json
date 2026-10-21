@@ -1,0 +1,156 @@
+[
+  {
+    "id": "passenger-valid",
+    "displayName": "DEMO Passenger Valid",
+    "category": "Passenger",
+    "image": "/demo-media/passenger/illustration.svg",
+    "identity": "matched",
+    "authorization": "valid",
+    "expectedDecision": "ELIGIBLE",
+    "expectedReason": "",
+    "mode": "DEMO"
+  },
+  {
+    "id": "passenger-invalid",
+    "displayName": "DEMO Passenger Invalid",
+    "category": "Passenger",
+    "image": "/demo-media/passenger/illustration.svg",
+    "identity": "matched",
+    "authorization": "invalid",
+    "expectedDecision": "NOT_ELIGIBLE",
+    "expectedReason": "ENTITLEMENT_INVALID",
+    "mode": "DEMO"
+  },
+  {
+    "id": "passenger-expired",
+    "displayName": "DEMO Passenger Expired",
+    "category": "Passenger",
+    "image": "/demo-media/passenger/illustration.svg",
+    "identity": "matched",
+    "authorization": "expired",
+    "expectedDecision": "NOT_ELIGIBLE",
+    "expectedReason": "ENTITLEMENT_INVALID",
+    "mode": "DEMO"
+  },
+  {
+    "id": "unknown-face",
+    "displayName": "DEMO Unknown Face",
+    "category": "Passenger",
+    "image": "/demo-media/passenger/illustration.svg",
+    "identity": "unknown",
+    "authorization": "unchecked",
+    "expectedDecision": "NOT_ELIGIBLE",
+    "expectedReason": "FACE_NOT_RECOGNIZED",
+    "mode": "DEMO"
+  },
+  {
+    "id": "passenger-missing",
+    "displayName": "DEMO Passenger Missing",
+    "category": "Passenger",
+    "image": "/demo-media/passenger/illustration.svg",
+    "identity": "matched",
+    "authorization": "missing",
+    "expectedDecision": "NOT_ELIGIBLE",
+    "expectedReason": "PASSENGER_RECORD_UNAVAILABLE",
+    "mode": "DEMO"
+  },
+  {
+    "id": "passenger-timeout",
+    "displayName": "DEMO Passenger Timeout",
+    "category": "Passenger",
+    "image": "/demo-media/passenger/illustration.svg",
+    "identity": "matched",
+    "authorization": "timeout",
+    "expectedDecision": "NOT_ELIGIBLE",
+    "expectedReason": "PASSENGER_SERVICE_UNAVAILABLE",
+    "mode": "DEMO"
+  },
+  {
+    "id": "biometric-timeout",
+    "displayName": "DEMO Biometric Timeout",
+    "category": "Passenger",
+    "image": "/demo-media/passenger/illustration.svg",
+    "identity": "timeout",
+    "authorization": "unchecked",
+    "expectedDecision": "NOT_ELIGIBLE",
+    "expectedReason": "VERIFICATION_SERVICE_UNAVAILABLE",
+    "mode": "DEMO"
+  },
+  {
+    "id": "invalid-response",
+    "displayName": "DEMO Invalid Response",
+    "category": "Passenger",
+    "image": "/demo-media/passenger/illustration.svg",
+    "identity": "invalid",
+    "authorization": "unchecked",
+    "expectedDecision": "NOT_ELIGIBLE",
+    "expectedReason": "INVALID_PROVIDER_RESPONSE",
+    "mode": "DEMO"
+  },
+  {
+    "id": "staff-valid",
+    "displayName": "DEMO Staff Valid",
+    "category": "Staff",
+    "image": "/demo-media/staff/illustration.svg",
+    "identity": "matched",
+    "authorization": "valid",
+    "expectedDecision": "ELIGIBLE",
+    "expectedReason": "",
+    "mode": "DEMO"
+  },
+  {
+    "id": "staff-inactive",
+    "displayName": "DEMO Staff Inactive",
+    "category": "Staff",
+    "image": "/demo-media/staff/illustration.svg",
+    "identity": "matched",
+    "authorization": "inactive",
+    "expectedDecision": "NOT_ELIGIBLE",
+    "expectedReason": "STAFF_INACTIVE",
+    "mode": "DEMO"
+  },
+  {
+    "id": "staff-location",
+    "displayName": "DEMO Staff Location",
+    "category": "Staff",
+    "image": "/demo-media/staff/illustration.svg",
+    "identity": "matched",
+    "authorization": "location",
+    "expectedDecision": "NOT_ELIGIBLE",
+    "expectedReason": "STAFF_AUTHORIZATION_INVALID",
+    "mode": "DEMO"
+  },
+  {
+    "id": "staff-role",
+    "displayName": "DEMO Staff Role",
+    "category": "Staff",
+    "image": "/demo-media/staff/illustration.svg",
+    "identity": "matched",
+    "authorization": "role",
+    "expectedDecision": "NOT_ELIGIBLE",
+    "expectedReason": "STAFF_AUTHORIZATION_INVALID",
+    "mode": "DEMO"
+  },
+  {
+    "id": "staff-unenrolled",
+    "displayName": "DEMO Staff Unenrolled",
+    "category": "Staff",
+    "image": "/demo-media/staff/illustration.svg",
+    "identity": "matched",
+    "authorization": "unenrolled",
+    "expectedDecision": "NOT_ELIGIBLE",
+    "expectedReason": "ENROLLMENT_INCOMPLETE",
+    "mode": "DEMO"
+  },
+  {
+    "id": "staff-unknown",
+    "displayName": "DEMO Staff Unknown",
+    "category": "Staff",
+    "image": "/demo-media/staff/illustration.svg",
+    "identity": "unknown",
+    "authorization": "unchecked",
+    "expectedDecision": "NOT_ELIGIBLE",
+    "expectedReason": "FACE_NOT_RECOGNIZED",
+    "mode": "DEMO"
+  }
+]

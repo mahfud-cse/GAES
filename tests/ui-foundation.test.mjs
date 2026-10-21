@@ -102,7 +102,7 @@ test("uses the root Next.js application for local and Netlify builds", async () 
   assert.equal(packageJson.scripts.start, "next start");
   assert.equal(
     packageJson.scripts.test,
-    "npm run test:logic && npm run test:ui && npm run lint && npm run build",
+    "npm run test:logic && npm run test:ui && npm run test:seamless && npm run lint && npm run build",
   );
   assert.match(netlify, /command\s*=\s*"npm test"/);
   assert.doesNotMatch(netlify, /source\/|static-build\/|vinext|vite/);

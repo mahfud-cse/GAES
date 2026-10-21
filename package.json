@@ -11,8 +11,9 @@
     "start": "next start",
     "test:logic": "node --experimental-strip-types --test tests/data-normalization.test.mjs",
     "test:ui": "node --test tests/ui-foundation.test.mjs tests/rendered-html.test.mjs",
-    "test": "npm run test:logic && npm run test:ui && npm run lint && npm run build",
-    "lint": "eslint . --ignore-pattern source --ignore-pattern static-build --ignore-pattern .next"
+    "test": "npm run test:logic && npm run test:ui && npm run test:seamless && npm run lint && npm run build",
+    "lint": "eslint . --ignore-pattern source --ignore-pattern static-build --ignore-pattern .next",
+    "test:seamless": "node --test tests/seamless-access.test.mjs"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.5",

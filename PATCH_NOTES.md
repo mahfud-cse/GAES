@@ -1,47 +1,59 @@
-# Patch Notes
+# Seamless Access delta — 2026-10-21
 
-## Patch 4 — Passenger Experience & Advanced Facility
+STATUS: demo implementation validated locally; production Firebase UAT and all live integrations remain blocked by external access/contracts. This is a delta, not a standalone full application.
 
-### Shift Handover interface correction
+## Baseline
 
-- The Offline Continuity Pack button no longer stretches to the combined height of the station label and selector on desktop.
-- Its desktop height now follows the shared control-height foundation.
-- On mobile, the control remains full-width with a touch-safe height.
-- The correction is scoped to the continuity header and does not override button sizing across unrelated pages.
+Target: root Next.js app in `GAES-V-22.2(1).zip`, internal path `GAES-V-22.2/GAES-V-22.2/`, package 0.23.1. ZIP SHA256 `c4ffbc4c2dc4610d0fbc56fb8c5ae53233c100d63e00fef733b99a0c233a1609`.
 
-### Passenger access-aware lounge map
+Older `GAES-main(1).zip` is reference only. Do not apply to it, the nested `source/` copy, or `static-build/`.
 
-- Lounge areas can now be assigned to one or more passenger access profiles: All Guests, Business Class, First Class, GarudaMiles Platinum, SkyTeam Elite Plus, and VIP/CIP.
-- Existing areas without access metadata remain backward compatible and are treated as All Guests.
-- The public passenger map includes a `Your Access / Akses Anda` selector and only exposes common areas or areas available to the selected passenger profile.
-- A QR location remains visible as `You Are Here` even when the passenger changes their service filter.
-- Area detail panels show the access profiles applicable to that facility.
+## Actual changes
 
-### Access-aware QR and passenger links
+- Lounge/Tenant Access submenu: original Access Verification plus Seamless Access. Original Access Verification form, barcode/QR/image scanning, manual entry and visitor save JSX are unchanged except title/subtitle. Camera/scanner stops when leaving that page.
+- New signed-in Seamless page: explicit DEMO simulations, location, capture/identity/authorization/decision states, gate connectivity/acknowledgements, masked results, searchable/filterable paginated activity.
+- Fourteen synthetic passenger/staff scenarios, conceptual floor plan and illustrated preview assets. No real face recognition or biometric capture is claimed.
+- Existing users model reused: Admin/Super Admin can enroll/update/deactivate DEMO staff authorization metadata; existing User & Role management creates/updates the actual user identity. Enrollment, active status, role, station and assigned lounge are independently enforced.
+- Backend-only Firestore activity, decisions, synthetic gate feedback, rate limits, atomic audit writes and request idempotency. No changes to production visitors, entitlement logic, existing Firebase config/rules or Netlify variables.
+- Replaceable internal adapters, safe deadlines and fail-closed LIVE mode. Hardware state is explicitly SIMULATED and `physicalOpenConfirmed` remains false.
 
-- Administrators can select both the physical QR location and passenger access profile before generating a passenger-map QR.
-- The generated QR, Open Passenger View link, and copied link carry the selected location and access profile.
-- Passenger access information is sanitized by the public backend before being returned to an unauthenticated map visitor.
-- No passenger identity or visitor record is exposed through the public map.
+## Files added (14)
 
-### Mobile passenger experience
+- `app/seamless-access.tsx` — page component inside existing shell.
+- `lib/seamless/adapters.mjs` — normalized demo providers, deadline and gate simulator.
+- `lib/seamless/core.mjs` — separated identity/authorization decisions and role/location checks.
+- `lib/seamless/service.mjs` — authenticated orchestration, staff metadata, Firestore persistence and idempotency.
+- `netlify/functions/seamless-access.mjs` — existing Netlify/Firebase helper integration.
+- `tests/seamless-access.test.mjs` — 36 node:test cases.
+- `docs/SEAMLESS_ACCESS_INTEGRATION.md` — contracts, permissions, data model, install/rollback and blockers.
+- `public/demo-media/README.md` — public asset instructions/limitations.
+- `public/demo-media/manifest.json` — synthetic fixtures.
+- `public/demo-media/layout/access-point.svg` — conceptual access-point floor plan.
+- `public/demo-media/passenger/illustration.svg` — fictional passenger illustration.
+- `public/demo-media/staff/illustration.svg` — fictional staff illustration.
+- `public/demo-media/camera/illustration.svg` — simulated camera placeholder.
+- `TEST_REPORT.md` — executed results and blocked live checks.
 
-- The passenger map now provides a Share action using the phone's native share sheet when supported, with clipboard fallback.
-- Search, service category, and passenger access controls are grouped into one responsive filter panel.
-- The previous instructional sentence has been repositioned inside the filter panel so it remains connected to the controls on desktop and mobile.
-- Existing marker stability, mobile bottom sheet, photo carousel, full-screen photos, bilingual display, and route line remain intact.
+## Files replaced (6)
 
-## Deployment
+- `app/page.tsx` — minimal tab/submenu integration, authoritative profile lounge scope propagation and scanner cleanup.
+- `lib/firebase/api.ts` — add one function using existing authenticated POST/token-refresh mechanism.
+- `package.json` — add Seamless test script to existing npm test pipeline; no dependency change.
+- `tests/ui-foundation.test.mjs` — extend the expected test pipeline to include the new suite.
+- `docs/CHANGELOG.md` — append current delta entry using existing history convention.
+- `PATCH_NOTES.md` — current canonical patch/install notes.
 
-1. Copy only the files contained in this delta to the same repository paths.
-2. Push the repository so Netlify rebuilds the application and Netlify Functions.
-3. No Firebase Rules deployment is required for Patch 4.
-4. No Firebase data migration or new composite index is required.
-5. Existing published areas automatically use `All Guests` until their access profile is edited and saved.
+## Files to delete
 
-## Verification
+NONE. No data migration, collection deletion or automatic database cleanup.
 
-- 11 logic tests passed.
-- 40 UI/security regression tests passed.
-- ESLint completed with 0 errors; 24 pre-existing warnings remain.
-- Next.js production build completed successfully for `/`, `/player`, and `/lounge-map/[id]`.
+## Exact manual installation
+
+1. Back up the latest root repository. Extract the delta ZIP **into the folder containing root `package.json`, `app/`, `lib/` and `netlify.toml`**, preserving paths and replacing only the six listed files.
+2. For manual media copying, destination is exactly `<repository-root>/public/demo-media/`. These assets are public. No source/function/secret/real biometric information belongs in public.
+3. Source files in `app/` and `lib/`, backend entry in `netlify/functions/`, and assets must be built/deployed together. Use Node >=22.13, `npm ci`, then `npm test`. No application dependency or lockfile change required.
+4. Deploy via the existing GitHub/Netlify build (`npm test`, publish `.next`, functions `netlify/functions`). Do not upload the delta ZIP as a standalone static site. Existing Firebase client/Admin environment remains required and unchanged.
+5. Sign in with an authorized existing account, select an active lounge within station/assignment scope, open Lounge/Tenant Access → Seamless Access, and run DEMO scenarios. Admin/Super Admin may configure DEMO staff enrollment. Create new actual staff identities in Master Data → User & Role using existing mechanisms.
+6. Run credentialed Firebase/Netlify and existing boarding-pass/QR/manual regression UAT before rollout. Production integration is NOT verified by local test doubles.
+
+See `TEST_REPORT.md` for exact checks. See `docs/SEAMLESS_ACCESS_INTEGRATION.md` for internal adapter schemas, external prerequisites, retention and rollback. No live vendor endpoints, authentication schemes, hardware protocol or keys have been fabricated.

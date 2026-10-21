@@ -207,3 +207,6 @@ export const manageNotification = (
   user: User,
   payload: Record<string, unknown>,
 ) => call<{ id: string; status: string }>("manage-notification", user, payload);
+
+export const seamlessAccessRequest = (user: User, payload: Record<string, unknown>) =>
+  call<Record<string, unknown>>("seamless-access", user, payload);

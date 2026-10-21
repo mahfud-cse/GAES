@@ -12,6 +12,7 @@ import type { IScannerControls } from "@zxing/browser";
 import * as XLSX from "xlsx";
 import Link from "next/link";
 import FacilityOperations from "./facility-operations";
+import SeamlessAccess from "./seamless-access";
 import {
   browserLocalPersistence,
   EmailAuthProvider,
@@ -74,6 +75,7 @@ type MainTab =
   | "dashboard"
   | "dashboard-detail"
   | "access"
+  | "seamless"
   | "reconciliation"
   | "flights"
   | "facility"
@@ -1222,6 +1224,7 @@ type Account = {
   verificationScopes: string[];
   status: "Aktif" | "Nonaktif";
   mustChangePassword?: boolean;
+  loungeId?: string;
 };
 
 function roleCanUseFacility(role: Account["role"]) {
@@ -2965,6 +2968,7 @@ export default function Home() {
             : [],
           status: "Aktif" as const,
           mustChangePassword: data.mustChangePassword === true,
+          loungeId: normalizedText(data.loungeId),
         } as Account;
         setCurrentAccount(account);
         setRole(account.role);
@@ -2973,6 +2977,7 @@ export default function Home() {
         const requested = params.get("view") as MainTab | null;
         const allowedTabs: MainTab[] = [
           "access",
+          ...(["Super Admin", "Admin", "BO Admin", "Lounge Officer", "Lounge Manager"].includes(account.role) ? ["seamless" as MainTab] : []),
           "reconciliation",
           ...(account.role !== "Lounge Officer" ? ["flights" as MainTab] : []),
           ...(roleCanUseFacility(account.role) ? ["facility" as MainTab] : []),
@@ -3039,6 +3044,7 @@ export default function Home() {
           "dashboard",
           "dashboard-detail",
           "access",
+          "seamless",
           "reconciliation",
           "flights",
           "facility",
@@ -3762,6 +3768,14 @@ export default function Home() {
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   });
+  useEffect(() => {
+    if (tab === "access") return;
+    controls.current?.stop();
+    stream.current?.getTracks().forEach((track) => track.stop());
+    setCamera(false);
+    setScanner(false);
+    setCameraTorch(false);
+  }, [tab]);
   useEffect(
     () => () => {
       controls.current?.stop();
@@ -6931,7 +6945,7 @@ export default function Home() {
             )}
             <Link
               href="/?view=access"
-              className={tab === "access" ? "active" : ""}
+              className={tab === "access" || tab === "seamless" ? "active" : ""}
               onClick={(e) => {
                 if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
                   e.preventDefault();
@@ -6942,6 +6956,10 @@ export default function Home() {
               <i>LA</i>
               <span>Lounge/Tenant Access</span>
             </Link>
+            {(tab === "access" || tab === "seamless") && <div role="group" aria-label="Lounge/Tenant Access submenu" style={{ paddingLeft: sidebarCollapsed ? 0 : 12 }}>
+              <Link href="/?view=access" className={tab === "access" ? "active" : ""} onClick={e => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); setTab("access"); } }} aria-label="Access Verification"><i>AV</i><span>Access Verification</span></Link>
+              {["Super Admin", "Admin", "BO Admin", "Lounge Officer", "Lounge Manager"].includes(role) && <Link href="/?view=seamless" className={tab === "seamless" ? "active" : ""} onClick={e => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); setTab("seamless"); } }} aria-label="Seamless Access"><i>SA</i><span>Seamless Access</span></Link>}
+            </div>}
             <Link
               href="/?view=reconciliation"
               className={tab === "reconciliation" ? "active" : ""}
@@ -7587,12 +7605,17 @@ export default function Home() {
               </article>
             </>
           )}
+          {tab === "seamless" && firebaseUser && currentAccount && (
+            <SeamlessAccess user={firebaseUser} role={role}
+              initialLoungeId={loungeId}
+              lounges={lounges.filter(l => ["Super Admin", "Admin"].includes(role) || (l.airport === currentAccount.station && (!["Lounge Officer", "Lounge Manager"].includes(role) || l.id === currentAccount.loungeId)))} />
+          )}
           {tab === "access" && (
             <>
               <Title
                 eye="OPERASIONAL AKSES"
-                title="Lounge/Tenant Access"
-                sub="Scan boarding pass atau gunakan fallback input manual saat scanner terkendala."
+                title="Access Verification"
+                sub="Boarding Pass / QR Code / Manual Input. Scan boarding pass atau gunakan fallback input manual saat scanner terkendala."
               />
               <div className="timeStrip">
                 <div>

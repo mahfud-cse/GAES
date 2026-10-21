@@ -1,5 +1,13 @@
 # Changelog
 
+## Seamless Access delta — 2026-10-21
+
+- Added Seamless Access under Lounge/Tenant Access using the existing session, shell, components and Firebase infrastructure.
+- Added explicit synthetic passenger/staff verification, separate entitlement/authorization decisions, simulated gate acknowledgements, idempotent server requests and persisted scoped demo activity/audit.
+- Added administrator-managed DEMO enrollment metadata on existing users without storing real biometrics or changing authentication roles.
+- Live recognition and physical gate control remain unavailable pending approved external contracts and production UAT.
+- Existing barcode, QR, manual visitor and unrelated modules remain in place; leaving Access Verification stops camera/scanner capture.
+
 ## v0.20.0
 
 - Dashboard KPI cards now open the corresponding Visitor List, passenger-volume detail, or Reports & Sign-off view while preserving the active dashboard scope.
