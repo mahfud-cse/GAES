@@ -1,0 +1,180 @@
+{
+  "release": "Seamless Access V2",
+  "baseline": "GAES-V-22.2(1).zip",
+  "cumulative": true,
+  "files": [
+    {
+      "path": "PATCH_NOTES.md",
+      "action": "REPLACE",
+      "sha256": "0946b9a0193e20877fcad7834c72e62b006e7a9ea2d71bfc6fdb1c255fa7332b"
+    },
+    {
+      "path": "TEST_REPORT.md",
+      "action": "ADD",
+      "sha256": "33066dba37bc30c91996d1dca156ec8837461d65cf20c5420d8eef6e147d9116"
+    },
+    {
+      "path": "app/page.tsx",
+      "action": "REPLACE",
+      "sha256": "402e0a035c55574283d1e01e3acb83c564caa2110d30e4bb2fed07782a94da28"
+    },
+    {
+      "path": "app/seamless-access.tsx",
+      "action": "ADD",
+      "sha256": "8a370ac7496d0c2006d30a8efb37db885978acbc6c2ad5660512fd646d2211e1"
+    },
+    {
+      "path": "app/seamless-shared.tsx",
+      "action": "ADD",
+      "sha256": "4275fec29632f616165b849528e143dc82e277b3294ad0a98ab3ba87d7221d2a"
+    },
+    {
+      "path": "app/seamless-staff.tsx",
+      "action": "ADD",
+      "sha256": "ba03ab7d39fa19a8c6b001b9e35f2365acd5a5de58aca86b0b702264138ec32f"
+    },
+    {
+      "path": "app/seamless.css",
+      "action": "ADD",
+      "sha256": "75c54972871ba920677cedaaa3115cfe92f733fd021f13d26c23207288538e5d"
+    },
+    {
+      "path": "app/staff-enrollment/page.tsx",
+      "action": "ADD",
+      "sha256": "5ee5bc2feeff6fdfb6e44f7f51d1bc4513a5635bf81199bc64409310780ea427"
+    },
+    {
+      "path": "docs/CHANGELOG.md",
+      "action": "REPLACE",
+      "sha256": "f42fad9fad5653e01cb47ace372d8f1793cb0e35d52fe60dd82fb98a7de3e22a"
+    },
+    {
+      "path": "docs/SEAMLESS_ACCESS_INTEGRATION.md",
+      "action": "ADD",
+      "sha256": "a9d86151d2b58020bf39cb805600f79930613070066bc4d688381d9bcbeb0558"
+    },
+    {
+      "path": "docs/SEAMLESS_OPERATIONS.md",
+      "action": "ADD",
+      "sha256": "deada6f4b87ee50ec24053480b7f616baef806d673839b12545e62749b732cd0"
+    },
+    {
+      "path": "lib/firebase/api.ts",
+      "action": "REPLACE",
+      "sha256": "96ad63080b745a46007387dfd2c82bc74c4c0f9c8392363d1153f20979cb7b9c"
+    },
+    {
+      "path": "lib/seamless/adapters.mjs",
+      "action": "ADD",
+      "sha256": "cabd75b93118611f80d22c161d8ce5d89d77e59392384c9e9295fd10c952c9e9"
+    },
+    {
+      "path": "lib/seamless/core.mjs",
+      "action": "ADD",
+      "sha256": "33d658b59b0c8b37a1f40804fefbdcd1175d6e5d6cf638b9234f08d0abd89089"
+    },
+    {
+      "path": "lib/seamless/operations.mjs",
+      "action": "ADD",
+      "sha256": "bfe5589fd2df43a978e844040151a100816acaaf12dca4f59ae7da1249076225"
+    },
+    {
+      "path": "lib/seamless/provider.mjs",
+      "action": "ADD",
+      "sha256": "a97973b2ec355a089651d2d6745743bd69849a92db5e4d4f61edc3ad13f54c13"
+    },
+    {
+      "path": "lib/seamless/service.mjs",
+      "action": "ADD",
+      "sha256": "b27774422537b34919104bbbdead28aff2a3878028f649d1c83e51d6da8052ea"
+    },
+    {
+      "path": "netlify.toml",
+      "action": "REPLACE",
+      "sha256": "d9f643973f5537d9b83a1380f0b7726269b84bdcee1023f7e270cf5e474aebb3"
+    },
+    {
+      "path": "netlify/functions/seamless-access.mjs",
+      "action": "ADD",
+      "sha256": "3802cc62f3edaa4a9d06671ac284bd3ca15a00a47697ca5c256ddcac2a60dcc9"
+    },
+    {
+      "path": "netlify/functions/seamless-operations.mjs",
+      "action": "ADD",
+      "sha256": "c7d042dbcd515474fdfe8288de9267fe1e7d6275179fa61422f25394491d6b90"
+    },
+    {
+      "path": "package.json",
+      "action": "REPLACE",
+      "sha256": "ae784dc4d3de45288a07837ffb6ee205acdcc08861104d575653addd19a4e3a2"
+    },
+    {
+      "path": "private/staff-enrollment/README.md",
+      "action": "ADD",
+      "sha256": "8f2dffc49a53eab95e168199874dd1e2df249aaccc9d99e09db5ca05cca91666"
+    },
+    {
+      "path": "public/demo-media/README.md",
+      "action": "ADD",
+      "sha256": "86122d8d9d7456f38469d7aef3c699ebee8612f82b5ef9064e0c621185e34924"
+    },
+    {
+      "path": "public/demo-media/camera/illustration.svg",
+      "action": "ADD",
+      "sha256": "6d6956fe282e80a2d0a8a4ebcad6771834c5c6e370179c8dffbfe96998271343"
+    },
+    {
+      "path": "public/demo-media/layout/access-point.svg",
+      "action": "ADD",
+      "sha256": "5a0a521eee0f25228545e32d33976bf5a46e83f5b71ae6b833b912d83e87bc3c"
+    },
+    {
+      "path": "public/demo-media/manifest.json",
+      "action": "ADD",
+      "sha256": "5eacc7181c4538ac89ad23ae6d45fdc1a45b0d9aaf4ae7862ca1993dc3aafe3c"
+    },
+    {
+      "path": "public/demo-media/passenger/illustration.svg",
+      "action": "ADD",
+      "sha256": "13a8aa1bcc92ae90fc562fb0c55c0302728705c633b33d372d72a696eca8e197"
+    },
+    {
+      "path": "public/demo-media/staff/illustration.svg",
+      "action": "ADD",
+      "sha256": "3cc4c6c4f48f4074d047ec10b8c44531ed9d02c8bf5e0ef98badd4da8498cef8"
+    },
+    {
+      "path": "tests/fixtures/standby.mp4",
+      "action": "ADD",
+      "sha256": "7f9bc5913ff59efd513a5562205377938886745518d5c5fde50cf3d00b2350be"
+    },
+    {
+      "path": "tests/helpers/seamless-db.mjs",
+      "action": "ADD",
+      "sha256": "6ee675d47049a74f02083205ba71a51dd5bc44eafb5fed64bcd64f51481a47cd"
+    },
+    {
+      "path": "tests/seamless-access.test.mjs",
+      "action": "ADD",
+      "sha256": "7e2fd3549389436743cefb11ddbca19aeb680e3a81101363fe8ca11d9385f414"
+    },
+    {
+      "path": "tests/seamless-browser.mjs",
+      "action": "ADD",
+      "sha256": "0a1ac22d857cac3ea38e267366fa686d3b43216cc78465dd5e446b77433cb607"
+    },
+    {
+      "path": "tests/seamless-operations.test.mjs",
+      "action": "ADD",
+      "sha256": "07cfcb6ae1606f7a52e5893d537a1f06ce3e7ac07d7e652afc60047a6b150451"
+    },
+    {
+      "path": "tests/ui-foundation.test.mjs",
+      "action": "REPLACE",
+      "sha256": "d8d264849210fb253aab4173c7ccd566c49a9e560031ca79a69d231ac1c428af"
+    }
+  ],
+  "manifestFile": "DELTA_MANIFEST.json",
+  "delete": [],
+  "integrationStatus": "Live biometric, entitlement and physical gate adapters unconnected; no simulated approvals in operational UI."
+}

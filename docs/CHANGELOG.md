@@ -105,3 +105,15 @@
 - Master Station and user CSV upload validation.
 - Access Entitlement structure for membership, partnership, EMD, and paid access.
 - Professional internal delete confirmation.
+
+## Seamless Access V2 — operational display and staff enrollment
+- Replace the simulator-first screen with operations, HO-only staff registration
+  and access history, plus a separate fullscreen guest display.
+- Use master station codes and lounge names; hide internal IDs in user labels.
+- Add private upload/camera/repository photo sources, expiring single-use guided
+  enrollment links, administrator review and deactivation.
+- Add explicit ID/EN strings and isolate these React strings from legacy DOM
+  translation. Keep existing document verification and shared Firebase setup.
+- Add fail-closed 1:1 orchestration, scoped passenger entitlement checks and
+  deduplicated physical gate acknowledgement boundary. Approved live biometric,
+  passenger and gate contracts remain required; no live integration is claimed.

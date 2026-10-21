@@ -43,3 +43,13 @@
   [headers.values]
     Cache-Control = "no-cache"
     Service-Worker-Allowed = "/"
+
+[functions.seamless-operations]
+  included_files = ["private/staff-enrollment/**"]
+
+[[headers]]
+  for = "/staff-enrollment"
+  [headers.values]
+    Cache-Control = "no-store"
+    Referrer-Policy = "no-referrer"
+    Permissions-Policy = "camera=(self), microphone=()"

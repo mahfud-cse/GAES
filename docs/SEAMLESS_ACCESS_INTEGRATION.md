@@ -1,3 +1,5 @@
+> Historical first-delta simulator documentation. The current UI, private enrollment and 1:1 integration boundary are documented in `SEAMLESS_OPERATIONS.md`. The operational UI no longer calls the DEMO endpoint.
+
 # Seamless Access — demo and integration handover
 
 ## Baseline

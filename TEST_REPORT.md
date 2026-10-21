@@ -1,67 +1,101 @@
-# Seamless Access — executed validation
+# Seamless Access V2 — validation report
 
-Date: 21 October 2026. Baseline: latest supplied GAES-V-22.2 root Next.js application, package 0.23.1. Runtime: Node v24.19.0, npm 11.9.0. Deployment target remains existing Node 22 (>=22.13); no Node-version configuration changed. No production credentials, external provider contracts or gate hardware were supplied.
+## Result
+Operational UI and registration/enrollment changes are implemented and locally
+verified. Live biometric recognition, passenger integration, production Firebase
+permissions and physical autogate are NOT verified or represented as connected.
+No production database update, deployment, PR merge or hardware action was run.
 
-## Final automated results
+## Baseline and preservation
+Working baseline: GAES-V-22.2(1).zip plus the prior Seamless delta.
+This is a cumulative delta against GAES-V-22.2(1).zip.
+Verified unchanged by SHA-256 against that baseline:
+- Firebase client initialization/configuration.
+- Firestore and Firebase Storage rules.
+- Existing facility/signage implementation and shared global stylesheet.
+- package-lock.json (no dependency change).
+No existing source files are deleted. Existing document verification, barcode
+image scanner, manual input and visitor persistence contracts remain present.
 
-| Check | Actual result |
-|---|---|
-| `npm ci --ignore-scripts --no-audit --no-fund` | PASS — 769 packages installed using existing lockfile; dependency install scripts intentionally disabled for local installation. No vulnerability audit claimed. |
-| `npm test` on final source | PASS, exit 0 — existing complete pipeline, now including Seamless suite. |
-| `npm run test:logic` | PASS — 11/11 existing data normalization tests. |
-| `npm run test:ui` | PASS — 40/40 existing UI/source/rendering contract tests. These are not authenticated end-to-end runtime tests. |
-| `npm run test:seamless` | PASS — 36/36 decision, adapter, permission, persistence and idempotency tests. |
-| `npm run lint` | PASS — 0 errors, 27 warnings (including existing legacy warnings and two state-synchronization effect warnings in the new component); warnings remain visible. |
-| `npm run build` | PASS — Next.js 16.2.6 production build, TypeScript and page generation complete. Routes `/`, `/player`, `/lounge-map/[id]`, `/_not-found` retained. |
-| `npx tsc --noEmit` | PASS — exit 0. |
-| `node --check` new core/adapter/service/function modules | PASS — all four modules parse. |
-| Function esbuild bundle, Node 22 target, ESM, external packages | PASS — entrypoint and local JSON/module graph bundle successfully. This is not a Netlify deployment. |
-| Baseline preservation comparison | PASS — existing Access Verification JSX byte-identical after normalizing only required title/subtitle changes. Firebase client, Firestore rules, Netlify config, package-lock and facility operations source hashes unchanged. |
-| Delta ZIP | PASS — opens/CRC-valid, exact expected 20 files, relative paths preserved, each payload byte compared to final source; no node_modules/.git/build output/secrets included. |
+## Automated checks
+- PASS: 11 existing data-normalization tests.
+- PASS: 40 existing UI/rendered HTML regression tests.
+- PASS: 36 existing isolated Seamless DEMO/orchestration regression tests.
+- PASS: 37 new operational/enrollment tests (total 124 Node tests across suites).
+- PASS: ESLint, 0 errors. The full project reports 32 warnings; remaining
+  set-state synchronization and legacy code warnings are recorded, not hidden.
+  The final backend and reproducible browser harness also pass targeted lint.
+- PASS: TypeScript and optimized Next.js production build.
+- PASS: new Netlify Function bundled using esbuild.
+- PASS: actual Function entry rejects missing authentication (401) and malformed
+  enrollment link (403) before Firebase initialization; responses use no-store.
+- PASS: provider diagnostics are excluded from results/activity.
 
-87 Node tests passed in total; 0 failed, cancelled or skipped.
+Important backend cases: HO scope required separately from administrator role;
+consent and active staff checks; master-station validation; lounge assignment;
+transactional employee number uniqueness; old employee credential invalidation;
+private photo ownership; image type/size checks; photo submission cannot activate
+face access; hashed invitations; link expiry, replacement, issuer revocation,
+consumption and deactivation; 1:1 reference/session binding; liveness failure;
+invalid/expired/wrong-lounge entitlement; actor/staff revocation during matching;
+parallel replay and changed request IDs; wrong gate acknowledgement; bounded
+provider/gate timeout; separate physical gate confirmation; dotted master IDs.
 
-## Browser/runtime results
+## Browser checks: 19 passed, zero uncaught runtime errors
+Actual React components plus actual operations service, using explicit in-memory
+Firestore, Storage, Firebase identity, biometric, entitlement and hardware doubles.
+Camera input is a generated test canvas stream; the test video is a generated
+color clip under tests/fixtures, never deployed as public operational content.
 
-Executed in headless Chromium 153 through Playwright. The existing browser download failed in this environment; a temporary browser runtime obtained separately was used successfully. No browser/testing dependency was added to the application.
+1. Master station codes and clean operation UI without IDs/demo scenarios.
+2. Signage-video and published-map settings survive reload.
+3. Lounge screen loops selected video; unavailable face provider blocks approval.
+4. ID/EN updates lounge fields and unavailable-service messages.
+5. Staff name/unit/employee number and assigned location persist.
+6. Private photo upload/submission awaits review; no provider means no activation.
+7. Single-use invitation token is placed in a URL fragment.
+8. Staff form at 390 px has no horizontal document overflow.
+9. Guided self enrollment captures three poses and submits once; ID/EN result.
+10. Reload without the removed token fails safely.
+11. Claimed passenger session, camera capture, 1:1 call, entitlement and gate
+    feedback produce welcome and QR to the actual selected map (test providers).
+12. Eligible identity without gate feedback shows assistance, not welcome.
+13. Lost response followed by retry sends no duplicate gate command.
+14. HO admin activation requires confirmed provider enrollment (test provider).
+15. Staff display omits employee number and passenger map QR.
+16. Results clear automatically and display returns to standby.
+17. Activity filter/search reads persisted service results.
+18. Operations/activity at 390 px have no horizontal document overflow.
+19. No uncaught browser runtime errors throughout these interactions.
 
-### Isolated component with service integration — PASS (12 checks)
+Visual QA inspected operations, staff mobile and lounge result screenshots.
+Screenshots contain only generated test fixtures and remain internal QA artifacts.
 
-The actual `app/seamless-access.tsx` was mounted with existing `globals.css` and its authenticated client request wrapper. A local HTTP endpoint called the actual Seamless service using a Firestore behavior double and an explicitly fictional test actor/token. This harness was temporary, never added to production source or delivered as a login bypass. All data was fictional; this is **not** evidence of live Firebase persistence or production Auth.
+## Built application route checks
+PASS: production Next.js pages /?view=access, /?view=seamless and /player render.
+Access/Seamless retain the Firebase sign-in wall in the unconfigured environment.
+PASS: /staff-enrollment handles missing token safely and switches ID/EN.
+PASS: no uncaught runtime errors on those built pages.
+These route checks do not establish a successful production Firebase login.
 
-1. Eligible passenger renders separate identity/entitlement decisions and simulated gate acknowledgement; physical confirmation stays No.
-2. Browser refresh retrieves persisted activity from the test backend.
-3. Invalid entitlement and unknown-face scenarios reject without gate commands.
-4. Accepted command without an open acknowledgement stays unconfirmed.
-5. Offline device shows unavailable, without false physical success.
-6. LIVE selection disables verification and displays controlled unavailable message.
-7. Admin staff enrollment saves, survives reload, and managed staff can verify in DEMO.
-8. Deactivated staff is rejected.
-9. Lost HTTP verification response followed by user retry reuses the key; only one attempt/command sequence is stored.
-10. Activity decision filter and text search work.
-11. Mobile 390px viewport has no document horizontal overflow; rendered mobile screenshot visually inspected.
-12. Zero browser runtime errors across these interactions.
+## Reproduction
+Standard pipeline: npm ci, then npm test (Node >=22.13).
+The browser harness is included as tests/seamless-browser.mjs and optional
+npm run test:seamless:browser. Supply an existing Playwright installation/browser:
+PLAYWRIGHT_MODULE can identify its module; CHROMIUM_EXECUTABLE_PATH optionally
+selects a Chromium executable; GAES_BROWSER_TEST_OUTPUT selects the QA output
+folder. The harness runs locally with isolated data; it never needs production
+credentials. It is deliberately outside the default npm test dependency chain.
 
-### Production Next application unauthenticated smoke — PASS
+## Remaining integration/UAT
+- Existing Firebase account/profile access on the PR Deploy Preview.
+- Real Storage bucket permissions, writes and temporary signed reads.
+- Private repository asset availability in deployed Function bundles.
+- Approved passport/check-in identity provenance and session reference contract.
+- Approved face provider, enrollment validation and genuine anti-replay/liveness.
+- Real passenger entitlement source and commercial policy mapping.
+- Lounge-to-autogate device mapping, command protocol, feedback and safety UAT.
+- Retention/deletion procedures for enrollment photos, sessions and activity,
+  orphan-photo cleanup, and operator reconciliation of interrupted gate requests.
 
-Started the compiled application with `next start`. In a real browser, `/?view=access`, `/?view=seamless` and `/player` render HTTP 200 without browser runtime errors. Both access URLs retain the existing sign-in screen; Seamless content is unavailable before authentication. No authentication bypass was used. This validates the unauthenticated runtime only.
-
-## Coverage against master handover
-
-| Domain | PASS locally | BLOCKED / not live verified |
-|---|---|---|
-| Navigation/regression | Next compile/routes; auth wall; submenu/source contracts; original barcode/QR/manual JSX preserved; existing 51 logic/UI tests | Signed-in navigation, camera/QR/manual visitor submission, dashboard/master/facility production regression require authorized Firebase account/environment. |
-| Passenger | Valid/invalid/expired entitlement; unknown identity; missing passenger; simulated passenger/biometric service failure; malformed response; actual deadline AbortSignal; different station/lounge rejection | Real DCS/passenger reference lookup, real entitlement attestation and production flight/partner/time mapping. |
-| Staff | Existing-profile enrollment/update/deactivation; reload persistence in behavior double; inactive, unknown, role/location mismatch, incomplete enrollment; identity/privacy confirmations; unauthorized list/enroll/reference lookup blocked; deactivation after lounge/role changes | Actual Firestore writes/read-after-refresh, corporate identity confirmation and approved production biometric enrollment. Staff identity creation itself remains in unchanged User & Role / create-user and was not executed against production. |
-| Gate | Eligible-only command path; rejection issues no command; confirmed simulated open/close; offline, accepted-no-ack, timeout, fault, wrong-device rejection; parallel retries and PENDING replay safe | Physical device network/protocol, authenticated device acknowledgement/correlation, hardware open/close; not simulated as live. |
-| Security/privacy | Real function entry rejects missing token before Firebase access; backend role/station/assigned-lounge checks; namespace input validation; public synthetic fixtures; provider reference omitted from staff-list; no real biometric data captured; safe unavailable errors | Credentialed Firebase Auth token checks, Firestore rule emulator/production enforcement, rate-limit helper writes in actual Firebase, provider security review and lawful production processing approval. |
-| Persistence/audit | Atomic transaction behavior, staff metadata update/revoke, stored access/gate states, audit records, replay deduplication using test double | Real Firestore/emulator tests NOT RUN: environment/credentials/emulator unavailable. Physical hardware and full Netlify production pipeline NOT RUN. |
-
-## Limitations and handover gates
-
-- Demo identity, passenger entitlement, staff scenario fixtures and gate responses are **simulated**. They grant no real lounge access and create no production visitors/billing entries.
-- Staff metadata/attempt/audit persistence is implemented against existing Firestore Admin APIs but only behavior-double tested here. Existing Firebase variables and accounts are required to execute the signed-in demo on Netlify.
-- Live mode deliberately fails closed. Passenger/check-in API contract, approved biometric matching/enrollment/liveness policy, staff source approval, production entitlement mapping and autogate controller protocol are unresolved external dependencies.
-- A backend process interrupted after reserving an attempt may leave PENDING. Replays never trigger another command. Operator inspection/reconciliation is required; no automatic gate resend/takeover is implemented.
-- No production retention period was invented. Define approved retention/cleanup before real data processing; remove demonstration metadata/activity under an approved cleanup after demo use. Never delete existing users, visitors or lounges as part of this delta.
-- No final local validation failure remains. Signed-in production and physical-integration checks remain BLOCKED and must not be interpreted as PASS.
+Do not label local test-double results as real-person biometric or hardware UAT.

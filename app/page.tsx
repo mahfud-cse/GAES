@@ -2886,7 +2886,7 @@ export default function Home() {
       let node = walker.nextNode() as Text | null;
       while (node) {
         const parent = node.parentElement;
-        if (parent && !["SCRIPT", "STYLE"].includes(parent.tagName)) {
+        if (parent && !parent.closest("[data-native-language]") && !["SCRIPT", "STYLE"].includes(parent.tagName)) {
           const current = node.data;
           const previous = translatedNodes.get(node);
           const original =
@@ -2910,6 +2910,7 @@ export default function Home() {
         .forEach((element) => {
           const stored = translatedAttributes.get(element) ?? {};
           ["placeholder", "aria-label", "title"].forEach((attribute) => {
+            if (element.closest("[data-native-language]")) return;
             const current = element.getAttribute(attribute);
             if (current == null) return;
             const previous = stored[attribute];
@@ -2977,7 +2978,7 @@ export default function Home() {
         const requested = params.get("view") as MainTab | null;
         const allowedTabs: MainTab[] = [
           "access",
-          ...(["Super Admin", "Admin", "BO Admin", "Lounge Officer", "Lounge Manager"].includes(account.role) ? ["seamless" as MainTab] : []),
+          ...(["Super Admin", "Admin", "HO Admin", "BO Admin", "Lounge Officer", "Lounge Manager"].includes(account.role) ? ["seamless" as MainTab] : []),
           "reconciliation",
           ...(account.role !== "Lounge Officer" ? ["flights" as MainTab] : []),
           ...(roleCanUseFacility(account.role) ? ["facility" as MainTab] : []),
@@ -6957,8 +6958,8 @@ export default function Home() {
               <span>Lounge/Tenant Access</span>
             </Link>
             {(tab === "access" || tab === "seamless") && <div role="group" aria-label="Lounge/Tenant Access submenu" style={{ paddingLeft: sidebarCollapsed ? 0 : 12 }}>
-              <Link href="/?view=access" className={tab === "access" ? "active" : ""} onClick={e => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); setTab("access"); } }} aria-label="Access Verification"><i>AV</i><span>Access Verification</span></Link>
-              {["Super Admin", "Admin", "BO Admin", "Lounge Officer", "Lounge Manager"].includes(role) && <Link href="/?view=seamless" className={tab === "seamless" ? "active" : ""} onClick={e => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); setTab("seamless"); } }} aria-label="Seamless Access"><i>SA</i><span>Seamless Access</span></Link>}
+              <Link href="/?view=access" className={tab === "access" ? "active" : ""} onClick={e => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); setTab("access"); } }} aria-label="Access Verification"><i>AV</i><span>{tr("Verifikasi Akses", "Access Verification")}</span></Link>
+              {["Super Admin", "Admin", "HO Admin", "BO Admin", "Lounge Officer", "Lounge Manager"].includes(role) && <Link href="/?view=seamless" className={tab === "seamless" ? "active" : ""} onClick={e => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); setTab("seamless"); } }} aria-label="Seamless Access"><i>SA</i><span>Seamless Access</span></Link>}
             </div>}
             <Link
               href="/?view=reconciliation"
@@ -7606,9 +7607,9 @@ export default function Home() {
             </>
           )}
           {tab === "seamless" && firebaseUser && currentAccount && (
-            <SeamlessAccess user={firebaseUser} role={role}
+            <SeamlessAccess user={firebaseUser} role={role} language={language} onLanguageChange={setLanguage} onDocumentVerification={()=>setTab("access")} stations={stations}
               initialLoungeId={loungeId}
-              lounges={lounges.filter(l => ["Super Admin", "Admin"].includes(role) || (l.airport === currentAccount.station && (!["Lounge Officer", "Lounge Manager"].includes(role) || l.id === currentAccount.loungeId)))} />
+              lounges={lounges.filter(l => ["Super Admin", "Admin", "HO Admin"].includes(role) || (l.airport === currentAccount.station && (!["Lounge Officer", "Lounge Manager"].includes(role) || l.id === currentAccount.loungeId)))} />
           )}
           {tab === "access" && (
             <>

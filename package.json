@@ -13,7 +13,8 @@
     "test:ui": "node --test tests/ui-foundation.test.mjs tests/rendered-html.test.mjs",
     "test": "npm run test:logic && npm run test:ui && npm run test:seamless && npm run lint && npm run build",
     "lint": "eslint . --ignore-pattern source --ignore-pattern static-build --ignore-pattern .next",
-    "test:seamless": "node --test tests/seamless-access.test.mjs"
+    "test:seamless": "node --test tests/seamless-access.test.mjs tests/seamless-operations.test.mjs",
+    "test:seamless:browser": "node tests/seamless-browser.mjs"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.5",

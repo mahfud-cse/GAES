@@ -210,3 +210,6 @@ export const manageNotification = (
 
 export const seamlessAccessRequest = (user: User, payload: Record<string, unknown>) =>
   call<Record<string, unknown>>("seamless-access", user, payload);
+
+export const seamlessOperationsRequest = (user: User | null, payload: Record<string, unknown>) =>
+  call<Record<string, unknown>>("seamless-operations", user, payload);
