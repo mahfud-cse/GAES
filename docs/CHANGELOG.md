@@ -117,3 +117,16 @@
 - Add fail-closed 1:1 orchestration, scoped passenger entitlement checks and
   deduplicated physical gate acknowledgement boundary. Approved live biometric,
   passenger and gate contracts remain required; no live integration is claimed.
+
+## Seamless Access V3 — first-stage local engine and UX corrections
+- Reuse portal facilityTabs styling; replace the interactive guest form with a
+  display-only camera/video/result surface, landscape/portrait modes, and proper
+  full-viewport portal rendering outside transformed application containers.
+- Permit scoped BO Admin registration and independent staff without portal login.
+  Load optional User & Role account links across all pages; reuse existing staff
+  enrollment and validate every lounge against the existing master.
+- Keep station/lounge filters independent on activity with explicit empty states.
+- Include project-owned Python/OpenCV inference, model weights/licenses/checksums,
+  encrypted single-reference enrollment and a private Node adapter. Real-model
+  and actual HTTP integration tests pass. Liveness remains unevaluated and cannot
+  authorize a gate; passenger and hardware integration remain pending.

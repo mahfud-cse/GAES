@@ -1,101 +1,120 @@
-# Seamless Access V2 — validation report
+# Split-model packaging verification
 
-## Result
-Operational UI and registration/enrollment changes are implemented and locally
-verified. Live biometric recognition, passenger integration, production Firebase
-permissions and physical autogate are NOT verified or represented as connected.
-No production database update, deployment, PR merge or hardware action was run.
+- Seven assembler tests passed: exact reconstruction/reuse; missing, corrupted and reordered parts; invalid output; traversal and symlink rejection.
+- Eight existing real-model tests passed after removing the full model from the test input, exercising automatic reconstruction from the two shipped parts.
+- Actual Python HTTP engine / Node adapter integration passed, including real enrollment and single-reference comparison; no gate command without liveness.
+- Delivery ZIP integrity, cumulative manifest hashes, extracted file sizes, and exact reconstructed model SHA-256 verified from a clean two-ZIP extraction.
+- No UI or web runtime source changed in this packaging revision. Previous V3 build/browser validation below belongs to that implementation; not rerun for this revision.
+- Docker daemon/build was not available for this check. The exact assembly command used by Docker was exercised separately with Python.
 
-## Baseline and preservation
-Working baseline: GAES-V-22.2(1).zip plus the prior Seamless delta.
-This is a cumulative delta against GAES-V-22.2(1).zip.
-Verified unchanged by SHA-256 against that baseline:
-- Firebase client initialization/configuration.
-- Firestore and Firebase Storage rules.
-- Existing facility/signage implementation and shared global stylesheet.
-- package-lock.json (no dependency change).
-No existing source files are deleted. Existing document verification, barcode
-image scanner, manual input and visitor persistence contracts remain present.
+# Seamless Access V3 — validation report
+
+## Delivered scope
+Project-owned local 1:1 face engine and the requested UX corrections. The model
+files, executable service, private Node adapter, registration changes, display-only
+UI and deployment guide are included. This is not a third-party biometric API.
+
+The engine has been exercised with real ONNX inference. Liveness/PAD has NOT been
+implemented or validated. Matching alone cannot issue a gate command. No live
+passenger integration, physical gate, production Firebase write or deployment
+was performed. A separate managed engine process must be started and configured
+before the deployed portal can report the face service connected.
 
 ## Automated checks
 - PASS: 11 existing data-normalization tests.
 - PASS: 40 existing UI/rendered HTML regression tests.
-- PASS: 36 existing isolated Seamless DEMO/orchestration regression tests.
-- PASS: 37 new operational/enrollment tests (total 124 Node tests across suites).
-- PASS: ESLint, 0 errors. The full project reports 32 warnings; remaining
-  set-state synchronization and legacy code warnings are recorded, not hidden.
-  The final backend and reproducible browser harness also pass targeted lint.
+- PASS: 36 legacy isolated simulator tests.
+- PASS: 37 existing operational/security tests.
+- PASS: 11 new registration/scope/integration tests.
+- Total Node suite: 135 passed, no failures.
+- PASS: project lint, zero errors (existing synchronization/legacy warnings remain).
 - PASS: TypeScript and optimized Next.js production build.
-- PASS: new Netlify Function bundled using esbuild.
-- PASS: actual Function entry rejects missing authentication (401) and malformed
-  enrollment link (403) before Firebase initialization; responses use no-store.
-- PASS: provider diagnostics are excluded from results/activity.
+- PASS: new backend Function bundles using esbuild.
 
-Important backend cases: HO scope required separately from administrator role;
-consent and active staff checks; master-station validation; lounge assignment;
-transactional employee number uniqueness; old employee credential invalidation;
-private photo ownership; image type/size checks; photo submission cannot activate
-face access; hashed invitations; link expiry, replacement, issuer revocation,
-consumption and deactivation; 1:1 reference/session binding; liveness failure;
-invalid/expired/wrong-lounge entitlement; actor/staff revocation during matching;
-parallel replay and changed request IDs; wrong gate acknowledgement; bounded
-provider/gate timeout; separate physical gate confirmation; dotted master IDs.
+New registration tests cover: account-less staff without creating users/Auth;
+lookup of non-operational master users; independent pagination; scoped BO writes
+and lookups; optional account link validation; exact master lounge references;
+in-place reuse of existing enrollment; independent photo upload/approval/session;
+self enrollment without portal login; linked-account deactivation; no identity
+creation by anonymous presence detection. Existing security tests continue to
+cover consent, station/lounge validation, image checks, expired/replaced links,
+provider/reference/session binding, entitlement failures, actor/staff revocation,
+request replay and gate timeout/acknowledgement handling.
 
-## Browser checks: 19 passed, zero uncaught runtime errors
-Actual React components plus actual operations service, using explicit in-memory
-Firestore, Storage, Firebase identity, biometric, entitlement and hardware doubles.
-Camera input is a generated test canvas stream; the test video is a generated
-color clip under tests/fixtures, never deployed as public operational content.
+## Actual local face engine
+Eight Python tests pass against the SHIPPED YuNet/SFace model files:
+1. A real reference photo is detected and matches its enrolled reference.
+2. A brightness-adjusted version of that reference matches.
+3. A blank/no-face image is rejected for enrollment.
+4. A two-face image is rejected for enrollment.
+5. Another subject cannot use a reference belonging to the first subject.
+6. Embeddings are encrypted; ciphertext tampering is rejected.
+7. Invalid images/formats are rejected.
+8. Invalid encryption keys and thresholds are rejected.
 
-1. Master station codes and clean operation UI without IDs/demo scenarios.
-2. Signage-video and published-map settings survive reload.
-3. Lounge screen loops selected video; unavailable face provider blocks approval.
-4. ID/EN updates lounge fields and unavailable-service messages.
-5. Staff name/unit/employee number and assigned location persist.
-6. Private photo upload/submission awaits review; no provider means no activation.
-7. Single-use invitation token is placed in a URL fragment.
-8. Staff form at 390 px has no horizontal document overflow.
-9. Guided self enrollment captures three poses and submits once; ID/EN result.
-10. Reload without the removed token fails safely.
-11. Claimed passenger session, camera capture, 1:1 call, entitlement and gate
-    feedback produce welcome and QR to the actual selected map (test providers).
-12. Eligible identity without gate feedback shows assistance, not welcome.
-13. Lost response followed by retry sends no duplicate gate command.
-14. HO admin activation requires confirmed provider enrollment (test provider).
-15. Staff display omits employee number and passenger map QR.
-16. Results clear automatically and display returns to standby.
-17. Activity filter/search reads persisted service results.
-18. Operations/activity at 390 px have no horizontal document overflow.
-19. No uncaught browser runtime errors throughout these interactions.
+The input image is a public OpenCV sample, held only as a local test fixture,
+not shipped as operational staff/passenger data. These checks establish working
+inference and failure handling. They do not measure cross-person false accept/
+reject rates or prove a real person is present. No “accuracy percentage” is claimed.
 
-Visual QA inspected operations, staff mobile and lounge result screenshots.
-Screenshots contain only generated test fixtures and remain internal QA artifacts.
+A separate integration test starts the REAL Python HTTP service and exercises:
+- Authenticated /health and rejection of missing service credentials.
+- Real anonymous face detection and reference enrollment.
+- The actual Node self-hosted adapter, staff claim/session and real comparison.
+- A matched result with livenessPassed=false does not authorize a gate.
 
-## Built application route checks
-PASS: production Next.js pages /?view=access, /?view=seamless and /player render.
-Access/Seamless retain the Firebase sign-in wall in the unconfigured environment.
-PASS: /staff-enrollment handles missing token safely and switches ID/EN.
-PASS: no uncaught runtime errors on those built pages.
-These route checks do not establish a successful production Firebase login.
+The Python tests were run with the requirements versions packaged for the
+service. Docker configuration is included but a Docker daemon/container deployment
+was not available in this session. The actual Python process and HTTP integration
+were run directly, with isolated generated secrets and temporary encrypted state.
 
-## Reproduction
-Standard pipeline: npm ci, then npm test (Node >=22.13).
-The browser harness is included as tests/seamless-browser.mjs and optional
-npm run test:seamless:browser. Supply an existing Playwright installation/browser:
-PLAYWRIGHT_MODULE can identify its module; CHROMIUM_EXECUTABLE_PATH optionally
-selects a Chromium executable; GAES_BROWSER_TEST_OUTPUT selects the QA output
-folder. The harness runs locally with isolated data; it never needs production
-credentials. It is deliberately outside the default npm test dependency chain.
+## Browser: 15 checks, zero uncaught runtime errors
+Actual React UI + actual operations/registry services with isolated in-memory
+Auth/Firestore/Storage and face/hardware behavior doubles. Browser camera frames
+are generated test images; REAL-model inference is verified separately above.
 
-## Remaining integration/UAT
-- Existing Firebase account/profile access on the PR Deploy Preview.
-- Real Storage bucket permissions, writes and temporary signed reads.
-- Private repository asset availability in deployed Function bundles.
-- Approved passport/check-in identity provenance and session reference contract.
-- Approved face provider, enrollment validation and genuine anti-replay/liveness.
-- Real passenger entitlement source and commercial policy mapping.
-- Lounge-to-autogate device mapping, command protocol, feedback and safety UAT.
-- Retention/deletion procedures for enrollment photos, sessions and activity,
-  orphan-photo cleanup, and operator reconciliation of interrupted gate requests.
+1. Activity initially has no inherited lounge or misleading location heading.
+2. Master station/lounge, library video, published map and orientation save.
+3. Main tab shape, typography and hover colors match the portal facility tabs.
+4. Display is full viewport, outside application containing blocks; background
+   controls are inert. Camera starts on opening, advertisement loops, and there
+   are no guest buttons/login fields/type selectors.
+5. Both orientations work; operator Escape exits and restores the application.
+6. Staff can register without a portal account; optional lookup lists master users.
+7. Photo attachment saves and submits an independent staff enrollment.
+8. Camera source captures and stores an enrollment photo.
+9. Guided self enrollment works for a staff member without portal login.
+10. Registration/photo controls fit a 390px viewport without document overflow.
+11. A prepared 1:1 session processes automatically on anonymous face presence,
+    with no display interaction or gate command without liveness.
+12. Result clears and idle advertising returns automatically.
+13. ID/EN updates revised registration, account optionality and controls.
+14. Activity loads only after its own explicit location selection and filters.
+15. No uncaught browser runtime errors across these flows.
 
-Do not label local test-double results as real-person biometric or hardware UAT.
+Screenshots of operations, mobile staff forms and display were visually inspected.
+QA images remain internal and are not bundled as user artifacts or real staff data.
+
+## Preservation and package checks
+SHA-256 verification confirms unchanged existing Firebase client initialization,
+Firestore rules, Storage rules, shared global stylesheet, facility/signage module
+and package-lock.json. No new master lounge/station/user is seeded by the feature.
+New independent staff data is separate from Firebase Auth. Existing staff metadata
+is reused rather than duplicated. The cumulative ZIP has no deletions and includes
+only source/assets/docs/tests and the model files; no private photos, reference
+SQLite databases, generated keys, runtime packages or build caches are included.
+Every packaged file is checked against its source hash and ZIP integrity is tested.
+
+## Remaining real-system checks
+- Deploy/operate the local engine on managed infrastructure reachable from Netlify.
+- Supply the engine URL and private service/encryption keys securely.
+- Credentialed Firebase Auth/profile/Storage UAT on the current PR Deploy Preview.
+- Camera permission, lighting, positioning, performance and threshold calibration
+  using representative consented reference/capture data.
+- Evaluated liveness/PAD and anti-replay before unattended gate authorization.
+- Passenger reference/entitlement and hardware command/feedback integration.
+- Operational retention/deletion/backup procedures and interrupted gate recovery.
+
+Reproduction: npm test; optional npm run test:seamless:browser (existing Playwright
+installation/browser, instructions retained in the harness); engine commands in
+face-service/README.md. These tests do not substitute for production/hardware UAT.

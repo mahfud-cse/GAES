@@ -14,7 +14,7 @@ import {
   imageBytes,
   safeOperationCodes,
 } from "../../lib/seamless/operations.mjs";
-import { biometricProvider } from "../../lib/seamless/provider.mjs";
+import { createSelfHostedProvider } from "../../lib/seamless/self-hosted.mjs";
 const bucket = () => {
   const name =
     process.env.FIREBASE_STORAGE_BUCKET ||
@@ -38,6 +38,14 @@ const media = {
           metadata: meta,
         },
       });
+  },
+  async read(objectPath) {
+    const file = bucket().file(objectPath);
+    const [[metadata], [bytes]] = await Promise.all([
+      file.getMetadata(),
+      file.download(),
+    ]);
+    return { bytes, contentType: metadata.contentType };
   },
   async validate(objectPath) {
     const [m] = await bucket().file(objectPath).getMetadata();
@@ -91,10 +99,10 @@ const handle = createOperationsService({
   database: targetDb,
   audit: writeAudit,
   media,
-  provider: biometricProvider,
+  provider: createSelfHostedProvider({ media }),
   rateLimit: (request, identity) =>
     enforceRateLimit(request, "seamless-operations", {
-      limit: 60,
+      limit: 150,
       windowMs: 60000,
       identity,
     }),

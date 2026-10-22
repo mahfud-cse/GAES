@@ -34,22 +34,26 @@ export default function StaffEnrollment() {
   } = useCapture();
   const inflight = useRef(false),
     initialToken = useRef<string | null>(null);
+  const [registry, setRegistry] = useState(false);
   const t = (id: string, en: string) => (language === "ID" ? id : en);
   const poses = ["front", "right", "left"];
   useEffect(() => {
     const key = initialToken.current ?? window.location.hash.slice(1);
     initialToken.current = key;
-    setToken(key);
+    const modern = key.startsWith("registry:");
+    setRegistry(modern);
+    const rawToken = modern ? key.slice(9) : key;
+    setToken(rawToken);
     window.history.replaceState({}, "", window.location.pathname);
-    if (!/^[a-f0-9]{64}$/.test(key)) {
+    if (!/^[a-f0-9]{64}$/.test(rawToken)) {
       setNotice("LINK_INVALID");
       setLoading(false);
       return;
     }
     let active = true;
     void seamlessOperationsRequest(null, {
-      action: "enrollment-info",
-      token: key,
+      action: modern ? "registry-info" : "enrollment-info",
+      token: rawToken,
     })
       .then((d) => {
         if (active) setInfo(d as unknown as typeof info);
@@ -73,7 +77,7 @@ export default function StaffEnrollment() {
     try {
       const data = capturePhoto();
       const d = await seamlessOperationsRequest(null, {
-        action: "enrollment-upload",
+        action: registry ? "registry-upload" : "enrollment-upload",
         token,
         data,
         pose: poses[photos.length],
@@ -95,7 +99,7 @@ export default function StaffEnrollment() {
     setNotice("");
     try {
       await seamlessOperationsRequest(null, {
-        action: "enrollment-submit",
+        action: registry ? "registry-submit" : "enrollment-submit",
         token,
         photos,
         consent,

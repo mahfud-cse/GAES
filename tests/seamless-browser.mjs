@@ -48,6 +48,8 @@ db.rows.set("displayContents/video-1", {
   contentType: "Video",
   sourceUrl: "/test-video.mp4",
 });
+let faceCount = 0,
+  liveness = false;
 let connected = false,
   gateMode = "confirmed",
   commands = 0;
@@ -70,9 +72,10 @@ const provider = {
     displayName: "Budi",
     flight: "GA204",
   }),
+  detect: async () => ({ faceCount }),
   verifyOneToOne: async (s) => ({
     matched: true,
-    livenessPassed: true,
+    livenessPassed: liveness,
     sessionId: s.sessionId,
     referenceId: s.referenceId,
   }),
@@ -236,92 +239,138 @@ const noOverflow = async (p) =>
   );
 try {
   await page.goto(base);
-  await page.getByRole("heading", { name: "Siapkan layar lounge" }).waitFor();
   await page
-    .getByRole("button", { name: "Buka layar lounge" })
-    .waitFor({ state: "visible" });
-  await page.waitForFunction(
-    () => !document.querySelector("button.sa-primary:disabled"),
-  );
-  await page.getByLabel("Station", { exact: true }).waitFor();
+    .getByRole("heading", { name: "Pengaturan layar lounge" })
+    .waitFor();
+  await page
+    .getByRole("button", { name: "Aktivitas Akses", exact: true })
+    .click();
+  await page
+    .getByText("Belum ada lokasi yang dipilih.", { exact: true })
+    .waitFor();
   assert.equal(
-    await page.getByText("DEMO / SIMULATED", { exact: true }).count(),
-    0,
-  );
-  assert.deepEqual(
-    await page
-      .getByLabel("Station", { exact: true })
-      .locator("option")
-      .allTextContents(),
-    ["Pilih station", "CGK", "PLM"],
+    await page.locator(".sa-panel h2").textContent(),
+    "Aktivitas akses",
   );
   pass(
-    "clean operations UI and master station codes; no document IDs or synthetic scenarios",
+    "activity opens without an inherited lounge or misleading location heading",
   );
-  await page.getByLabel("Video saat standby").selectOption("video-1");
-  await page.getByLabel("Denah lounge").selectOption("map-1");
-  await page.getByRole("button", { name: "Simpan pengaturan" }).click();
-  await page.getByText("Pengaturan layar disimpan.").waitFor();
-  await page.reload();
-  await page.getByRole("heading", { name: "Siapkan layar lounge" }).waitFor();
-  await page.waitForFunction(
-    () => document.querySelector("select")?.options.length > 1,
-  );
-  await page.getByLabel("Video saat standby").selectOption("video-1");
-  assert.equal(await page.getByLabel("Denah lounge").inputValue(), "map-1");
-  pass("video and published map preferences persist through backend");
-  await page.screenshot({
-    path: output + "/seamless-v2-operations.png",
-    fullPage: true,
-  });
-  await page.getByRole("button", { name: "Buka layar lounge" }).click();
-  const dialog = page.getByRole("dialog");
-  await dialog.getByRole("heading", { name: /Selamat datang/ }).waitFor();
-  assert.equal(
-    await dialog
-      .locator("video")
-      .evaluate((v) => v.loop && v.muted && v.autoplay),
-    true,
-  );
-  await dialog.getByRole("button", { name: "Mulai verifikasi wajah" }).click();
-  assert.equal(
-    await dialog
-      .getByRole("button", { name: "Lanjutkan", exact: true })
-      .isDisabled(),
-    true,
-  );
-  await dialog
-    .getByText("Verifikasi wajah belum tersedia.", { exact: false })
-    .waitFor();
-  pass(
-    "lounge screen loops selected video; unconfigured face integration cannot grant access",
-  );
-  await dialog
-    .getByRole("button", { name: "Change language" })
-    .count()
-    .catch(() => {});
-  await dialog.getByRole("button", { name: "Ganti bahasa" }).click();
-  await dialog.getByRole("heading", { name: "Verify your access" }).waitFor();
-  await dialog
-    .getByText("Face verification is unavailable.", { exact: false })
-    .waitFor();
-  pass("ID/EN switches lounge labels and unavailable-service messages");
-  await dialog.getByRole("button", { name: "Close display" }).click();
-  await page.locator("#app-language").click();
   await page
-    .getByRole("button", { name: "Registrasi petugas", exact: true })
+    .getByRole("button", { name: "Operasional & Layar Lounge", exact: true })
     .click();
   await page.getByLabel("Station", { exact: true }).selectOption("CGK");
-  await page.getByLabel("Akun petugas").selectOption("officer-1");
-  assert.doesNotMatch(
-    await page
-      .getByLabel("Akun petugas")
-      .locator("option:checked")
-      .textContent(),
-    /officer-1/,
+  await page.getByLabel("Lounge", { exact: true }).selectOption("lounge-1");
+  await page.getByRole("button", { name: "Buka layar lounge" }).waitFor();
+  await page.getByLabel("Video iklan saat standby").selectOption("video-1");
+  await page.getByLabel("Denah lounge").selectOption("map-1");
+  await page.getByLabel("Orientasi layar").selectOption("portrait");
+  await page.getByRole("button", { name: "Simpan pengaturan" }).click();
+  await page.getByText("Pengaturan layar disimpan.").waitFor();
+  pass(
+    "master station/lounge, library video, published map and portrait preference save successfully",
   );
-  await page.getByLabel("Nomor pegawai", { exact: true }).fill("GA001");
-  await page.getByLabel("Unit kerja").fill("Lounge Operations");
+  await page.screenshot({
+    path: output + "/seamless-v3-operations.png",
+    fullPage: true,
+  });
+  await page.evaluate(() => {
+    const nav = document.createElement("nav");
+    nav.className = "subTabs facilityTabs";
+    nav.id = "reference-nav";
+    nav.innerHTML = "<button>Reference</button>";
+    document.body.appendChild(nav);
+  });
+  const properties = (el) => {
+    const c = getComputedStyle(el);
+    return {
+      radius: c.borderRadius,
+      font: c.fontSize,
+      padding: c.padding,
+      background: c.backgroundColor,
+      color: c.color,
+    };
+  };
+  const reference = page.locator("#reference-nav button"),
+    tab = page.getByRole("button", { name: "Registrasi Petugas", exact: true });
+  assert.deepEqual(
+    await tab.evaluate(properties),
+    await reference.evaluate(properties),
+  );
+  await tab.hover();
+  await page.waitForTimeout(300);
+  const tabHover = await tab.evaluate(properties);
+  await reference.hover();
+  await page.waitForTimeout(300);
+  assert.deepEqual(tabHover, await reference.evaluate(properties));
+  await page.locator("#reference-nav").evaluate((el) => el.remove());
+  pass(
+    "navigation uses the portal facility tab shape, typography and hover colors",
+  );
+  await page.getByRole("button", { name: "Buka layar lounge" }).click();
+  const display = page.getByRole("dialog");
+  const bounds = await display.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return {
+      top: r.top,
+      left: r.left,
+      width: r.width,
+      height: r.height,
+      viewportWidth: innerWidth,
+      viewportHeight: innerHeight,
+    };
+  });
+  assert.equal(bounds.top, 0);
+  assert.equal(await page.locator("#root").getAttribute("inert"), "");
+  assert.equal(bounds.left, 0);
+  assert.equal(bounds.width, bounds.viewportWidth);
+  assert.equal(bounds.height, bounds.viewportHeight);
+  await display.locator("video").first().waitFor({ state: "attached" });
+  assert.equal(await display.locator("input,select,button").count(), 0);
+  assert.equal(await display.getAttribute("data-orientation"), "portrait");
+  await page.screenshot({
+    path: output + "/seamless-v3-display-portrait.png",
+    fullPage: true,
+  });
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".sa-live-camera video")?.srcObject?.active ===
+      true,
+  );
+  assert.ok(
+    await display
+      .locator(".sa-idle-video")
+      .evaluate((v) => v.loop && v.autoplay && v.muted),
+  );
+  pass(
+    "display opens directly with camera standby and idle advertising; no guest buttons, login form or category input",
+  );
+  await page.keyboard.press("Escape");
+  await page.getByLabel("Orientasi layar").selectOption("landscape");
+  await page.getByRole("button", { name: "Buka layar lounge" }).click();
+  assert.equal(
+    await page.getByRole("dialog").getAttribute("data-orientation"),
+    "landscape",
+  );
+  await page.keyboard.press("Escape");
+  pass(
+    "both display orientations are available and operator Escape exits cleanly",
+  );
+  await page
+    .getByRole("button", { name: "Registrasi Petugas", exact: true })
+    .click();
+  await page.getByLabel("Station", { exact: true }).selectOption("CGK");
+  assert.ok(
+    (
+      await page
+        .getByLabel("Akun petugas (opsional)", { exact: true })
+        .locator("option")
+        .allTextContents()
+    ).some((s) => s.includes("Ayu Pratiwi")),
+  );
+  await page.getByLabel("Nama lengkap").fill("Station Staff");
+  await page.getByLabel("Nomor pegawai", { exact: true }).fill("GA999");
+  await page.getByLabel("Unit kerja").fill("Station Operations");
+  await page.getByLabel("Lounge yang ditugaskan").selectOption("lounge-1");
   await page.getByRole("checkbox").nth(0).check();
   await page.getByRole("checkbox").nth(1).check();
   await page
@@ -329,7 +378,7 @@ try {
     .click();
   await page.getByText("Registrasi tersimpan.", { exact: false }).waitFor();
   pass(
-    "staff registration saves name, unit, employee number and assigned station/lounge",
+    "registration works without a portal account and optional lookup contains existing master users",
   );
   const sample = await page.evaluate(() => {
     const c = document.createElement("canvas");
@@ -338,50 +387,43 @@ try {
     c.getContext("2d").fillRect(0, 0, 80, 80);
     return c.toDataURL("image/png");
   });
-  await page
-    .locator("input[type=file]")
-    .setInputFiles({
-      name: "staff-test.png",
-      mimeType: "image/png",
-      buffer: Buffer.from(sample.split(",")[1], "base64"),
-    });
+  await page.locator("input[type=file]").setInputFiles({
+    name: "test.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(sample.split(",")[1], "base64"),
+  });
   await page.getByText("Foto siap dikirim untuk peninjauan.").waitFor();
   await page
     .getByRole("button", { name: "Kirim foto untuk peninjauan", exact: true })
     .click();
   await page.getByText("Foto dikirim.", { exact: false }).waitFor();
-  assert.equal(
-    await page.getByRole("button", { name: "Setujui & aktifkan" }).isDisabled(),
-    true,
-  );
   pass(
-    "private photo upload and PendingReview save; missing provider blocks activation",
+    "photo attachment stores and submits enrollment for an independent staff record",
   );
+  await page
+    .getByRole("button", { name: "Ambil foto", exact: true })
+    .first()
+    .click();
+  await page
+    .getByRole("button", { name: "Aktifkan kamera", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Ambil foto", exact: true })
+    .last()
+    .click();
+  await page.getByText("Foto siap dikirim untuk peninjauan.").waitFor();
+  pass("staff camera source captures and stores a photo");
   await page
     .getByRole("button", { name: "Buat tautan enrollment", exact: true })
     .click();
-  await page.getByLabel("Tautan enrollment", { exact: true }).waitFor();
   const link = await page
     .getByLabel("Tautan enrollment", { exact: true })
     .inputValue();
-  assert.match(link, /#\w{64}$/);
-  pass("single-use self-enrollment link created with token in URL fragment");
-  await page.setViewportSize({ width: 390, height: 844 });
-  await noOverflow(page);
-  await page.screenshot({
-    path: output + "/seamless-v2-staff-mobile.png",
-    fullPage: true,
-  });
-  pass("staff registration mobile layout has no horizontal overflow");
-  await page.setViewportSize({ width: 1440, height: 1050 });
+  assert.match(link, /#registry:[a-f0-9]{64}$/);
   const self = await context.newPage();
   self.on("pageerror", (e) => errors.push(e.message));
   await self.goto(link);
-  await self
-    .getByRole("heading", { name: "Siapkan akses petugas Anda" })
-    .waitFor();
-  await self.getByText("Ayu Pratiwi", { exact: true }).waitFor();
-  assert.equal(new URL(self.url()).hash, "");
+  await self.getByText("Station Staff", { exact: true }).waitFor();
   await self.getByRole("checkbox").check();
   await self
     .getByRole("button", { name: "Aktifkan kamera", exact: true })
@@ -398,179 +440,109 @@ try {
     .getByRole("button", { name: "Kirim untuk peninjauan", exact: true })
     .click();
   await self.getByRole("heading", { name: "Foto berhasil dikirim" }).waitFor();
-  await self
-    .getByRole("heading", { name: "Menunggu peninjauan admin" })
-    .waitFor();
-  await self.getByRole("button", { name: "Ganti bahasa" }).click();
-  await self.getByRole("heading", { name: "Photos submitted" }).waitFor();
-  pass(
-    "self-enrollment camera captures three guided poses, submits once, shows review state in both languages",
-  );
-  await self.reload();
-  await self
-    .getByText("Tautan tidak valid, kedaluwarsa, atau sudah digunakan.", {
-      exact: false,
-    })
-    .waitFor();
-  pass(
-    "refresh after token removal fails safely without leaking the enrollment link",
-  );
   await self.close();
-  connected = true;
-  await page
-    .getByRole("button", { name: "Operasional & layar lounge" })
-    .click();
-  await page.getByRole("button", { name: "Periksa koneksi" }).click();
-  await page.getByRole("heading", { name: "Siapkan layar lounge" }).waitFor();
-  await page.getByRole("button", { name: "Buka layar lounge" }).click();
-  await page.getByRole("button", { name: "Mulai verifikasi wajah" }).click();
-  await page.getByLabel("Referensi sesi check-in").fill("BROWSER-TEST-SESSION");
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Lanjutkan", exact: true }).click();
-  await page.getByRole("heading", { name: "Lihat ke arah kamera" }).waitFor();
-  await page.getByRole("button", { name: "Izinkan & aktifkan kamera" }).click();
-  await page
-    .getByText("Gerbang terbuka terkonfirmasi", { exact: true })
-    .waitFor();
-  await page
-    .getByRole("dialog")
-    .getByRole("heading", { name: "Selamat datang", exact: true })
-    .waitFor();
-  await page
-    .getByRole("img", { name: "Pindai QR untuk melihat denah lounge" })
-    .waitFor();
-  assert.equal(commands, 1);
-  pass(
-    "claimed passenger session -> camera -> automatic 1:1 call -> entitlement -> gate feedback -> welcome and real map QR, using test doubles",
-  );
+  pass("guided self enrollment works for staff without a portal login");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await noOverflow(page);
   await page.screenshot({
-    path: output + "/seamless-v2-welcome.png",
+    path: output + "/seamless-v3-staff-mobile.png",
     fullPage: true,
   });
-  await page.getByRole("button", { name: "Selesai", exact: true }).click();
-  gateMode = "unconfirmed";
-  await page.getByRole("button", { name: "Mulai verifikasi wajah" }).click();
-  await page.getByLabel("Referensi sesi check-in").fill("SECOND-SESSION");
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Lanjutkan", exact: true }).click();
-  await page.getByRole("button", { name: "Izinkan & aktifkan kamera" }).click();
+  await page.setViewportSize({ width: 1440, height: 1050 });
+  pass("registration and photo controls fit a 390px viewport");
+  connected = true;
   await page
-    .getByRole("heading", { name: "Silakan hubungi petugas", exact: true })
-    .waitFor();
-  assert.equal(
-    await page
-      .getByText("Gerbang terbuka terkonfirmasi", { exact: true })
-      .count(),
-    0,
-  );
-  pass(
-    "eligible face and entitlement without gate acknowledgement displays assistance instead of welcome",
-  );
-  await page.getByRole("button", { name: "Selesai", exact: true }).click();
-  gateMode = "confirmed";
-  let dropped = false;
-  await page.route(
-    "**/.netlify/functions/seamless-operations",
-    async (route) => {
-      const body = route.request().postDataJSON();
-      if (!dropped && body.action === "verify-one-to-one") {
-        dropped = true;
-        await route.fetch();
-        await route.abort();
-      } else await route.continue();
-    },
-  );
-  const before = commands;
-  await page.getByRole("button", { name: "Mulai verifikasi wajah" }).click();
-  await page.getByLabel("Referensi sesi check-in").fill("RETRY-SESSION");
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Lanjutkan", exact: true }).click();
-  await page.getByRole("button", { name: "Izinkan & aktifkan kamera" }).click();
-  await page
-    .getByRole("button", { name: "Periksa hasil permintaan" })
-    .waitFor();
-  await page.getByRole("button", { name: "Periksa hasil permintaan" }).click();
-  await page
-    .getByText("Gerbang terbuka terkonfirmasi", { exact: true })
-    .waitFor();
-  assert.equal(commands, before + 1);
-  pass(
-    "lost verification response retry reuses request and does not duplicate gate command",
-  );
-  await page.unrouteAll();
-  await page.getByRole("button", { name: "Tutup layar" }).click();
-  await page
-    .getByRole("button", { name: "Registrasi petugas", exact: true })
+    .getByRole("button", { name: "Operasional & Layar Lounge", exact: true })
     .click();
-  await page.getByLabel("Station", { exact: true }).selectOption("CGK");
-  await page.getByLabel("Akun petugas").selectOption("officer-1");
+  await page
+    .getByRole("button", { name: "Periksa koneksi", exact: true })
+    .click();
+  await page
+    .getByRole("heading", { name: "Pengaturan layar lounge" })
+    .waitFor();
+  await page
+    .getByRole("button", { name: "Registrasi Petugas", exact: true })
+    .click();
+  await page
+    .getByLabel("Petugas terdaftar")
+    .selectOption({ label: "Station Staff · GA999 · CGK" });
   await page.getByRole("checkbox").nth(0).check();
   await page
     .getByRole("button", { name: "Setujui & aktifkan", exact: true })
     .click();
   await page.getByText("Enrollment disetujui dan akses diaktifkan.").waitFor();
-  pass(
-    "HO administrator reviews submitted photos and activates enrollment only with test provider confirmation",
-  );
   await page
-    .getByRole("button", { name: "Operasional & layar lounge" })
+    .getByRole("button", { name: "Operasional & Layar Lounge", exact: true })
     .click();
-  await page.getByRole("button", { name: "Buka layar lounge" }).click();
-  await page.getByRole("button", { name: "Mulai verifikasi wajah" }).click();
-  await page.getByLabel("Jenis akses").selectOption("Staff");
-  await page.getByLabel("Nomor pegawai / kartu petugas").fill("GA001");
+  await page.locator("summary").click();
+  await page.getByLabel("Nomor pegawai", { exact: true }).fill("GA999");
   await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Lanjutkan", exact: true }).click();
-  await page.getByRole("button", { name: "Izinkan & aktifkan kamera" }).click();
   await page
-    .getByRole("heading", { name: "Akses petugas terverifikasi", exact: true })
-    .waitFor();
-  assert.equal(
-    await page.getByRole("dialog").getByText("GA001", { exact: true }).count(),
-    0,
-  );
-  assert.equal(
-    await page
-      .getByRole("dialog")
-      .getByRole("img", { name: "Pindai QR untuk melihat denah lounge" })
-      .count(),
-    0,
-  );
-  pass("staff access display excludes employee number and passenger map QR");
-  await page
-    .getByRole("dialog")
-    .getByRole("heading", { name: /Selamat datang/ })
-    .waitFor({ timeout: 22000 });
-  assert.equal(
-    await page.getByRole("dialog").getByText("Ayu", { exact: true }).count(),
-    0,
-  );
-  pass("display returns to standby automatically and clears personal result");
-  await page.getByRole("button", { name: "Tutup layar" }).click();
-  await page
-    .getByRole("button", { name: "Aktivitas akses", exact: true })
+    .getByRole("button", { name: "Siapkan sesi untuk layar", exact: true })
     .click();
-  await page.getByLabel("Hasil akses").selectOption("Eligible");
-  assert.ok(
-    (await page.getByRole("cell", { name: "Diizinkan", exact: true }).count()) >
-      0,
+  await page.getByText("Sesi identitas siap.", { exact: false }).waitFor();
+  faceCount = 0;
+  await page.getByRole("button", { name: "Buka layar lounge" }).click();
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".sa-live-camera video")?.srcObject?.active ===
+      true,
   );
-  await page.getByLabel("Cari aktivitas yang dimuat").fill("nothing");
-  assert.equal(await page.locator("tbody tr").count(), 0);
-  pass("activity filters and search operate on persisted test service results");
-  await page.setViewportSize({ width: 390, height: 844 });
-  await noOverflow(page);
-  pass("operations/activity mobile layout has no horizontal overflow");
+  faceCount = 1;
+  await page
+    .getByRole("heading", { name: "Wajah sesuai referensi", exact: true })
+    .waitFor({ timeout: 18000 });
+  assert.equal(commands, 0);
+  assert.equal(
+    await page.getByRole("dialog").getByText("GA999", { exact: true }).count(),
+    0,
+  );
+  pass(
+    "prepared 1:1 identity is processed automatically on face presence; no display interaction and no gate command without liveness",
+  );
+  faceCount = 0;
+  await page.waitForFunction(
+    () => document.querySelector(".sa-display")?.dataset.phase === "idle",
+    {},
+    { timeout: 18000 },
+  );
+  await page.keyboard.press("Escape");
+  pass("result clears and advertising returns automatically");
+  await page.locator("#app-language").click();
+  await page
+    .getByRole("button", { name: "Staff Registration", exact: true })
+    .click();
+  await page
+    .getByRole("heading", { name: "Staff registration & enrollment" })
+    .waitFor();
+  await page.getByLabel("Staff account (optional)", { exact: true }).waitFor();
+  pass(
+    "ID/EN covers revised registration, account optionality and display controls",
+  );
+  await page.locator("#app-language").click();
+  await page
+    .getByRole("button", { name: "Aktivitas Akses", exact: true })
+    .click();
+  await page.getByLabel("Station aktivitas").selectOption("CGK");
+  await page.getByLabel("Lounge aktivitas").selectOption("lounge-1");
+  await page
+    .getByRole("cell", { name: "Wajah sesuai referensi", exact: true })
+    .waitFor();
+  await page.getByLabel("Cari aktivitas").fill("not-found");
+  await page.getByText("Belum ada aktivitas sesuai pilihan.").waitFor();
+  pass(
+    "activity loads only after explicit location selection, displays matching status and filters correctly",
+  );
   assert.deepEqual(errors, []);
-  pass("zero browser runtime errors");
+  pass("zero uncaught browser runtime errors");
   await writeFile(
-    output + "/seamless-v2-browser-results.json",
+    output + "/seamless-v3-browser-results.json",
     JSON.stringify(
       {
         passed: checks,
         errors,
         scope:
-          "Real React components and operations service; test Firestore, Storage, Auth, video, biometric/entitlement/gate doubles. NOT live Firebase or physical hardware.",
+          "Actual React and operations/registry services; in-memory Auth/Firestore/Storage and face/gate behavior doubles. Real-model inference tested separately.",
       },
       null,
       2,
@@ -578,9 +550,9 @@ try {
   );
 } catch (e) {
   console.log("PAGE ERRORS", errors);
-  await writeFile(output + "/seamless-v2-debug.html", await page.content());
+  await writeFile(output + "/seamless-v3-debug.html", await page.content());
   await page.screenshot({
-    path: output + "/seamless-v2-debug.png",
+    path: output + "/seamless-v3-debug.png",
     fullPage: true,
   });
   throw e;

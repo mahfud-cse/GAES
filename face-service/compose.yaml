@@ -1,0 +1,21 @@
+services:
+  face:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8765:8765"
+    environment:
+      GAES_FACE_SERVICE_KEY: ${GAES_FACE_SERVICE_KEY:?required}
+      GAES_FACE_ENCRYPTION_KEY: ${GAES_FACE_ENCRYPTION_KEY:?required}
+      GAES_FACE_THRESHOLD: "0.5"
+    volumes:
+      - references:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  references:

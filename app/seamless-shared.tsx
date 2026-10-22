@@ -3,13 +3,55 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export type Language = "ID" | "EN";
 export type Photo = { path: string; pose: string };
 const messages: Record<string, [string, string]> = {
-  ENTITLEMENT_INVALID: ["Hak akses lounge tidak berlaku untuk kunjungan ini. Silakan hubungi petugas.", "Lounge access is not valid for this visit. Please ask a staff member."],
-  PROVIDER_TIMEOUT: ["Layanan tidak merespons tepat waktu. Jangan melewati gerbang sebelum ada konfirmasi.", "The service did not respond in time. Do not pass through the gate without confirmation."],
-  INVALID_MEDIA: ["Video harus aktif dan tersedia pada station lounge ini.", "The video must be active and available at this lounge's station."],
-  INVALID_LAYOUT: ["Pilih denah yang sudah dipublikasikan untuk lounge ini.", "Select a published map for this lounge."],
-  ENROLLMENT_REJECTED: ["Enrollment belum lolos pemeriksaan layanan verifikasi.", "Enrollment did not pass the verification service checks."],
-  VERIFICATION_UNAVAILABLE: ["Verifikasi belum dapat diselesaikan. Silakan hubungi petugas.", "Verification could not be completed. Please ask a staff member."],
-  INVALID_INPUT: ["Periksa kembali informasi yang dimasukkan.", "Please check the information you entered."],
+  EXACTLY_ONE_FACE_REQUIRED: [
+    "Foto harus menampilkan tepat satu wajah.",
+    "The photo must show exactly one face.",
+  ],
+  FACE_TOO_SMALL: [
+    "Wajah terlalu kecil. Dekatkan kamera dan ambil ulang foto.",
+    "The face is too small. Move closer and retake the photo.",
+  ],
+  PHOTO_BLURRED: [
+    "Foto kurang tajam. Perbaiki pencahayaan dan ambil ulang.",
+    "The photo is blurred. Improve the lighting and retake it.",
+  ],
+  INCONSISTENT_ENROLLMENT: [
+    "Foto enrollment belum konsisten. Ambil ulang foto orang yang sama.",
+    "Enrollment photos are inconsistent. Retake photos of the same person.",
+  ],
+  ACCOUNT_ALREADY_LINKED: [
+    "Akun sudah terhubung dengan registrasi petugas lain.",
+    "This account is linked to another staff registration.",
+  ],
+
+  ENTITLEMENT_INVALID: [
+    "Hak akses lounge tidak berlaku untuk kunjungan ini. Silakan hubungi petugas.",
+    "Lounge access is not valid for this visit. Please ask a staff member.",
+  ],
+  PROVIDER_TIMEOUT: [
+    "Layanan tidak merespons tepat waktu. Jangan melewati gerbang sebelum ada konfirmasi.",
+    "The service did not respond in time. Do not pass through the gate without confirmation.",
+  ],
+  INVALID_MEDIA: [
+    "Video harus aktif dan tersedia pada station lounge ini.",
+    "The video must be active and available at this lounge's station.",
+  ],
+  INVALID_LAYOUT: [
+    "Pilih denah yang sudah dipublikasikan untuk lounge ini.",
+    "Select a published map for this lounge.",
+  ],
+  ENROLLMENT_REJECTED: [
+    "Enrollment belum lolos pemeriksaan layanan verifikasi.",
+    "Enrollment did not pass the verification service checks.",
+  ],
+  VERIFICATION_UNAVAILABLE: [
+    "Verifikasi belum dapat diselesaikan. Silakan hubungi petugas.",
+    "Verification could not be completed. Please ask a staff member.",
+  ],
+  INVALID_INPUT: [
+    "Periksa kembali informasi yang dimasukkan.",
+    "Please check the information you entered.",
+  ],
 
   HO_ADMIN_REQUIRED: [
     "Hanya administrator kantor pusat yang dapat mengelola petugas.",

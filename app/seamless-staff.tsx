@@ -11,6 +11,7 @@ import {
 } from "./seamless-shared";
 export type StaffRow = {
   uid: string;
+  accountUid?: string;
   name: string;
   unit: string;
   employeeNumber: string;
@@ -51,6 +52,11 @@ export default function SeamlessStaff({
     [notice, setNotice] = useState(""),
     [station, setStation] = useState(""),
     [uid, setUid] = useState("");
+  const [accounts, setAccounts] = useState<
+      { uid: string; name: string; station: string; role: string }[]
+    >([]),
+    [accountUid, setAccountUid] = useState(""),
+    [accountSearch, setAccountSearch] = useState("");
   const [name, setName] = useState(""),
     [unit, setUnit] = useState(""),
     [employeeNumber, setEmployeeNumber] = useState(""),
@@ -75,26 +81,52 @@ export default function SeamlessStaff({
     setNotice("");
   }, [language]);
   const selected = rows.find((r) => r.uid === uid);
-  const load = useCallback(
-    async (next?: string) => {
-      setLoading(true);
-      try {
-        const d = await api({ action: "staff-list", cursor: next });
-        setRows((old) =>
-          next ? [...old, ...(d.staff as StaffRow[])] : (d.staff as StaffRow[]),
-        );
-        setCursor(d.nextCursor as string | null);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [api],
-  );
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      let accountsDone = false,
+        staffDone = false;
+      let accountCursor: string | null = null,
+        staffCursor: string | null = null;
+      const staffMap = new Map<string, StaffRow>(),
+        accountMap = new Map<
+          string,
+          { uid: string; name: string; station: string; role: string }
+        >();
+      do {
+        const d = await api({
+          action: "registry-list",
+          skipAccounts: accountsDone,
+          skipStaff: staffDone,
+          accountCursor,
+          staffCursor,
+        });
+        for (const row of d.staff as StaffRow[]) staffMap.set(row.uid, row);
+        for (const row of d.accounts as {
+          uid: string;
+          name: string;
+          station: string;
+          role: string;
+        }[])
+          accountMap.set(row.uid, row);
+        accountCursor = d.accountCursor as string | null;
+        staffCursor = d.staffCursor as string | null;
+        accountsDone = !accountCursor;
+        staffDone = !staffCursor;
+      } while (!accountsDone || !staffDone);
+      setRows([...staffMap.values()]);
+      setAccounts([...accountMap.values()]);
+      setCursor(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [api]);
   useEffect(() => {
     void load().catch((e) => setNotice(errorMessage(e, language)));
   }, [load, language]);
   const reset = (s?: StaffRow) => {
     setUid(s?.uid || "");
+    setAccountUid(s?.accountUid || "");
     setName(s?.name || "");
     setUnit(s?.unit || "");
     setEmployeeNumber(s?.employeeNumber || "");
@@ -123,10 +155,11 @@ export default function SeamlessStaff({
   const register = (e: FormEvent) => {
     e.preventDefault();
     void run(
-      () =>
-        api({
-          action: "staff-register",
-          uid,
+      async () => {
+        const result = await api({
+          action: "registry-save",
+          uid: uid || undefined,
+          accountUid,
           name,
           unit,
           employeeNumber,
@@ -134,7 +167,9 @@ export default function SeamlessStaff({
           loungeIds: [loungeId],
           identityConfirmed: identity,
           consent,
-        }),
+        });
+        setUid(result.uid as string);
+      },
       t(
         "Registrasi tersimpan. Lanjutkan dengan foto enrollment.",
         "Registration saved. Continue with enrollment photos.",
@@ -142,7 +177,13 @@ export default function SeamlessStaff({
     );
   };
   const upload = async (data: string, pose = "front") => {
-    const d = await api({ action: "photo-upload", uid, data, pose, consent });
+    const d = await api({
+      action: "registry-photo-upload",
+      uid,
+      data,
+      pose,
+      consent,
+    });
     setPhotos([d.photo as Photo]);
     setPreview(data);
   };
@@ -152,7 +193,7 @@ export default function SeamlessStaff({
       <div className="sa-section-heading">
         <div>
           <p className="sa-eyebrow">
-            {t("ADMINISTRASI KANTOR PUSAT", "HEAD OFFICE ADMINISTRATION")}
+            {t("IDENTITAS & AKSES PETUGAS", "STAFF IDENTITY & ACCESS")}
           </p>
           <h2>
             {t(
@@ -177,6 +218,26 @@ export default function SeamlessStaff({
             <span>01</span>
             <h3>{t("Identitas & penugasan", "Identity & assignment")}</h3>
           </div>
+          <label>
+            {t("Petugas terdaftar", "Registered staff")}
+            <select
+              value={uid}
+              onChange={(e) => {
+                const staff = rows.find((s) => s.uid === e.target.value);
+                reset(staff);
+                if (staff) setStation(staff.station);
+              }}
+            >
+              <option value="">
+                {t("Registrasi petugas baru", "Register new staff")}
+              </option>
+              {rows.map((s) => (
+                <option key={s.uid} value={s.uid}>
+                  {s.name} · {s.employeeNumber} · {s.station}
+                </option>
+              ))}
+            </select>
+          </label>
           <form onSubmit={register}>
             <fieldset disabled={busy}>
               <div className="sa-fields">
@@ -204,25 +265,47 @@ export default function SeamlessStaff({
                   </select>
                 </label>
                 <label>
-                  {t("Akun petugas", "Staff account")}
+                  {t(
+                    "Cari akun User & Role (opsional)",
+                    "Search User & Role accounts (optional)",
+                  )}
+                  <input
+                    value={accountSearch}
+                    placeholder={t("Nama atau role", "Name or role")}
+                    onChange={(e) => setAccountSearch(e.target.value)}
+                  />
+                </label>
+                <label>
+                  {t("Akun petugas (opsional)", "Staff account (optional)")}
                   <select
-                    value={uid}
-                    required
-                    onChange={(e) =>
-                      reset(rows.find((r) => r.uid === e.target.value))
-                    }
+                    aria-label={t(
+                      "Akun petugas (opsional)",
+                      "Staff account (optional)",
+                    )}
+                    value={accountUid}
+                    disabled={!!uid && !uid.startsWith("stf-")}
+                    onChange={(e) => {
+                      setAccountUid(e.target.value);
+                      const account = accounts.find(
+                        (a) => a.uid === e.target.value,
+                      );
+                      if (account && !name) setName(account.name);
+                    }}
                   >
                     <option value="">
-                      {loading
-                        ? t("Memuat akun…", "Loading accounts…")
-                        : t("Pilih petugas", "Select staff")}
+                      {t("Tanpa akun portal", "No portal account")}
                     </option>
-                    {rows
-                      .filter((s) => s.active && s.station === station)
-                      .map((s) => (
-                        <option key={s.uid} value={s.uid}>
-                          {s.name}
-                          {s.employeeNumber ? ` · ${s.employeeNumber}` : ""}
+                    {accounts
+                      .filter(
+                        (a) =>
+                          (!station || [station, "ALL"].includes(a.station)) &&
+                          `${a.name} ${a.role}`
+                            .toLowerCase()
+                            .includes(accountSearch.toLowerCase()),
+                      )
+                      .map((a) => (
+                        <option key={a.uid} value={a.uid}>
+                          {a.name} · {a.role}
                         </option>
                       ))}
                   </select>
@@ -270,11 +353,7 @@ export default function SeamlessStaff({
                     {lounges
                       .filter(
                         (l) =>
-                          l.airport === station &&
-                          l.status === "Aktif" &&
-                          (!selected?.loungeId ||
-                            selected.loungeId === l.id ||
-                            selected.role === "BO Admin"),
+                          l.airport === station && l.status === "Aktif" && true,
                       )
                       .map((l) => (
                         <option key={l.id} value={l.id}>
@@ -286,8 +365,8 @@ export default function SeamlessStaff({
               </div>
               <p className="sa-help">
                 {t(
-                  "Akun belum tersedia? Tambahkan melalui Master Data → User & Role. Station mengikuti penugasan akun.",
-                  "Account missing? Add it through Master Data → User & Role. Station follows the account assignment.",
+                  "Akun portal bersifat opsional dan diambil dari User & Role. Penugasan lounge menggunakan master data existing.",
+                  "A portal account is optional and comes from User & Role. Lounge assignments use existing master data.",
                 )}
               </p>
               <label className="sa-check">
@@ -318,7 +397,15 @@ export default function SeamlessStaff({
               </label>
               <button
                 className="sa-primary"
-                disabled={!uid || !consent || !identity}
+                disabled={
+                  !station ||
+                  !name ||
+                  !unit ||
+                  !employeeNumber ||
+                  !loungeId ||
+                  !consent ||
+                  !identity
+                }
               >
                 {t("Simpan registrasi", "Save registration")}
               </button>
@@ -329,9 +416,7 @@ export default function SeamlessStaff({
               type="button"
               disabled={loading || busy}
               onClick={() =>
-                void load(cursor).catch((e) =>
-                  setNotice(errorMessage(e, language)),
-                )
+                void load().catch((e) => setNotice(errorMessage(e, language)))
               }
             >
               {t("Muat akun berikutnya", "Load more accounts")}
@@ -507,7 +592,7 @@ export default function SeamlessStaff({
                         void run(
                           async () => {
                             const d = await api({
-                              action: "photo-repository",
+                              action: "registry-photo-repository",
                               uid,
                               folder,
                               file: filename,
@@ -551,7 +636,10 @@ export default function SeamlessStaff({
                     onClick={() =>
                       void run(
                         async () => {
-                          const d = await api({ action: "staff-photo", uid });
+                          const d = await api({
+                            action: "registry-photo",
+                            uid,
+                          });
                           setPreview(d.url as string);
                         },
                         t(
@@ -573,7 +661,7 @@ export default function SeamlessStaff({
                   void run(
                     async () => {
                       await api({
-                        action: "staff-enrollment-save",
+                        action: "registry-enrollment-save",
                         uid,
                         photos,
                         consent,
@@ -604,11 +692,11 @@ export default function SeamlessStaff({
                     void run(
                       async () => {
                         const d = await api({
-                          action: "enrollment-invite",
+                          action: "registry-invite",
                           uid,
                         });
                         setInvite(
-                          `${window.location.origin}/staff-enrollment#${d.token}`,
+                          `${window.location.origin}/staff-enrollment#registry:${d.token}`,
                         );
                       },
                       t(
@@ -677,7 +765,7 @@ export default function SeamlessStaff({
                       void run(
                         () =>
                           api({
-                            action: "staff-approve",
+                            action: "registry-approve",
                             uid,
                             identityConfirmed: identity,
                           }),
@@ -696,7 +784,7 @@ export default function SeamlessStaff({
                     disabled={busy}
                     onClick={() =>
                       void run(
-                        () => api({ action: "staff-deactivate", uid }),
+                        () => api({ action: "registry-deactivate", uid }),
                         t(
                           "Akses dinonaktifkan dan tautan enrollment dicabut.",
                           "Access deactivated and enrollment links revoked.",
