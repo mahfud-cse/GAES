@@ -54,7 +54,9 @@ async function call<T>(
         (raw && !raw.trim().startsWith("<") ? raw : "") ||
         `Permintaan tidak dapat diproses (HTTP ${response.status}).`,
     );
-    throw new Error(message);
+    throw Object.assign(new Error(message), {
+      requestId: typeof payload.requestId === "string" ? payload.requestId : undefined,
+    });
   }
   return payload as T;
 }

@@ -161,6 +161,46 @@ const messages: Record<string, [string, string]> = {
     "Penyimpanan foto belum terhubung. Periksa konfigurasi Firebase Storage.",
     "Photo storage is not connected. Check the Firebase Storage configuration.",
   ],
+  STORAGE_CONFIG_INVALID: [
+    "Konfigurasi penyimpanan foto tidak valid. Administrator perlu memeriksa nama bucket Firebase Storage pada pengaturan server.",
+    "Photo storage configuration is invalid. An administrator must check the Firebase Storage bucket name in the server settings.",
+  ],
+  STORAGE_PERMISSION_DENIED: [
+    "Server tidak memiliki izin untuk mengakses penyimpanan foto. Administrator perlu memeriksa izin service account pada bucket yang digunakan.",
+    "The server does not have permission to access photo storage. An administrator must check the service account permissions on the configured bucket.",
+  ],
+  STORAGE_BUCKET_NOT_FOUND: [
+    "Bucket penyimpanan tidak ditemukan. Administrator perlu mencocokkan nama bucket pada server dengan Firebase Storage yang sudah digunakan.",
+    "The storage bucket was not found. An administrator must match the server bucket setting to the existing Firebase Storage bucket.",
+  ],
+  STORAGE_PHOTO_NOT_FOUND: [
+    "Foto tersimpan belum dapat ditemukan pada penyimpanan yang dikonfigurasi. Periksa pengaturan bucket atau tambahkan ulang foto.",
+    "The saved photo could not be found in the configured storage. Check the bucket setting or add the photo again.",
+  ],
+  STORAGE_CREDENTIAL_INVALID: [
+    "Kredensial server untuk penyimpanan foto tidak dapat digunakan. Administrator perlu memeriksa konfigurasi service account.",
+    "The server credentials for photo storage could not be used. An administrator must check the service account configuration.",
+  ],
+  STORAGE_PROJECT_BLOCKED: [
+    "Penyimpanan ditolak karena status akun atau penagihan proyek. Administrator perlu memeriksa status Firebase Storage pada proyek yang digunakan.",
+    "Storage access was blocked by the project account or billing status. An administrator must check Firebase Storage on the existing project.",
+  ],
+  STORAGE_API_DISABLED: [
+    "Layanan penyimpanan belum diaktifkan untuk proyek ini. Administrator perlu memeriksa layanan Cloud Storage pada proyek yang digunakan.",
+    "Storage service is not enabled for this project. An administrator must check Cloud Storage on the existing project.",
+  ],
+  STORAGE_QUOTA_EXCEEDED: [
+    "Batas permintaan atau kuota penyimpanan tercapai. Coba kembali beberapa saat lagi atau hubungi administrator.",
+    "The storage request limit or quota was reached. Try again later or contact an administrator.",
+  ],
+  STORAGE_OPERATION_FAILED: [
+    "Proses penyimpanan foto gagal di server. Coba kembali. Jika tetap gagal, sampaikan nomor referensi berikut kepada administrator untuk pemeriksaan log Netlify.",
+    "The server could not complete the photo storage operation. Try again. If it fails again, give the reference below to an administrator to check the Netlify logs.",
+  ],
+  REPOSITORY_READ_FAILED: [
+    "Server tidak dapat membaca foto repository. Administrator perlu memeriksa file yang disertakan dan izin baca pada deployment.",
+    "The server could not read the repository photo. An administrator must check the bundled file and read permissions in the deployment.",
+  ],
   SERVICE_UNAVAILABLE: [
     "Layanan belum tersedia. Coba kembali atau hubungi administrator.",
     "The service is unavailable. Please try again or contact your administrator.",
@@ -168,9 +208,13 @@ const messages: Record<string, [string, string]> = {
 };
 export function errorMessage(error: unknown, language: Language) {
   const code = error instanceof Error ? error.message : String(error);
-  return (messages[code] || messages.SERVICE_UNAVAILABLE)[
+  const message = (messages[code] || messages.SERVICE_UNAVAILABLE)[
     language === "ID" ? 0 : 1
   ];
+  const requestId = (error as { requestId?: unknown } | null)?.requestId;
+  return typeof requestId === "string" && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(requestId)
+    ? `${message} ${language === "ID" ? "Referensi" : "Reference"}: ${requestId}`
+    : message;
 }
 export async function photoData(file: File): Promise<string> {
   if (file.size > 1000000) throw new Error("PHOTO_TOO_LARGE");

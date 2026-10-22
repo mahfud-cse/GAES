@@ -1,4 +1,6 @@
 import { getStorage } from "firebase-admin/storage";
+import { randomUUID } from "node:crypto";
+import { createStorageMedia, storageBucketName } from "../../lib/seamless/storage-media.mjs";
 import { readRepositoryPhoto } from "../../lib/seamless/repository-media.mjs";
 import {
   requireUser,
@@ -13,50 +15,10 @@ import {
   safeOperationCodes,
 } from "../../lib/seamless/operations.mjs";
 import { createSelfHostedProvider } from "../../lib/seamless/self-hosted.mjs";
-const bucket = () => {
-  const name =
-    process.env.FIREBASE_STORAGE_BUCKET ||
-    process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-  if (!name)
-    throw Object.assign(new Error("STORAGE_NOT_CONNECTED"), {
-      status: 503,
-      code: "STORAGE_NOT_CONNECTED",
-    });
-  return getStorage(targetApp()).bucket(name);
-};
-const media = {
-  async save(objectPath, image, meta) {
-    await bucket()
-      .file(objectPath)
-      .save(image.bytes, {
-        resumable: false,
-        metadata: {
-          contentType: image.contentType,
-          cacheControl: "private, no-store",
-          metadata: meta,
-        },
-      });
-  },
-  async read(objectPath) {
-    const file = bucket().file(objectPath);
-    const [[metadata], [bytes]] = await Promise.all([
-      file.getMetadata(),
-      file.download(),
-    ]);
-    return { bytes, contentType: metadata.contentType };
-  },
-  async validate(objectPath) {
-    const [m] = await bucket().file(objectPath).getMetadata();
-    return m.metadata || {};
-  },
-  async readUrl(objectPath) {
-    const [url] = await bucket()
-      .file(objectPath)
-      .getSignedUrl({ action: "read", expires: Date.now() + 120000 });
-    return url;
-  },
+const media = createStorageMedia({
+  getBucket: () => getStorage(targetApp()).bucket(storageBucketName(process.env)),
   repository: readRepositoryPhoto,
-};
+});
 const handle = createOperationsService({
   authenticate: requireUser,
   database: targetDb,
@@ -91,6 +53,11 @@ export default async function handler(request) {
           : status === 403
             ? "FORBIDDEN"
             : "SERVICE_UNAVAILABLE";
-    return reply(status, { error: code, code });
+    const requestId = randomUUID();
+    console.error(JSON.stringify({ event: "seamless-operation-failed", requestId, code,
+      stage: ["storage-save", "storage-read", "storage-metadata", "storage-preview", "repository-read"].includes(e.stage) ? e.stage : "operation",
+      upstreamStatus: Number.isInteger(e.upstreamStatus) ? e.upstreamStatus : undefined,
+    }));
+    return reply(status, { error: code, code, requestId });
   }
 }

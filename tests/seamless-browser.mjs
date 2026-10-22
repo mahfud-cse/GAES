@@ -104,7 +104,7 @@ const service = createOperationsService({
   audit: (tx, d, _, record) => tx.set(d.collection("auditLogs").doc(), record),
   provider,
   media: {
-    save: async (path, image, meta) => { if (photoSaveFails) throw new Error("STORAGE_NOT_CONNECTED"); return objects.set(path, { image, meta }); },
+    save: async (path, image, meta) => { if (photoSaveFails) throw new Error(typeof photoSaveFails === "string" ? photoSaveFails : "STORAGE_NOT_CONNECTED"); return objects.set(path, { image, meta }); },
     validate: async (path) => objects.get(path)?.meta || {},
     readUrl: async (path) =>
       `data:${objects.get(path).image.contentType};base64,${objects.get(path).image.bytes.toString("base64")}`,
@@ -181,7 +181,7 @@ const server = createServer(async (req, res) => {
         res.end(JSON.stringify(r));
       } catch (e) {
         res.statusCode = e.status || 503;
-        res.end(JSON.stringify({ error: e.code || e.message }));
+        res.end(JSON.stringify({ error: e.code || e.message, requestId: "c34ab082-2514-4525-889d-028f44eaa251" }));
       }
       return;
     }
@@ -416,9 +416,10 @@ try {
   await page.getByRole("alert").filter({hasText: "Ukuran foto terlalu besar"}).waitFor();
   assert.equal(await page.getByRole("button", {name: "Simpan dan ajukan verifikasi", exact: true}).isDisabled(), true);
   pass("photo consent is explained beside upload; oversized photos show precise local error and cannot be submitted");
-  photoSaveFails = true;
+  photoSaveFails = "STORAGE_PERMISSION_DENIED";
   await page.locator("input[type=file]").setInputFiles({name: "retry.png", mimeType: "image/png", buffer: Buffer.from(sample.split(",")[1], "base64")});
-  await page.getByRole("alert").filter({hasText: "Penyimpanan foto belum terhubung"}).waitFor();
+  await page.getByRole("alert").filter({hasText: "Server tidak memiliki izin"}).waitFor();
+  assert.match(await page.getByRole("alert").textContent(), /Referensi: c34ab082-2514-4525-889d-028f44eaa251/);
   await page.locator(".sa-photo-preview").waitFor();
   assert.equal(await page.getByRole("button", {name: "Simpan dan ajukan verifikasi", exact: true}).isDisabled(), true);
   photoSaveFails = false;

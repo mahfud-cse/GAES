@@ -1,0 +1,69 @@
+{
+  "release": "Photo upload diagnostic fix V4.2",
+  "applyOn": "Seamless Access V4.1 (last cumulative package)",
+  "cumulative": false,
+  "files": [
+    {
+      "path": "app/seamless-shared.tsx",
+      "action": "REPLACE",
+      "size": 13248,
+      "sha256": "802733b0785f1782566fa7491908b33af3df0a4d1cc273db19b86c6b74b07382"
+    },
+    {
+      "path": "docs/PHOTO_UPLOAD_FIX_V4_2.md",
+      "action": "ADD",
+      "size": 3822,
+      "sha256": "251405ec893270643eaacc5cd1a1905e1668016d0885f18ec006704e39602071"
+    },
+    {
+      "path": "lib/firebase/api.ts",
+      "action": "REPLACE",
+      "size": 6134,
+      "sha256": "125e076b83d79e2d9108598158e1961ae9b44b5ee0baf57865c331c0da494ad2"
+    },
+    {
+      "path": "lib/seamless/operations.mjs",
+      "action": "REPLACE",
+      "size": 36300,
+      "sha256": "2a1a6d626a37a914a310ae4f56faa29b8acbe861b89fa1aa6598f8839c9829f3"
+    },
+    {
+      "path": "lib/seamless/repository-media.mjs",
+      "action": "REPLACE",
+      "size": 2073,
+      "sha256": "66bf9ef6fdeed8e709e89dc0f338433933e047cc3843fee6f5e7124603734045"
+    },
+    {
+      "path": "lib/seamless/storage-media.mjs",
+      "action": "ADD",
+      "size": 3509,
+      "sha256": "a6eaf4fd6f111eb35879675c60b32d913429edf0e1b3b7b1cc6ea9a251acea21"
+    },
+    {
+      "path": "netlify/functions/seamless-operations.mjs",
+      "action": "REPLACE",
+      "size": 2180,
+      "sha256": "37dbed01b71f65b553cd870d0b95672c5645e66c7a34426d06a008deae25df6c"
+    },
+    {
+      "path": "package.json",
+      "action": "REPLACE",
+      "size": 1893,
+      "sha256": "36d72735ec92e06a53f7ee5a66c0456ef3fd7e24879d2f010cd645496f1c39e3"
+    },
+    {
+      "path": "tests/seamless-browser.mjs",
+      "action": "REPLACE",
+      "size": 23170,
+      "sha256": "413784e0b90bcd4bce434e2e344e718e85596a7674b847f0a161d573583dfb52"
+    },
+    {
+      "path": "tests/seamless-storage.test.mjs",
+      "action": "ADD",
+      "size": 4225,
+      "sha256": "31fadf9308a4162a2bd4dc0657e7e1feff1ce6b1e764c8cfe5635507a644ff64"
+    }
+  ],
+  "delete": [],
+  "validation": "159 Node tests, 20 browser checks with explicit service/camera doubles, lint 0 errors (32 existing warnings), production build and TypeScript passed. Live Firebase Storage and IAM not accessed; infrastructure cause remains unverified."
+}
