@@ -1,355 +1,361 @@
 {
-  "release": "Seamless Access V3.1 \u2014 GitHub browser split-model packaging",
+  "release": "Seamless Access V4 \u2014 account and photo guidance, camera display recovery",
   "baseline": "GAES-V-22.2(1).zip",
   "cumulative": true,
   "files": [
     {
       "path": "GITHUB_UPLOAD.md",
       "action": "ADD",
-      "sha256": "cba01c90a702f40c7e0d9a5198b49f29a19b037768b50b9c2b342fc4efb52311",
-      "size": 2172
+      "size": 2172,
+      "sha256": "cba01c90a702f40c7e0d9a5198b49f29a19b037768b50b9c2b342fc4efb52311"
     },
     {
       "path": "PATCH_NOTES.md",
       "action": "REPLACE",
-      "sha256": "6e750ec9205e516dc51b117cda2344a0dab002a8ff02ac0d149128a223f6dc25",
-      "size": 3920
+      "size": 5456,
+      "sha256": "30cad6ce319558f79d9040b2b81244bd9da28ca04421e544c4ed79eb972951cb"
     },
     {
       "path": "TEST_REPORT.md",
       "action": "ADD",
-      "sha256": "432f99892db7dd7602dab4e95b5c6ee528329218327c4b47989e46ac16ac1c09",
-      "size": 7791
+      "size": 9270,
+      "sha256": "3275bded2f42b0f1a34d4b6c41fed6534e45cd674dfb57b0f6f567156d998c61"
+    },
+    {
+      "path": "app/facility-operations.tsx",
+      "action": "REPLACE",
+      "size": 357912,
+      "sha256": "c99f569f8ce53541b4e49b60a115b0b4bd41f60af7c5685696c73e5e078d50f2"
     },
     {
       "path": "app/page.tsx",
       "action": "REPLACE",
-      "sha256": "402e0a035c55574283d1e01e3acb83c564caa2110d30e4bb2fed07782a94da28",
-      "size": 577913
+      "size": 577949,
+      "sha256": "2524ede6ae3b4ddf284ce0c25b8c7dcd713f744c5cb50a90a5c832279fd35c81"
     },
     {
       "path": "app/seamless-access.tsx",
       "action": "ADD",
-      "sha256": "773a4623c62063bc1ea06696a6d9291b1597d314beb05ba37d5ab68daf88df83",
-      "size": 28212
+      "size": 28310,
+      "sha256": "c484e0cf4da2c8b866a09490a5743cc75ff96a8f7c6eca02da7ecbedd9f725f6"
     },
     {
       "path": "app/seamless-display.tsx",
       "action": "ADD",
-      "sha256": "3a4305e19f2f11943edaa90a9a59c5f7ad89e264f2199cdb36777edd1b1f9564",
-      "size": 11684
+      "size": 13048,
+      "sha256": "714d588d2f7b8d13a5ed5628ee67d57c8f44f287161267fc3f76773396f0f155"
     },
     {
       "path": "app/seamless-shared.tsx",
       "action": "ADD",
-      "sha256": "5037d865e946f2cc45344c76fb304f995a48196ca74ae536247c723cbcd3499d",
-      "size": 9441
+      "size": 9469,
+      "sha256": "fa2d6d0ee3f2160366165d827ef23c66515c0f84d9e8d8d339b19a4080d9d941"
     },
     {
       "path": "app/seamless-staff.tsx",
       "action": "ADD",
-      "sha256": "51c8bdfb59cde3845d14d85fd6a290705eee2e77ce0269963dbe18b0ce1b67a9",
-      "size": 29919
+      "size": 34958,
+      "sha256": "a20f387640917969254b718295a0826c8e6840cd90b1da6b6cb7ed2276475133"
     },
     {
       "path": "app/seamless.css",
       "action": "ADD",
-      "sha256": "d45a61b5f4ab90ffdbd4b035df29c776f1b71924391139b67a5085fa94856ef3",
-      "size": 23769
+      "size": 23897,
+      "sha256": "f9ab38c01f02dda7f5b6ea7c5188b7b81ff1762aa38ed3974f048cf67b612b4d"
     },
     {
       "path": "app/staff-enrollment/page.tsx",
       "action": "ADD",
-      "sha256": "68eb7a008fa0085238e56feb4eff00b8e4dc6e70377d6bf458d70d1e0113efae",
-      "size": 11827
+      "size": 11827,
+      "sha256": "68eb7a008fa0085238e56feb4eff00b8e4dc6e70377d6bf458d70d1e0113efae"
     },
     {
       "path": "docs/CHANGELOG.md",
       "action": "REPLACE",
-      "sha256": "1f19a82fb9b4fd85092da604090b67a30043ca00b2d7620f276c71f8ed826526",
-      "size": 10287
+      "size": 10287,
+      "sha256": "1f19a82fb9b4fd85092da604090b67a30043ca00b2d7620f276c71f8ed826526"
     },
     {
       "path": "docs/SEAMLESS_ACCESS_INTEGRATION.md",
       "action": "ADD",
-      "sha256": "a9d86151d2b58020bf39cb805600f79930613070066bc4d688381d9bcbeb0558",
-      "size": 14045
+      "size": 14045,
+      "sha256": "a9d86151d2b58020bf39cb805600f79930613070066bc4d688381d9bcbeb0558"
     },
     {
       "path": "docs/SEAMLESS_OPERATIONS.md",
       "action": "ADD",
-      "sha256": "b35c1ad41778f9ddf62f992b941576ff0d82483f5535eb535a70fb88522fd9d0",
-      "size": 7603
+      "size": 9441,
+      "sha256": "424bf7811821b23bc273ee43cbaa4f4ceb8ca85b8cab9b560670d9a1054fde3e"
     },
     {
       "path": "face-service/.dockerignore",
       "action": "ADD",
-      "sha256": "d9244e02330edf17cd124cec512b12765e212e012ffe0eaaa96edfb37869a4a9",
-      "size": 78
+      "size": 78,
+      "sha256": "d9244e02330edf17cd124cec512b12765e212e012ffe0eaaa96edfb37869a4a9"
     },
     {
       "path": "face-service/.env.example",
       "action": "ADD",
-      "sha256": "37a3e3ec213493239040b3d9b8923c0f67ad101fb4397213ca451b5d0290f8f7",
-      "size": 269
+      "size": 269,
+      "sha256": "37a3e3ec213493239040b3d9b8923c0f67ad101fb4397213ca451b5d0290f8f7"
     },
     {
       "path": "face-service/.gitignore",
       "action": "ADD",
-      "sha256": "162ab9566103b911624569de682fd2d916aea124bec0ef287ded47b46426ab0a",
-      "size": 71
+      "size": 71,
+      "sha256": "162ab9566103b911624569de682fd2d916aea124bec0ef287ded47b46426ab0a"
     },
     {
       "path": "face-service/Dockerfile",
       "action": "ADD",
-      "sha256": "540d1a62daaa96dc65b021c9c400e271eff029d481c0cb5f11114d08e69a76ac",
-      "size": 421
+      "size": 421,
+      "sha256": "540d1a62daaa96dc65b021c9c400e271eff029d481c0cb5f11114d08e69a76ac"
     },
     {
       "path": "face-service/README.md",
       "action": "ADD",
-      "sha256": "f2f5b90a9ed1d8ece459d56cddb1f1184d365ebf34f1bb68e94378fa3c85e6a0",
-      "size": 7615
+      "size": 7615,
+      "sha256": "f2f5b90a9ed1d8ece459d56cddb1f1184d365ebf34f1bb68e94378fa3c85e6a0"
     },
     {
       "path": "face-service/compose.yaml",
       "action": "ADD",
-      "sha256": "0c397bf04e968a26542bd8616be6cf6769536758eee636ef45fb668513ef08a7",
-      "size": 464
+      "size": 464,
+      "sha256": "0c397bf04e968a26542bd8616be6cf6769536758eee636ef45fb668513ef08a7"
     },
     {
       "path": "face-service/engine.py",
       "action": "ADD",
-      "sha256": "ceef0dd59b46d3040496255daab632ffd0e5c6f1c8590d51a167ae9a819a67c1",
-      "size": 6049
+      "size": 6049,
+      "sha256": "ceef0dd59b46d3040496255daab632ffd0e5c6f1c8590d51a167ae9a819a67c1"
     },
     {
       "path": "face-service/models/LICENSE-SFACE",
       "action": "ADD",
-      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-      "size": 11358
+      "size": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
     },
     {
       "path": "face-service/models/LICENSE-YUNET",
       "action": "ADD",
-      "sha256": "c83b8120c50ccbd4c4f96edf53141bdd566ebb8f8e9227e415326aa1b1aba958",
-      "size": 1085
+      "size": 1085,
+      "sha256": "c83b8120c50ccbd4c4f96edf53141bdd566ebb8f8e9227e415326aa1b1aba958"
     },
     {
       "path": "face-service/models/MODEL_MANIFEST.json",
       "action": "ADD",
-      "sha256": "7e9720df929b5be07108a0491cace2e079d4a2e504b62cb01797b1a2f202593b",
-      "size": 1057
+      "size": 1057,
+      "sha256": "7e9720df929b5be07108a0491cace2e079d4a2e504b62cb01797b1a2f202593b"
     },
     {
       "path": "face-service/models/sface.onnx.part01",
       "action": "ADD",
-      "sha256": "f729ee9eb0a275a80ef0d12b1890c6bfbb57ad2600e472f52e21130e892e98b9",
-      "size": 20971520
+      "size": 20971520,
+      "sha256": "f729ee9eb0a275a80ef0d12b1890c6bfbb57ad2600e472f52e21130e892e98b9"
     },
     {
       "path": "face-service/models/sface.onnx.part02",
       "action": "ADD",
-      "sha256": "79aa121904c80659c911c37578c36a3a6fdd8c6c13149560e05c04f100e3f1b2",
-      "size": 17724833
+      "size": 17724833,
+      "sha256": "79aa121904c80659c911c37578c36a3a6fdd8c6c13149560e05c04f100e3f1b2"
     },
     {
       "path": "face-service/models/yunet.onnx",
       "action": "ADD",
-      "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
-      "size": 232589
+      "size": 232589,
+      "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
     },
     {
       "path": "face-service/prepare_models.py",
       "action": "ADD",
-      "sha256": "95982b213348f1bd2ea01cf665d5ed0101b1b4d08c9a16b1521209cfa1cb9561",
-      "size": 2398
+      "size": 2398,
+      "sha256": "95982b213348f1bd2ea01cf665d5ed0101b1b4d08c9a16b1521209cfa1cb9561"
     },
     {
       "path": "face-service/requirements.txt",
       "action": "ADD",
-      "sha256": "9d4fa9d94f8ef5e24bf94b4b8fb45f61c61f63e686cb29c6350f2cd289a96e02",
-      "size": 83
+      "size": 83,
+      "sha256": "9d4fa9d94f8ef5e24bf94b4b8fb45f61c61f63e686cb29c6350f2cd289a96e02"
     },
     {
       "path": "face-service/server.py",
       "action": "ADD",
-      "sha256": "76d1f10026b93b83e9d676655e8082eddb4d8ca56b8bb88eb920bba176bfa870",
-      "size": 2619
+      "size": 2619,
+      "sha256": "76d1f10026b93b83e9d676655e8082eddb4d8ca56b8bb88eb920bba176bfa870"
     },
     {
       "path": "face-service/tests/integration.mjs",
       "action": "ADD",
-      "sha256": "c56bc778b4bc619c8a4f900b3462fec345895c6bf5324a060b0d64de5c477011",
-      "size": 3982
+      "size": 3982,
+      "sha256": "c56bc778b4bc619c8a4f900b3462fec345895c6bf5324a060b0d64de5c477011"
     },
     {
       "path": "face-service/tests/test_engine.py",
       "action": "ADD",
-      "sha256": "a16e6cb006889bb74909d959a7d04018879b741621264b3348bb8dec5c7084c6",
-      "size": 3518
+      "size": 3518,
+      "sha256": "a16e6cb006889bb74909d959a7d04018879b741621264b3348bb8dec5c7084c6"
     },
     {
       "path": "face-service/tests/test_prepare_models.py",
       "action": "ADD",
-      "sha256": "b9e120445ed18446ad06211cc0456c71d23c108c9664c79e917c472cbc50323f",
-      "size": 3148
+      "size": 3148,
+      "sha256": "b9e120445ed18446ad06211cc0456c71d23c108c9664c79e917c472cbc50323f"
     },
     {
       "path": "lib/firebase/api.ts",
       "action": "REPLACE",
-      "sha256": "96ad63080b745a46007387dfd2c82bc74c4c0f9c8392363d1153f20979cb7b9c",
-      "size": 6022
+      "size": 6022,
+      "sha256": "96ad63080b745a46007387dfd2c82bc74c4c0f9c8392363d1153f20979cb7b9c"
     },
     {
       "path": "lib/seamless/adapters.mjs",
       "action": "ADD",
-      "sha256": "cabd75b93118611f80d22c161d8ce5d89d77e59392384c9e9295fd10c952c9e9",
-      "size": 3305
+      "size": 3305,
+      "sha256": "cabd75b93118611f80d22c161d8ce5d89d77e59392384c9e9295fd10c952c9e9"
     },
     {
       "path": "lib/seamless/core.mjs",
       "action": "ADD",
-      "sha256": "33d658b59b0c8b37a1f40804fefbdcd1175d6e5d6cf638b9234f08d0abd89089",
-      "size": 5342
+      "size": 5342,
+      "sha256": "33d658b59b0c8b37a1f40804fefbdcd1175d6e5d6cf638b9234f08d0abd89089"
     },
     {
       "path": "lib/seamless/operations.mjs",
       "action": "ADD",
-      "sha256": "cb6cfb63a93ef5f996ddd7e4b2dc184d144c0a13ab1e0053dc8aa6999bbd53b9",
-      "size": 35977
+      "size": 35977,
+      "sha256": "cb6cfb63a93ef5f996ddd7e4b2dc184d144c0a13ab1e0053dc8aa6999bbd53b9"
     },
     {
       "path": "lib/seamless/provider.mjs",
       "action": "ADD",
-      "sha256": "f5e2ad956272c677370974f053bd446f6422937e1dd667408f3a6554e5fa13c8",
-      "size": 224
+      "size": 224,
+      "sha256": "f5e2ad956272c677370974f053bd446f6422937e1dd667408f3a6554e5fa13c8"
     },
     {
       "path": "lib/seamless/registry.mjs",
       "action": "ADD",
-      "sha256": "c3777efc9f212d06b9a54beef5af370e68d61fc5b8f3e4352dbbe028cb38efb8",
-      "size": 16892
+      "size": 16892,
+      "sha256": "c3777efc9f212d06b9a54beef5af370e68d61fc5b8f3e4352dbbe028cb38efb8"
     },
     {
       "path": "lib/seamless/self-hosted.mjs",
       "action": "ADD",
-      "sha256": "aa045e1ced7b37a5009ddbff547a4fe35772d2e90b012e103d9aa891bf6c64cf",
-      "size": 2345
+      "size": 2345,
+      "sha256": "aa045e1ced7b37a5009ddbff547a4fe35772d2e90b012e103d9aa891bf6c64cf"
     },
     {
       "path": "lib/seamless/service.mjs",
       "action": "ADD",
-      "sha256": "b27774422537b34919104bbbdead28aff2a3878028f649d1c83e51d6da8052ea",
-      "size": 12284
+      "size": 12284,
+      "sha256": "b27774422537b34919104bbbdead28aff2a3878028f649d1c83e51d6da8052ea"
     },
     {
       "path": "netlify.toml",
       "action": "REPLACE",
-      "sha256": "d9f643973f5537d9b83a1380f0b7726269b84bdcee1023f7e270cf5e474aebb3",
-      "size": 2134
+      "size": 2134,
+      "sha256": "d9f643973f5537d9b83a1380f0b7726269b84bdcee1023f7e270cf5e474aebb3"
     },
     {
       "path": "netlify/functions/seamless-access.mjs",
       "action": "ADD",
-      "sha256": "3802cc62f3edaa4a9d06671ac284bd3ca15a00a47697ca5c256ddcac2a60dcc9",
-      "size": 1027
+      "size": 1027,
+      "sha256": "3802cc62f3edaa4a9d06671ac284bd3ca15a00a47697ca5c256ddcac2a60dcc9"
     },
     {
       "path": "netlify/functions/seamless-operations.mjs",
       "action": "ADD",
-      "sha256": "c23adee955bbedb3da1ef50f2a6520618e2f8d0b24faaa0087f65aae8a39443d",
-      "size": 3900
+      "size": 3900,
+      "sha256": "c23adee955bbedb3da1ef50f2a6520618e2f8d0b24faaa0087f65aae8a39443d"
     },
     {
       "path": "package.json",
       "action": "REPLACE",
-      "sha256": "44e5e8d7190d3a539618cb4762269304ac8f040b31807fa2db9d51795357995b",
-      "size": 1826
+      "size": 1826,
+      "sha256": "44e5e8d7190d3a539618cb4762269304ac8f040b31807fa2db9d51795357995b"
     },
     {
       "path": "private/staff-enrollment/README.md",
       "action": "ADD",
-      "sha256": "8f2dffc49a53eab95e168199874dd1e2df249aaccc9d99e09db5ca05cca91666",
-      "size": 589
+      "size": 589,
+      "sha256": "8f2dffc49a53eab95e168199874dd1e2df249aaccc9d99e09db5ca05cca91666"
     },
     {
       "path": "public/demo-media/README.md",
       "action": "ADD",
-      "sha256": "86122d8d9d7456f38469d7aef3c699ebee8612f82b5ef9064e0c621185e34924",
-      "size": 1084
+      "size": 1084,
+      "sha256": "86122d8d9d7456f38469d7aef3c699ebee8612f82b5ef9064e0c621185e34924"
     },
     {
       "path": "public/demo-media/camera/illustration.svg",
       "action": "ADD",
-      "sha256": "6d6956fe282e80a2d0a8a4ebcad6771834c5c6e370179c8dffbfe96998271343",
-      "size": 479
+      "size": 479,
+      "sha256": "6d6956fe282e80a2d0a8a4ebcad6771834c5c6e370179c8dffbfe96998271343"
     },
     {
       "path": "public/demo-media/layout/access-point.svg",
       "action": "ADD",
-      "sha256": "5a0a521eee0f25228545e32d33976bf5a46e83f5b71ae6b833b912d83e87bc3c",
-      "size": 784
+      "size": 784,
+      "sha256": "5a0a521eee0f25228545e32d33976bf5a46e83f5b71ae6b833b912d83e87bc3c"
     },
     {
       "path": "public/demo-media/manifest.json",
       "action": "ADD",
-      "sha256": "5eacc7181c4538ac89ad23ae6d45fdc1a45b0d9aaf4ae7862ca1993dc3aafe3c",
-      "size": 4550
+      "size": 4550,
+      "sha256": "5eacc7181c4538ac89ad23ae6d45fdc1a45b0d9aaf4ae7862ca1993dc3aafe3c"
     },
     {
       "path": "public/demo-media/passenger/illustration.svg",
       "action": "ADD",
-      "sha256": "13a8aa1bcc92ae90fc562fb0c55c0302728705c633b33d372d72a696eca8e197",
-      "size": 482
+      "size": 482,
+      "sha256": "13a8aa1bcc92ae90fc562fb0c55c0302728705c633b33d372d72a696eca8e197"
     },
     {
       "path": "public/demo-media/staff/illustration.svg",
       "action": "ADD",
-      "sha256": "3cc4c6c4f48f4074d047ec10b8c44531ed9d02c8bf5e0ef98badd4da8498cef8",
-      "size": 478
+      "size": 478,
+      "sha256": "3cc4c6c4f48f4074d047ec10b8c44531ed9d02c8bf5e0ef98badd4da8498cef8"
     },
     {
       "path": "tests/fixtures/standby.mp4",
       "action": "ADD",
-      "sha256": "7f9bc5913ff59efd513a5562205377938886745518d5c5fde50cf3d00b2350be",
-      "size": 2390
+      "size": 2390,
+      "sha256": "7f9bc5913ff59efd513a5562205377938886745518d5c5fde50cf3d00b2350be"
     },
     {
       "path": "tests/helpers/seamless-db.mjs",
       "action": "ADD",
-      "sha256": "6ee675d47049a74f02083205ba71a51dd5bc44eafb5fed64bcd64f51481a47cd",
-      "size": 3096
+      "size": 3096,
+      "sha256": "6ee675d47049a74f02083205ba71a51dd5bc44eafb5fed64bcd64f51481a47cd"
     },
     {
       "path": "tests/seamless-access.test.mjs",
       "action": "ADD",
-      "sha256": "7e2fd3549389436743cefb11ddbca19aeb680e3a81101363fe8ca11d9385f414",
-      "size": 15924
+      "size": 15924,
+      "sha256": "7e2fd3549389436743cefb11ddbca19aeb680e3a81101363fe8ca11d9385f414"
     },
     {
       "path": "tests/seamless-browser.mjs",
       "action": "ADD",
-      "sha256": "ec765178802bff573c66f3ae127607eb0b424ed59a78ed6bad64e09a45dcc768",
-      "size": 19815
+      "size": 22936,
+      "sha256": "c2dbea8e05b17f406bb040efa1fbcbfea5a4c9d6b2e7e2c6a0ab5233dc70f02a"
     },
     {
       "path": "tests/seamless-operations.test.mjs",
       "action": "ADD",
-      "sha256": "07cfcb6ae1606f7a52e5893d537a1f06ce3e7ac07d7e652afc60047a6b150451",
-      "size": 21523
+      "size": 21523,
+      "sha256": "07cfcb6ae1606f7a52e5893d537a1f06ce3e7ac07d7e652afc60047a6b150451"
     },
     {
       "path": "tests/seamless-registry.test.mjs",
       "action": "ADD",
-      "sha256": "11f30205126dff873c664acd9cf2d1240c34199c4f06b8217f0ef4033b7808d0",
-      "size": 8258
+      "size": 8258,
+      "sha256": "11f30205126dff873c664acd9cf2d1240c34199c4f06b8217f0ef4033b7808d0"
     },
     {
       "path": "tests/ui-foundation.test.mjs",
       "action": "REPLACE",
-      "sha256": "d8d264849210fb253aab4173c7ccd566c49a9e560031ca79a69d231ac1c428af",
-      "size": 40755
+      "size": 40862,
+      "sha256": "ed1898d706b509823bc19c73da75d902cc25d24a1cdbb78cf4925f563821b523"
     }
   ],
   "manifestFile": "DELTA_MANIFEST.json",

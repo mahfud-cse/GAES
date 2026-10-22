@@ -53,6 +53,7 @@ let faceCount = 0,
 let connected = false,
   gateMode = "confirmed",
   commands = 0;
+let photoSaveFails = false, detectionFails = false;
 const objects = new Map();
 const provider = {
   get configured() {
@@ -72,7 +73,7 @@ const provider = {
     displayName: "Budi",
     flight: "GA204",
   }),
-  detect: async () => ({ faceCount }),
+  detect: async () => { if (detectionFails) throw new Error("SERVICE_UNAVAILABLE"); return { faceCount }; },
   verifyOneToOne: async (s) => ({
     matched: true,
     livenessPassed: liveness,
@@ -103,7 +104,7 @@ const service = createOperationsService({
   audit: (tx, d, _, record) => tx.set(d.collection("auditLogs").doc(), record),
   provider,
   media: {
-    save: async (path, image, meta) => objects.set(path, { image, meta }),
+    save: async (path, image, meta) => { if (photoSaveFails) throw new Error("STORAGE_NOT_CONNECTED"); return objects.set(path, { image, meta }); },
     validate: async (path) => objects.get(path)?.meta || {},
     readUrl: async (path) =>
       `data:${objects.get(path).image.contentType};base64,${objects.get(path).image.bytes.toString("base64")}`,
@@ -261,7 +262,7 @@ try {
   await page.getByLabel("Station", { exact: true }).selectOption("CGK");
   await page.getByLabel("Lounge", { exact: true }).selectOption("lounge-1");
   await page.getByRole("button", { name: "Buka layar lounge" }).waitFor();
-  await page.getByLabel("Video iklan saat standby").selectOption("video-1");
+  await page.getByLabel("Video saat layar siaga").selectOption("video-1");
   await page.getByLabel("Denah lounge").selectOption("map-1");
   await page.getByLabel("Orientasi layar").selectOption("portrait");
   await page.getByRole("button", { name: "Simpan pengaturan" }).click();
@@ -336,6 +337,25 @@ try {
       document.querySelector(".sa-live-camera video")?.srcObject?.active ===
       true,
   );
+  await display.getByText("Verifikasi wajah belum tersedia. Petugas kami siap membantu.").waitFor();
+  assert.equal(await display.getAttribute("data-phase"), "camera");
+  assert.equal(await display.locator(".sa-display-idle").count(), 0);
+  assert.equal(await display.locator(".sa-live-camera").evaluate(el => getComputedStyle(el).opacity), "1");
+  pass("disconnected engine keeps the live camera visible with an honest service message, never a false welcome/idle state");
+  connected = true;
+  await display.locator(".sa-idle-video").waitFor({ timeout: 16000 });
+  faceCount = 1;
+  await display.getByText("Silakan lakukan check-in atau tunjukkan kartu kepada petugas.").waitFor({ timeout: 8000 });
+  assert.equal(await display.getAttribute("data-phase"), "camera");
+  assert.equal(commands, 0);
+  pass("engine recovers without reopening display; a detected face reveals camera and check-in guidance when no identity session exists");
+  detectionFails = true;
+  await display.getByText("Verifikasi belum tersedia. Silakan hubungi petugas.").waitFor({ timeout: 8000 });
+  assert.equal(await display.getAttribute("data-phase"), "camera");
+  pass("face detection failure shows the live camera and assistance message, not a welcome screen");
+  detectionFails = false;
+  faceCount = 0;
+  await display.locator(".sa-idle-video").waitFor({ timeout: 8000 });
   assert.ok(
     await display
       .locator(".sa-idle-video")
@@ -345,6 +365,7 @@ try {
     "display opens directly with camera standby and idle advertising; no guest buttons, login form or category input",
   );
   await page.keyboard.press("Escape");
+  connected = false;
   await page.getByLabel("Orientasi layar").selectOption("landscape");
   await page.getByRole("button", { name: "Buka layar lounge" }).click();
   assert.equal(
@@ -370,7 +391,7 @@ try {
   await page.getByLabel("Nama lengkap").fill("Station Staff");
   await page.getByLabel("Nomor pegawai", { exact: true }).fill("GA999");
   await page.getByLabel("Unit kerja").fill("Station Operations");
-  await page.getByLabel("Lounge yang ditugaskan").selectOption("lounge-1");
+  await page.getByLabel("Lokasi penugasan").selectOption("lounge-1");
   await page.getByRole("checkbox").nth(0).check();
   await page.getByRole("checkbox").nth(1).check();
   await page
@@ -387,16 +408,31 @@ try {
     c.getContext("2d").fillRect(0, 0, 80, 80);
     return c.toDataURL("image/png");
   });
+  await page.getByLabel("Petugas menyetujui penggunaan foto untuk verifikasi wajah.", { exact: true }).uncheck();
+  assert.equal(await page.locator("input[type=file]").isDisabled(), true);
+  await page.getByText("Centang persetujuan di atas untuk mengunggah foto atau menggunakan kamera.").waitFor();
+  await page.getByLabel("Petugas menyetujui penggunaan foto untuk verifikasi wajah.", { exact: true }).check();
+  await page.locator("input[type=file]").setInputFiles({name: "large.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(1000001)});
+  await page.getByRole("alert").filter({hasText: "Ukuran foto terlalu besar"}).waitFor();
+  assert.equal(await page.getByRole("button", {name: "Simpan dan ajukan verifikasi", exact: true}).isDisabled(), true);
+  pass("photo consent is explained beside upload; oversized photos show precise local error and cannot be submitted");
+  photoSaveFails = true;
+  await page.locator("input[type=file]").setInputFiles({name: "retry.png", mimeType: "image/png", buffer: Buffer.from(sample.split(",")[1], "base64")});
+  await page.getByRole("alert").filter({hasText: "Penyimpanan foto belum terhubung"}).waitFor();
+  await page.locator(".sa-photo-preview").waitFor();
+  assert.equal(await page.getByRole("button", {name: "Simpan dan ajukan verifikasi", exact: true}).isDisabled(), true);
+  photoSaveFails = false;
+  pass("storage failure retains local preview, explains that the photo is unsaved, blocks submission and permits retry");
   await page.locator("input[type=file]").setInputFiles({
     name: "test.png",
     mimeType: "image/png",
     buffer: Buffer.from(sample.split(",")[1], "base64"),
   });
-  await page.getByText("Foto siap dikirim untuk peninjauan.").waitFor();
+  await page.getByText("Foto tersimpan. Ajukan verifikasi untuk melanjutkan.").waitFor();
   await page
-    .getByRole("button", { name: "Kirim foto untuk peninjauan", exact: true })
+    .getByRole("button", { name: "Simpan dan ajukan verifikasi", exact: true })
     .click();
-  await page.getByText("Foto dikirim.", { exact: false }).waitFor();
+  await page.getByText("Pengajuan terkirim.", { exact: false }).waitFor();
   pass(
     "photo attachment stores and submits enrollment for an independent staff record",
   );
@@ -411,13 +447,13 @@ try {
     .getByRole("button", { name: "Ambil foto", exact: true })
     .last()
     .click();
-  await page.getByText("Foto siap dikirim untuk peninjauan.").waitFor();
+  await page.getByText("Foto tersimpan. Ajukan verifikasi untuk melanjutkan.").waitFor();
   pass("staff camera source captures and stores a photo");
   await page
-    .getByRole("button", { name: "Buat tautan enrollment", exact: true })
+    .getByRole("button", { name: "Buat tautan pendaftaran", exact: true })
     .click();
   const link = await page
-    .getByLabel("Tautan enrollment", { exact: true })
+    .getByLabel("Tautan pendaftaran", { exact: true })
     .inputValue();
   assert.match(link, /#registry:[a-f0-9]{64}$/);
   const self = await context.newPage();
@@ -468,9 +504,9 @@ try {
     .selectOption({ label: "Station Staff · GA999 · CGK" });
   await page.getByRole("checkbox").nth(0).check();
   await page
-    .getByRole("button", { name: "Setujui & aktifkan", exact: true })
+    .getByRole("button", { name: "Setujui dan aktifkan", exact: true })
     .click();
-  await page.getByText("Enrollment disetujui dan akses diaktifkan.").waitFor();
+  await page.getByText("Pendaftaran wajah aktif. Siapkan sesi verifikasi untuk mencoba pencocokan wajah.").waitFor();
   await page
     .getByRole("button", { name: "Operasional & Layar Lounge", exact: true })
     .click();
@@ -513,7 +549,7 @@ try {
     .getByRole("button", { name: "Staff Registration", exact: true })
     .click();
   await page
-    .getByRole("heading", { name: "Staff registration & enrollment" })
+    .getByRole("heading", { name: "Staff registration and face enrollment" })
     .waitFor();
   await page.getByLabel("Staff account (optional)", { exact: true }).waitFor();
   pass(

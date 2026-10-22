@@ -523,14 +523,15 @@ test("implements priority-based quick announcements and safe display standby", a
   assert.doesNotMatch(`${module}\n${page}`, /jadwald/i);
 });
 
-test("accepts safe local demo media and preserves tab contrast", async () => {
+test("keeps supported media sources with operational instructions and tab contrast", async () => {
   const [module, contentBackend, css] = await Promise.all([
     read("../app/facility-operations.tsx"),
     read("../netlify/functions/manage-display-content.mjs"),
     read("../app/globals.css"),
   ]);
   assert.match(module, /inputMode="url"/);
-  assert.match(module, /\/demo-media\/nama-file\.mp4/);
+  assert.match(module, /Masukkan tautan gambar atau video, atau unggah media/);
+  assert.doesNotMatch(module, /Demo lokal dapat menggunakan/);
   assert.match(contentBackend, /localDemoMedia/);
   assert.match(contentBackend, /!sourceUrl\.includes\("\.\."\)/);
   assert.match(

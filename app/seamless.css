@@ -428,8 +428,13 @@
   flex: 1;
   border: 0;
   background: none;
+  color: var(--sa-navy);
   padding: 10px 7px;
   font-size: 11px;
+}
+.sa-root .sa-segmented button:hover:not(:disabled) {
+  color: var(--sa-navy);
+  background: #e5edf4;
 }
 .sa-root .sa-segmented button[aria-pressed="true"] {
   background: white;

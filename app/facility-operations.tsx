@@ -955,7 +955,9 @@ export default function FacilityOperations({
   lounges,
   user,
   route,
+  language = "ID",
 }: {
+  language?: "ID" | "EN";
   account: FacilityAccount;
   stations: StationOption[];
   lounges: LoungeOption[];
@@ -966,6 +968,7 @@ export default function FacilityOperations({
     nonce: number;
   } | null;
 }) {
+  const contentText = (id: string, en: string) => language === "ID" ? id : en;
   const [activeTab, setActiveTab] = useState<ModuleTab>("Overview");
   const [rooms, setRooms] = useState<RoomRecord[]>([]);
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
@@ -7459,12 +7462,12 @@ export default function FacilityOperations({
                         })
                       }
                     >
-                      <option>Any</option>
-                      <option>Landscape</option>
-                      <option>Portrait</option>
+                      <option value="Any" data-native-language="true">{contentText("Semua orientasi", "All orientations")}</option>
+                      <option value="Landscape" data-native-language="true">{contentText("Mendatar", "Landscape")}</option>
+                      <option value="Portrait" data-native-language="true">{contentText("Tegak", "Portrait")}</option>
                     </select>
-                    <small>
-                      Landscape 16:9 direkomendasikan 1920×1080; portrait 9:16 direkomendasikan 1080×1920.
+                    <small data-native-language="true">
+                      {contentText("Ukuran yang disarankan: mendatar 1920 × 1080 piksel; tegak 1080 × 1920 piksel.", "Recommended size: landscape 1920 × 1080 pixels; portrait 1080 × 1920 pixels.")}
                     </small>
                   </label>
                   <label>
@@ -7494,11 +7497,11 @@ export default function FacilityOperations({
                           sourceUrl: event.target.value,
                         })
                       }
-                      placeholder="https://... atau /demo-media/nama-file.mp4"
+                      data-native-language="true"
+                      placeholder="https://…"
                     />
-                    <small>
-                      Demo lokal dapat menggunakan /demo-media/nama-file.jpg
-                      atau .mp4 dari folder public/demo-media.
+                    <small data-native-language="true">
+                      {contentText("Masukkan tautan gambar atau video, atau unggah media melalui kolom di bawah.", "Enter an image or video link, or upload media using the field below.")}
                     </small>
                   </label>
                   {!["Live TV", "Web URL"].includes(

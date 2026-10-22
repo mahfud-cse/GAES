@@ -68,7 +68,9 @@ export default function SeamlessStaff({
     [filename, setFilename] = useState(""),
     [photos, setPhotos] = useState<Photo[]>([]),
     [invite, setInvite] = useState(""),
-    [preview, setPreview] = useState("");
+    [preview, setPreview] = useState(""),
+    [photoStatus, setPhotoStatus] = useState(""),
+    [photoError, setPhotoError] = useState("");
   const {
     video: videoRef,
     ready: cameraReady,
@@ -133,20 +135,40 @@ export default function SeamlessStaff({
     setLoungeId(s?.registration.loungeIds?.[0] || s?.loungeId || "");
     setPhotos([]);
     setPreview("");
+    setPhotoStatus("");
+    setPhotoError("");
     setInvite("");
     setConsent(false);
     setIdentity(false);
     stopCamera();
   };
-  const run = async (work: () => Promise<unknown>, message: string) => {
+  const run = async (
+    work: () => Promise<unknown>,
+    message: string,
+    photoTask = false,
+  ) => {
     if (busy) return;
     setBusy(true);
     setNotice("");
+    if (photoTask) {
+      setPhotos([]);
+      setPreview("");
+      setPhotoError("");
+      setPhotoStatus("uploading");
+    }
     try {
       await work();
+      if (photoTask) setPhotoStatus("stored");
       setNotice(message);
-      await load();
+      await load().catch(() => setNotice(t(
+        "Perubahan tersimpan, tetapi daftar belum dapat diperbarui. Muat ulang halaman untuk melihat data terbaru.",
+        "Changes were saved, but the list could not be refreshed. Reload the page to see the latest details.",
+      )));
     } catch (e) {
+      if (photoTask) {
+        setPhotoStatus("failed");
+        setPhotoError(errorMessage(e, language));
+      }
       setNotice(errorMessage(e, language));
     } finally {
       setBusy(false);
@@ -171,12 +193,13 @@ export default function SeamlessStaff({
         setUid(result.uid as string);
       },
       t(
-        "Registrasi tersimpan. Lanjutkan dengan foto enrollment.",
-        "Registration saved. Continue with enrollment photos.",
+        "Registrasi tersimpan. Lanjutkan dengan menambahkan foto wajah.",
+        "Registration saved. Continue by adding a face photo.",
       ),
     );
   };
   const upload = async (data: string, pose = "front") => {
+    setPreview(data);
     const d = await api({
       action: "registry-photo-upload",
       uid,
@@ -197,14 +220,14 @@ export default function SeamlessStaff({
           </p>
           <h2>
             {t(
-              "Registrasi & enrollment petugas",
-              "Staff registration & enrollment",
+              "Registrasi dan pendaftaran wajah petugas",
+              "Staff registration and face enrollment",
             )}
           </h2>
           <p>
             {t(
-              "Kelola profil, penugasan, dan referensi verifikasi dalam satu alur.",
-              "Manage staff details, assignments and verification references in one workflow.",
+              "Lengkapi identitas, tambahkan foto, lalu ajukan pendaftaran wajah petugas.",
+              "Complete staff details, add a photo, then submit the face enrollment.",
             )}
           </p>
         </div>
@@ -266,12 +289,12 @@ export default function SeamlessStaff({
                 </label>
                 <label>
                   {t(
-                    "Cari akun User & Role (opsional)",
-                    "Search User & Role accounts (optional)",
+                    "Cari akun portal (opsional)",
+                    "Search portal accounts (optional)",
                   )}
                   <input
                     value={accountSearch}
-                    placeholder={t("Nama atau role", "Name or role")}
+                    placeholder={t("Nama atau peran", "Name or role")}
                     onChange={(e) => setAccountSearch(e.target.value)}
                   />
                 </label>
@@ -341,7 +364,7 @@ export default function SeamlessStaff({
                   />
                 </label>
                 <label>
-                  {t("Lounge yang ditugaskan", "Assigned lounge")}
+                  {t("Lokasi penugasan", "Assigned lounge")}
                   <select
                     required
                     value={loungeId}
@@ -365,8 +388,8 @@ export default function SeamlessStaff({
               </div>
               <p className="sa-help">
                 {t(
-                  "Akun portal bersifat opsional dan diambil dari User & Role. Penugasan lounge menggunakan master data existing.",
-                  "A portal account is optional and comes from User & Role. Lounge assignments use existing master data.",
+                  "Akun portal hanya menghubungkan profil petugas dengan akun yang sudah ada. Memilih akun tidak memverifikasi wajah. Petugas tanpa akun portal tetap dapat didaftarkan.",
+                  "A portal account only links this staff profile to an existing account. Selecting an account does not verify a face. Staff without a portal account can still be registered.",
                 )}
               </p>
               <label className="sa-check">
@@ -426,7 +449,7 @@ export default function SeamlessStaff({
         <section className="sa-panel">
           <div className="sa-step-title">
             <span>02</span>
-            <h3>{t("Foto & enrollment", "Photos & enrollment")}</h3>
+            <h3>{t("Pendaftaran wajah", "Face enrollment")}</h3>
           </div>
           {!registered ? (
             <div className="sa-empty">
@@ -449,11 +472,50 @@ export default function SeamlessStaff({
                     {selected.unit} · {selected.station}
                   </p>
                 </div>
-                <StatusTag
-                  value={selected.registration.status || "Pending"}
-                  language={language}
-                />
+                {selected.registration.status === "Active" ||
+                selected.registration.status === "PendingReview" ? (
+                  <StatusTag
+                    value={selected.registration.status}
+                    language={language}
+                  />
+                ) : (
+                  <span className="sa-tag">
+                    {selected.hasPhoto
+                      ? t("Foto belum diajukan", "Photo not submitted")
+                      : t(
+                          "Foto wajah belum ditambahkan",
+                          "Face photo required",
+                        )}
+                  </span>
+                )}
               </div>
+              <p className="sa-help">
+                {t(
+                  "Gunakan foto dengan satu wajah yang terlihat jelas, menghadap kamera, dan pencahayaan cukup. Setelah foto tersimpan, ajukan verifikasi lalu minta administrator menyetujui pendaftaran wajah.",
+                  "Use a well-lit photo showing one clear face looking at the camera. After saving the photo, submit it for verification and ask an administrator to approve the face enrollment.",
+                )}
+              </p>
+              <label className="sa-check">
+                <input
+                  type="checkbox"
+                  checked={consent}
+                  onChange={(e) => setConsent(e.target.checked)}
+                />
+                <span>
+                  {t(
+                    "Petugas menyetujui penggunaan foto untuk verifikasi wajah.",
+                    "The staff member consents to using the photo for face verification.",
+                  )}
+                </span>
+              </label>
+              {!consent && (
+                <p className="sa-help">
+                  {t(
+                    "Centang persetujuan di atas untuk mengunggah foto atau menggunakan kamera.",
+                    "Select the consent checkbox above to upload a photo or use the camera.",
+                  )}
+                </p>
+              )}
               <div
                 className="sa-segmented"
                 aria-label={t("Sumber foto", "Photo source")}
@@ -496,9 +558,10 @@ export default function SeamlessStaff({
                           void run(
                             async () => upload(await photoData(file)),
                             t(
-                              "Foto siap dikirim untuk peninjauan.",
-                              "Photo ready to submit for review.",
+                              "Foto tersimpan. Ajukan verifikasi untuk melanjutkan.",
+                              "Photo saved. Submit it for verification to continue.",
                             ),
+                            true,
                           );
                         e.target.value = "";
                       }}
@@ -534,9 +597,10 @@ export default function SeamlessStaff({
                               stopCamera();
                             },
                             t(
-                              "Foto siap dikirim untuk peninjauan.",
-                              "Photo ready to submit for review.",
+                              "Foto tersimpan. Ajukan verifikasi untuk melanjutkan.",
+                              "Photo saved. Submit it for verification to continue.",
                             ),
+                            true,
                           )
                         }
                       >
@@ -603,6 +667,7 @@ export default function SeamlessStaff({
                             setPreview("");
                           },
                           t("Foto berhasil diimpor.", "Photo imported."),
+                          true,
                         )
                       }
                     >
@@ -615,19 +680,52 @@ export default function SeamlessStaff({
                 <img
                   className="sa-photo-preview"
                   src={preview}
-                  alt={t("Foto enrollment petugas", "Staff enrollment photo")}
+                  alt={t("Foto wajah petugas", "Staff face photo")}
                 />
+              )}
+              {photoStatus === "uploading" && (
+                <p role="status">
+                  {t(
+                    "Mengunggah dan menyimpan foto…",
+                    "Uploading and saving photo…",
+                  )}
+                </p>
+              )}
+              {photoError && (
+                <p role="alert">
+                  {photoError}{" "}
+                  {t(
+                    "Foto baru belum tersimpan. Pilih foto lain atau coba kembali.",
+                    "The new photo was not saved. Choose another photo or try again.",
+                  )}
+                </p>
               )}
               <div className="sa-actions">
                 <span className="sa-help">
-                  {photos.length
-                    ? t("Foto baru siap dikirim.", "New photo ready to submit.")
-                    : selected.hasPhoto
+                  {photoStatus === "uploading"
+                    ? t(
+                        "Mohon tunggu hingga foto selesai disimpan.",
+                        "Please wait until the photo is saved.",
+                      )
+                    : photos.length
                       ? t(
-                          "Foto tersimpan untuk peninjauan.",
-                          "Photo stored for review.",
+                          "Foto tersimpan dan siap diajukan.",
+                          "Photo saved and ready to submit.",
                         )
-                      : t("Belum ada foto.", "No photo yet.")}
+                      : selected.registration.status === "Active"
+                        ? t(
+                            "Pendaftaran wajah aktif.",
+                            "Face enrollment is active.",
+                          )
+                        : selected.hasPhoto
+                          ? t(
+                              "Foto tersimpan untuk peninjauan.",
+                              "Photo stored for review.",
+                            )
+                          : t(
+                              "Foto wajah belum ditambahkan.",
+                              "No face photo has been added.",
+                            )}
                 </span>
                 {selected.hasPhoto && (
                   <button
@@ -669,16 +767,29 @@ export default function SeamlessStaff({
                       setPhotos([]);
                     },
                     t(
-                      "Foto dikirim. Enrollment menunggu peninjauan admin.",
-                      "Photos submitted. Enrollment awaits administrator review.",
+                      "Pengajuan terkirim. Administrator perlu memeriksa dan mengaktifkan pendaftaran wajah.",
+                      "Submission received. An administrator must review and activate the face enrollment.",
                     ),
                   )
                 }
               >
-                {t("Kirim foto untuk peninjauan", "Submit photos for review")}
+                {t(
+                  "Simpan dan ajukan verifikasi",
+                  "Save and submit for verification",
+                )}
               </button>
+              {!photos.length && (
+                <p className="sa-help">
+                  {t(
+                    "Tambahkan foto baru sebelum mengajukan verifikasi. Jika foto sudah diajukan, lanjutkan ke persetujuan di bawah.",
+                    "Add a new photo before submitting for verification. If a photo has already been submitted, continue to approval below.",
+                  )}
+                </p>
+              )}
               <div className="sa-invite">
-                <h4>{t("Enrollment mandiri", "Self enrollment")}</h4>
+                <h4>
+                  {t("Pendaftaran wajah mandiri", "Self face enrollment")}
+                </h4>
                 <p>
                   {t(
                     "Buat tautan sekali pakai, berlaku 24 jam. Petugas mengikuti panduan foto depan, kanan, dan kiri.",
@@ -706,12 +817,12 @@ export default function SeamlessStaff({
                     )
                   }
                 >
-                  {t("Buat tautan enrollment", "Create enrollment link")}
+                  {t("Buat tautan pendaftaran", "Create enrollment link")}
                 </button>
                 {invite && (
                   <div className="sa-link-copy">
                     <input
-                      aria-label={t("Tautan enrollment", "Enrollment link")}
+                      aria-label={t("Tautan pendaftaran", "Enrollment link")}
                       readOnly
                       value={invite}
                     />
@@ -743,8 +854,8 @@ export default function SeamlessStaff({
                 <p>
                   {identityConnected
                     ? t(
-                        "Aktifkan setelah identitas dan hasil enrollment diperiksa.",
-                        "Activate after reviewing the identity and enrollment result.",
+                        "Periksa identitas dan foto, lalu pilih Setujui dan aktifkan. Foto akan diperiksa oleh mesin verifikasi wajah.",
+                        "Review the identity and photo, then select Approve and activate. The face verification engine will check the photo.",
                       )
                     : t(
                         "Registrasi dan foto dapat disimpan. Aktivasi menunggu layanan verifikasi wajah terhubung; foto saja tidak mengaktifkan akses.",
@@ -770,13 +881,13 @@ export default function SeamlessStaff({
                             identityConfirmed: identity,
                           }),
                         t(
-                          "Enrollment disetujui dan akses diaktifkan.",
-                          "Enrollment approved and access activated.",
+                          "Pendaftaran wajah aktif. Siapkan sesi verifikasi untuk mencoba pencocokan wajah.",
+                          "Face enrollment is active. Prepare a verification session to try face comparison.",
                         ),
                       )
                     }
                   >
-                    {t("Setujui & aktifkan", "Approve & activate")}
+                    {t("Setujui dan aktifkan", "Approve and activate")}
                   </button>
                   <button
                     className="sa-danger"

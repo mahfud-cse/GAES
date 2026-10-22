@@ -169,10 +169,8 @@ export function errorMessage(error: unknown, language: Language) {
   ];
 }
 export async function photoData(file: File): Promise<string> {
-  if (
-    !["image/jpeg", "image/png", "image/webp"].includes(file.type) ||
-    file.size > 1000000
-  )
+  if (file.size > 1000000) throw new Error("PHOTO_TOO_LARGE");
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type))
     throw new Error("INVALID_PHOTO");
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

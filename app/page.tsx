@@ -9222,6 +9222,7 @@ export default function Home() {
             firebaseUser &&
             canSeeFacility && (
               <FacilityOperations
+                language={language}
                 user={firebaseUser}
                 route={facilityRoute}
                 account={{

@@ -1,3 +1,15 @@
+# V4 — practical staff setup and lounge display
+
+1. Register staff identity and lounge assignment. Portal account is optional: it links an existing account, not a verified face.
+2. Record the staff member's photo-processing consent beside the photo controls. Upload JPG/PNG/WebP up to 1,000,000 bytes, or use camera/repository.
+3. Confirm the preview and saved status, then select Save and submit for verification. A preview after a failed upload is local only and cannot be submitted.
+4. An authorized administrator checks identity and approves face enrollment. This needs the separately deployed project-owned Python engine; an uploaded photo alone is not an active reference.
+5. In operations choose station/lounge, screen orientation and optional idle video/map. Check service connections. Use operator controls to prepare one consented staff session by employee number (valid 2 minutes), then open the display. Selecting a portal account does not prepare that session.
+6. The display starts with camera. Unavailable service or detection errors show camera and assistance instead of staying on welcome. Service readiness is retried automatically while unavailable. With a healthy engine, no-face detection shows idle video; face presence shows camera and consumes one prepared identity session. Without that session the display directs the person to check-in/staff.
+7. Verification results replace camera, then reset after 10 seconds. First-stage matching still requires staff confirmation: liveness is not implemented, so no gate-opening command is issued by a face match alone.
+
+ID/EN copy is supplied for the changed workflows. Existing Firebase/auth/master-data paths and document verification remain in use. Production deployment and physical camera/server acceptance are separate from the automated checks in TEST_REPORT.md.
+
 # Seamless Access V3 — first-stage local engine and UX correction
 
 This is the current implementation guide. Earlier simulator and V2 descriptions

@@ -335,10 +335,7 @@ export default function SeamlessAccess({
                         onChange={(e) => setLoungeId(e.target.value)}
                       >
                         <option value="">
-                          {t(
-                            "Pilih lounge dari master data",
-                            "Select a lounge from master data",
-                          )}
+                          {t("Pilih lounge", "Select lounge")}
                         </option>
                         {lounges
                           .filter(
@@ -362,17 +359,18 @@ export default function SeamlessAccess({
                           )
                         }
                       >
-                        <option value="landscape">Landscape · 16:9</option>
-                        <option value="portrait">Portrait · 9:16</option>
+                        <option value="landscape">
+                          {t("Mendatar", "Landscape")} · 16:9
+                        </option>
+                        <option value="portrait">
+                          {t("Tegak", "Portrait")} · 9:16
+                        </option>
                       </select>
                     </label>
                     {boot.canManage && (
                       <>
                         <label>
-                          {t(
-                            "Video iklan saat standby",
-                            "Standby advertising video",
-                          )}
+                          {t("Video saat layar siaga", "Video while idle")}
                           <select
                             value={videoId}
                             disabled={!settingsReady}
@@ -400,7 +398,10 @@ export default function SeamlessAccess({
                             onChange={(e) => setLayoutId(e.target.value)}
                           >
                             <option value="">
-                              {t("Tanpa QR denah", "Without map QR")}
+                              {t(
+                                "Tidak menampilkan kode QR",
+                                "Do not show a QR code",
+                              )}
                             </option>
                             {boot.layouts
                               .filter(
@@ -420,8 +421,8 @@ export default function SeamlessAccess({
                   </div>
                   <p className="sa-help">
                     {t(
-                      "Station dan lounge mengikuti master data existing. Video berasal dari Pustaka Konten dan QR menggunakan denah lounge yang dipublikasikan.",
-                      "Stations and lounges use existing master data. Videos use the Content Library; QR codes use published lounge maps.",
+                      "Pilih station dan lounge, lalu atur orientasi layar, video saat siaga, dan denah yang ingin ditampilkan.",
+                      "Select a station and lounge, then choose the screen orientation, idle video and lounge map.",
                     )}
                   </p>
                   <div className="sa-actions">
@@ -445,8 +446,8 @@ export default function SeamlessAccess({
                   </div>
                   <p className="sa-help">
                     {t(
-                      "Layar bersifat display saja. Kamera aktif saat dibuka; video ditampilkan saat idle. Tekan Esc pada perangkat operator untuk keluar.",
-                      "The lounge screen is display only. The camera activates on opening; video plays while idle. Press Esc on the operator device to exit.",
+                      "Layar langsung membuka kamera. Video ditampilkan saat tidak ada wajah terdeteksi dan layanan siap. Siapkan sesi melalui kontrol operator untuk memulai verifikasi. Tekan Esc untuk keluar.",
+                      "The display opens directly to the camera. Video plays when no face is detected and the service is ready. Prepare a session in operator controls to start verification. Press Esc to exit.",
                     )}
                   </p>
                 </section>
@@ -570,8 +571,8 @@ export default function SeamlessAccess({
                   </h3>
                   <p>
                     {t(
-                      "Video standby → kamera → hasil verifikasi",
-                      "Standby video → camera → verification result",
+                      "Kamera → hasil verifikasi · Video saat layar siaga",
+                      "Camera → verification result · Video while idle",
                     )}
                   </p>
                   {qr && (

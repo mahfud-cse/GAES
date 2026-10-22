@@ -1,3 +1,12 @@
+# V4 validation — current UI and camera correction
+
+- Full npm test passed: 11 normalization, 40 UI and 84 seamless service tests (135 total); ESLint 0 errors / 32 existing warnings; Next.js production build and TypeScript passed.
+- 20 browser checks passed with zero uncaught runtime errors, using the real React components and GAES operations/registry code with explicit Auth/Firestore/Storage/camera/face/gate test doubles.
+- New regressions covered: camera visible while engine unavailable; automatic readiness recovery without reopening; detected face without prepared identity gets check-in guidance; detection failures show camera assistance; consent blocking explained locally; oversized attachment message; failed storage retains local preview without allowing submission; retry succeeds.
+- Existing display-only, orientation, full viewport/inert background, master-data sources, accountless registration, camera photo, guided invitation, mobile width, ID/EN, 1:1 queue/result and no-gate-without-liveness coverage remains passing.
+- The stale UI source assertion requiring demo helper text was replaced with operational-copy assertions; support for safe existing local media paths is retained in the backend.
+- Camera/face behavior in browser tests is simulated; actual model inference and split-model reconstruction were checked in earlier V3/V3.1 runs documented below. No production Firebase, hosted engine or physical gate acceptance is claimed by this package.
+
 # Split-model packaging verification
 
 - Seven assembler tests passed: exact reconstruction/reuse; missing, corrupted and reordered parts; invalid output; traversal and symlink rejection.

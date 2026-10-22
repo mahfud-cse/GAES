@@ -1,3 +1,14 @@
+# V4 — staff photo guidance and lounge camera flow
+
+- Optional portal accounts link staff profiles only; selecting an account does not enroll or verify a face.
+- ID/EN wording clarifies registration, photo storage, review, activation and operator-prepared verification sessions.
+- Consent guidance is beside photo input; oversized photos get a specific error. Local preview appears before upload finishes; failed storage is explained beside the photo and blocks submission, with retry supported.
+- Lounge display starts on camera. Unavailable/failed engine never leaves a misleading welcome screen; the display retries readiness every 10 seconds while unavailable. Healthy no-face detection permits idle video; detected faces reveal camera, then an explicitly prepared 1:1 session produces a verification result.
+- Display has no passenger/staff chooser, login or guest controls. Portrait/landscape and operator Escape exit preserved.
+- Content library orientation and media-source instructions are localized; demo implementation hints removed from the reviewed form.
+- Full npm test passed: 135 Node tests, lint 0 errors (32 existing warnings), TypeScript and production build. 20 browser checks passed with camera/storage/face test doubles and real React/GAES service code. No live production Firebase, physical camera, gate or hosted Python server acceptance performed.
+- Model splitting is unchanged: use BOTH ZIP archives. If the earlier Part2 is already in your branch, its content is identical and need not be uploaded again.
+
 # GitHub browser upload packaging revision
 
 - SFace is distributed as two independently checksummed parts (20 MiB and 16.9 MiB).

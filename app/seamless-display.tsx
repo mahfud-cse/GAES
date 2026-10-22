@@ -39,7 +39,7 @@ export default function SeamlessDisplay({
     stop,
     capture,
   } = useCapture();
-  const [phase, setPhase] = useState("idle"),
+  const [phase, setPhase] = useState("camera"),
     [result, setResult] = useState<Record<string, unknown> | null>(null),
     [message, setMessage] = useState(""),
     [videoFailed, setVideoFailed] = useState(false);
@@ -51,6 +51,12 @@ export default function SeamlessDisplay({
     processing = useRef(false),
     last = useRef("");
   const phaseRef = useRef(phase);
+  const serviceReady = useRef(identityReady),
+    nextHealthCheck = useRef(0);
+  useEffect(() => {
+    serviceReady.current = identityReady;
+    nextHealthCheck.current = 0;
+  }, [identityReady]);
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
@@ -90,7 +96,7 @@ export default function SeamlessDisplay({
     };
   }, [stop, onClose]);
   useEffect(() => {
-    if (!ready || !identityReady) return;
+    if (!ready) return;
     let active = true,
       timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
@@ -103,11 +109,29 @@ export default function SeamlessDisplay({
       }
       processing.current = true;
       try {
+        if (!serviceReady.current) {
+          setPhase("camera");
+          setMessage(
+            t(
+              "Verifikasi wajah belum tersedia. Petugas kami siap membantu.",
+              "Face verification is unavailable. Our staff are ready to assist.",
+            ),
+          );
+          if (Date.now() < nextHealthCheck.current) return;
+          nextHealthCheck.current = Date.now() + 10000;
+          const health = await api({ action: "bootstrap" });
+          if (!active) return;
+          serviceReady.current = Boolean(
+            (health.integration as { identity?: boolean })?.identity,
+          );
+          if (!serviceReady.current) return;
+        }
         if (pending.current) {
           const r = await api({
             action: "verify-one-to-one",
             ...pending.current,
           });
+          if (!active) return;
           if (["Processing", "GatePending"].includes(String(r.status))) {
             setPhase("verifying");
             return;
@@ -162,13 +186,15 @@ export default function SeamlessDisplay({
         setMessage("");
         setPhase("verifying");
       } catch {
-        if (active)
+        if (active) {
+          setPhase("camera");
           setMessage(
             t(
               "Verifikasi belum tersedia. Silakan hubungi petugas.",
               "Verification is unavailable. Please ask a staff member.",
             ),
           );
+        }
       } finally {
         processing.current = false;
         if (active) timer = setTimeout(poll, pending.current ? 1000 : 1800);
@@ -185,7 +211,7 @@ export default function SeamlessDisplay({
     const timer = setTimeout(() => {
       setResult(null);
       setMessage("");
-      setPhase("idle");
+      setPhase("camera");
     }, 10000);
     return () => clearTimeout(timer);
   }, [phase]);
@@ -231,7 +257,18 @@ export default function SeamlessDisplay({
                 : t("Lihat ke arah kamera", "Look at the camera")}
             </h1>
             <p>
-              {message || t("Mohon tunggu sebentar.", "Please wait a moment.")}
+              {cameraError
+                ? t(
+                    "Kamera tidak dapat diakses. Silakan hubungi petugas.",
+                    "The camera is unavailable. Please ask a staff member.",
+                  )
+                : !ready
+                  ? t("Menyiapkan kamera…", "Preparing camera…")
+                  : message ||
+                    t(
+                      "Posisikan wajah di dalam bingkai.",
+                      "Position your face within the frame.",
+                    )}
             </p>
           </div>
         </div>
@@ -272,7 +309,7 @@ export default function SeamlessDisplay({
                       "The verification service is being prepared.",
                     )
                   : ready
-                    ? t("Kamera standby", "Camera standby")
+                    ? t("Kamera siap", "Camera ready")
                     : t("Menyiapkan kamera…", "Preparing camera…")}
             </div>
           </div>
