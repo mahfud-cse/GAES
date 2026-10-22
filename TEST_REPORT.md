@@ -1,3 +1,13 @@
+# V4.1 — repository photo import correction
+
+Root cause: the old filename whitelist rejected spaces, including otherwise valid PNG filenames. The real repository reader is now isolated and tested with the reported filename, Unicode names, nested folders and uppercase extensions. File content must still match a supported image signature, remain under 1,000,000 bytes and remain inside the private source directory. Traversal and symlinks are rejected.
+
+Missing files or missing bundled directories now return REPOSITORY_PHOTO_NOT_FOUND (404), with bilingual guidance to check exact case and the deployed branch. This is distinct from an invalid path. The reader uses only deployed private repository files, not the live GitHub API.
+
+Validation: full npm test passed (145 tests = 11 normalization + 40 UI + 94 seamless), ESLint 0 errors / 32 existing warnings, TypeScript and production build passed. 20 browser checks passed using explicit test doubles; 10 new filesystem tests exercise the real repository reader. Production deployment, live Firebase Storage and the user's actual personal photo were not accessed or verified.
+
+Upload the updated first cumulative ZIP and deploy the branch containing both code and the photo. Model Part2 is unchanged. Repository input can retain its exact filename, including internal spaces. The file name and branch shown in the report are covered as path behavior, not evidence of a successful live import.
+
 # V4 validation — current UI and camera correction
 
 - Full npm test passed: 11 normalization, 40 UI and 84 seamless service tests (135 total); ESLint 0 errors / 32 existing warnings; Next.js production build and TypeScript passed.

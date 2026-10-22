@@ -153,6 +153,10 @@ const messages: Record<string, [string, string]> = {
     "Folder atau nama file tidak valid.",
     "The folder or filename is invalid.",
   ],
+  REPOSITORY_PHOTO_NOT_FOUND: [
+    "Foto tidak ditemukan pada versi website ini. Periksa folder dan nama file, termasuk huruf besar/kecil, lalu pastikan deployment dari branch yang memuat foto sudah berhasil.",
+    "The photo was not found in this website version. Check the folder and exact filename, including letter case, and ensure deployment from the branch containing the photo has completed.",
+  ],
   STORAGE_NOT_CONNECTED: [
     "Penyimpanan foto belum terhubung. Periksa konfigurasi Firebase Storage.",
     "Photo storage is not connected. Check the Firebase Storage configuration.",

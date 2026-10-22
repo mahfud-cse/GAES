@@ -1,5 +1,5 @@
 {
-  "release": "Seamless Access V4 \u2014 account and photo guidance, camera display recovery",
+  "release": "Seamless Access V4.1 \u2014 repository photo filenames and actionable import errors",
   "baseline": "GAES-V-22.2(1).zip",
   "cumulative": true,
   "files": [
@@ -12,14 +12,14 @@
     {
       "path": "PATCH_NOTES.md",
       "action": "REPLACE",
-      "size": 5456,
-      "sha256": "30cad6ce319558f79d9040b2b81244bd9da28ca04421e544c4ed79eb972951cb"
+      "size": 6905,
+      "sha256": "65d81ccc2680f0ce1d64c02f06f7096af22eda61dfffe140dddc91c8cf2f6b53"
     },
     {
       "path": "TEST_REPORT.md",
       "action": "ADD",
-      "size": 9270,
-      "sha256": "3275bded2f42b0f1a34d4b6c41fed6534e45cd674dfb57b0f6f567156d998c61"
+      "size": 10719,
+      "sha256": "d42891d98b20c1245258d186c8ebdf4d15b2c098468e10f7d8c06dc8d30205dd"
     },
     {
       "path": "app/facility-operations.tsx",
@@ -48,14 +48,14 @@
     {
       "path": "app/seamless-shared.tsx",
       "action": "ADD",
-      "size": 9469,
-      "sha256": "fa2d6d0ee3f2160366165d827ef23c66515c0f84d9e8d8d339b19a4080d9d941"
+      "size": 9876,
+      "sha256": "8d4cba9e29bcdb126d225cfb19986a5730372155d4a58eebc0e77bdc20180a48"
     },
     {
       "path": "app/seamless-staff.tsx",
       "action": "ADD",
-      "size": 34958,
-      "sha256": "a20f387640917969254b718295a0826c8e6840cd90b1da6b6cb7ed2276475133"
+      "size": 35130,
+      "sha256": "7994e97e671f8d4d7f1074803d7a2b6cf3612219c96a7fb39fd1704825151c5b"
     },
     {
       "path": "app/seamless.css",
@@ -222,8 +222,8 @@
     {
       "path": "lib/seamless/operations.mjs",
       "action": "ADD",
-      "size": 35977,
-      "sha256": "cb6cfb63a93ef5f996ddd7e4b2dc184d144c0a13ab1e0053dc8aa6999bbd53b9"
+      "size": 36009,
+      "sha256": "4322ba63b2fb6b58be4bc7845a93525a9da0790ec19ca445f41424b48b0e4b91"
     },
     {
       "path": "lib/seamless/provider.mjs",
@@ -236,6 +236,12 @@
       "action": "ADD",
       "size": 16892,
       "sha256": "c3777efc9f212d06b9a54beef5af370e68d61fc5b8f3e4352dbbe028cb38efb8"
+    },
+    {
+      "path": "lib/seamless/repository-media.mjs",
+      "action": "ADD",
+      "size": 1816,
+      "sha256": "dc14b65bba2741e32121cdc22b7af1e9bc775a13a703e981a06f926d457d6846"
     },
     {
       "path": "lib/seamless/self-hosted.mjs",
@@ -264,20 +270,20 @@
     {
       "path": "netlify/functions/seamless-operations.mjs",
       "action": "ADD",
-      "size": 3900,
-      "sha256": "c23adee955bbedb3da1ef50f2a6520618e2f8d0b24faaa0087f65aae8a39443d"
+      "size": 2730,
+      "sha256": "4ad6922009b1ed0e7925b519fba3f8d1359303963c41af8ce513e97d494da6c5"
     },
     {
       "path": "package.json",
       "action": "REPLACE",
-      "size": 1826,
-      "sha256": "44e5e8d7190d3a539618cb4762269304ac8f040b31807fa2db9d51795357995b"
+      "size": 1861,
+      "sha256": "67013771203d2800d161bdf0903377a13d3c6f4059b75a9f7453e6810cc0a272"
     },
     {
       "path": "private/staff-enrollment/README.md",
       "action": "ADD",
-      "size": 589,
-      "sha256": "8f2dffc49a53eab95e168199874dd1e2df249aaccc9d99e09db5ca05cca91666"
+      "size": 1232,
+      "sha256": "1b22142cd6fcf7bf76014d3dd34f56f1d80b54c9cc2e59e51cc577d9ed27cc1a"
     },
     {
       "path": "public/demo-media/README.md",
@@ -350,6 +356,12 @@
       "action": "ADD",
       "size": 8258,
       "sha256": "11f30205126dff873c664acd9cf2d1240c34199c4f06b8217f0ef4033b7808d0"
+    },
+    {
+      "path": "tests/seamless-repository.test.mjs",
+      "action": "ADD",
+      "size": 4432,
+      "sha256": "3cc2d3ee41d1f5919f06ab18cc86bcb0a98ed25703f7e4daae4c921ac81ffa57"
     },
     {
       "path": "tests/ui-foundation.test.mjs",

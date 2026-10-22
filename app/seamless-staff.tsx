@@ -645,8 +645,8 @@ export default function SeamlessStaff({
                     </label>
                     <p className="sa-help sa-wide">
                       {t(
-                        "Gunakan repository privat. Foto diimpor oleh server ke penyimpanan terbatas; jangan simpan foto identitas dalam folder public.",
-                        "Use a private repository. The server imports the photo into restricted storage; do not place identity photos in public folders.",
+                        "Gunakan file dari repository privat yang sudah berhasil di-deploy. Isi subfolder saja (misalnya CGK) dan nama file persis, termasuk spasi dan huruf besar/kecil. Foto akan disalin ke penyimpanan terbatas.",
+                        "Use a file from a private repository that has been successfully deployed. Enter only the subfolder (for example CGK) and the exact filename, including spaces and letter case. The photo will be copied to restricted storage.",
                       )}
                     </p>
                     <button

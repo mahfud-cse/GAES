@@ -1,6 +1,5 @@
 import { getStorage } from "firebase-admin/storage";
-import { readFile, realpath, stat } from "node:fs/promises";
-import path from "node:path";
+import { readRepositoryPhoto } from "../../lib/seamless/repository-media.mjs";
 import {
   requireUser,
   targetApp,
@@ -11,7 +10,6 @@ import {
 import { writeAudit } from "./_audit.mjs";
 import {
   createOperationsService,
-  imageBytes,
   safeOperationCodes,
 } from "../../lib/seamless/operations.mjs";
 import { createSelfHostedProvider } from "../../lib/seamless/self-hosted.mjs";
@@ -57,42 +55,7 @@ const media = {
       .getSignedUrl({ action: "read", expires: Date.now() + 120000 });
     return url;
   },
-  async repository(folder, file) {
-    const root = await realpath(
-      path.join(process.cwd(), "private/staff-enrollment"),
-    );
-    if (
-      !/^[\w/-]*$/.test(folder) ||
-      folder.includes("..") ||
-      !/^[\w.-]+\.(?:jpe?g|png|webp)$/i.test(file) ||
-      file.includes("..")
-    )
-      throw Object.assign(new Error("INVALID_REPOSITORY_PATH"), {
-        status: 400,
-        code: "INVALID_REPOSITORY_PATH",
-      });
-    const target = await realpath(path.join(root, folder, file));
-    if (!target.startsWith(root + path.sep))
-      throw Object.assign(new Error("INVALID_REPOSITORY_PATH"), {
-        status: 400,
-        code: "INVALID_REPOSITORY_PATH",
-      });
-    const size = (await stat(target)).size;
-    if (size > 1000000)
-      throw Object.assign(new Error("PHOTO_TOO_LARGE"), {
-        status: 413,
-        code: "PHOTO_TOO_LARGE",
-      });
-    const data = await readFile(target);
-    const ext = path.extname(file).toLowerCase();
-    const mime =
-      ext === ".png"
-        ? "image/png"
-        : ext === ".webp"
-          ? "image/webp"
-          : "image/jpeg";
-    return imageBytes(`data:${mime};base64,${data.toString("base64")}`);
-  },
+  repository: readRepositoryPhoto,
 };
 const handle = createOperationsService({
   authenticate: requireUser,
