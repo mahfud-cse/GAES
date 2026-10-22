@@ -53,3 +53,8 @@
     Cache-Control = "no-store"
     Referrer-Policy = "no-referrer"
     Permissions-Policy = "camera=(self), microphone=()"
+
+[[headers]]
+  for = "/face-models/*"
+  [headers.values]
+    Cache-Control = "no-cache"

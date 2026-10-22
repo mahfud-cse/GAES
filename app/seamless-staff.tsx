@@ -37,12 +37,14 @@ export default function SeamlessStaff({
   stations,
   lounges,
   identityConnected,
+  onBrowserDemo,
 }: {
   api: Api;
   language: Language;
   stations: { code: string; name: string; status?: string }[];
   lounges: Lounge[];
   identityConnected: boolean;
+  onBrowserDemo?: () => void;
 }) {
   const t = (id: string, en: string) => (language === "ID" ? id : en);
   const [rows, setRows] = useState<StaffRow[]>([]),
@@ -645,8 +647,8 @@ export default function SeamlessStaff({
                     </label>
                     <p className="sa-help sa-wide">
                       {t(
-                        "Gunakan file dari repository privat yang sudah berhasil di-deploy. Isi subfolder saja (misalnya CGK) dan nama file persis, termasuk spasi dan huruf besar/kecil. Foto akan disalin ke penyimpanan terbatas.",
-                        "Use a file from a private repository that has been successfully deployed. Enter only the subfolder (for example CGK) and the exact filename, including spaces and letter case. The photo will be copied to restricted storage.",
+                        "Gunakan file dari repository privat yang sudah berhasil di-deploy. Isi subfolder saja (misalnya CGK) dan nama file persis, termasuk spasi dan huruf besar/kecil. Foto digunakan langsung dari repository dan tidak disalin ke Firebase Storage.",
+                        "Use a file from a private repository that has been successfully deployed. Enter only the subfolder (for example CGK) and the exact filename, including spaces and letter case. The photo is used directly from the repository and is not copied to Firebase Storage.",
                       )}
                     </p>
                     <button
@@ -664,9 +666,9 @@ export default function SeamlessStaff({
                               consent,
                             });
                             setPhotos([d.photo as Photo]);
-                            setPreview("");
+                            setPreview(String(d.preview || ""));
                           },
-                          t("Foto berhasil diimpor.", "Photo imported."),
+                          t("Foto repository siap digunakan. Ajukan verifikasi untuk melanjutkan.", "Repository photo ready. Submit it for verification to continue."),
                           true,
                         )
                       }
@@ -695,8 +697,8 @@ export default function SeamlessStaff({
                 <p role="alert">
                   {photoError}{" "}
                   {t(
-                    "Foto baru belum tersimpan. Pilih foto lain atau coba kembali.",
-                    "The new photo was not saved. Choose another photo or try again.",
+                    "Foto belum siap digunakan. Pilih foto lain atau coba kembali.",
+                    "The photo is not ready to use. Choose another photo or try again.",
                   )}
                 </p>
               )}
@@ -709,8 +711,8 @@ export default function SeamlessStaff({
                       )
                     : photos.length
                       ? t(
-                          "Foto tersimpan dan siap diajukan.",
-                          "Photo saved and ready to submit.",
+                          "Foto siap diajukan.",
+                          "Photo ready to submit.",
                         )
                       : selected.registration.status === "Active"
                         ? t(
@@ -849,6 +851,7 @@ export default function SeamlessStaff({
                   </div>
                 )}
               </div>
+              {onBrowserDemo && <div className="sa-invite"><h4>{t("Pencocokan tanpa server tambahan", "Comparison without an additional server")}</h4><p>{t("Untuk demo, simpan dan ajukan foto lalu buka uji browser. Persetujuan mesin server tidak diperlukan untuk uji ini. Status akses petugas tidak berubah.", "For a demo, save and submit the photo, then open browser comparison. Server enrollment approval is not required for this test. Staff access status remains unchanged.")}</p><button type="button" onClick={onBrowserDemo}>{t("Uji wajah di browser", "Try browser face comparison")}</button></div>}
               <div className="sa-approval">
                 <h4>{t("Persetujuan akses", "Access approval")}</h4>
                 <p>

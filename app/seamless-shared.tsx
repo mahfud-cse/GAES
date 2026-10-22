@@ -3,6 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export type Language = "ID" | "EN";
 export type Photo = { path: string; pose: string };
 const messages: Record<string, [string, string]> = {
+  BROWSER_MODEL_MISSING: ["Model browser belum tersedia. Administrator perlu memastikan build terbaru berhasil dan kedua bagian model ada di repository.", "Browser models are unavailable. An administrator must check that the latest build succeeded and both model parts are in the repository."],
+  BROWSER_MODEL_INVALID: ["File model tidak lengkap atau rusak. Muat ulang setelah deployment diperiksa.", "A model file is incomplete or damaged. Reload after checking the deployment."],
+  BROWSER_ENGINE_FAILED: ["Mesin browser tidak dapat dijalankan. Gunakan Chrome atau Edge terbaru, lalu coba kembali.", "The browser engine could not run. Use an up-to-date Chrome or Edge browser and try again."],
   EXACTLY_ONE_FACE_REQUIRED: [
     "Foto harus menampilkan tepat satu wajah.",
     "The photo must show exactly one face.",
@@ -200,6 +203,14 @@ const messages: Record<string, [string, string]> = {
   REPOSITORY_READ_FAILED: [
     "Server tidak dapat membaca foto repository. Administrator perlu memeriksa file yang disertakan dan izin baca pada deployment.",
     "The server could not read the repository photo. An administrator must check the bundled file and read permissions in the deployment.",
+  ],
+  REPOSITORY_PHOTO_CHANGED: [
+    "Foto repository telah berubah sejak dipilih. Pilih kembali foto lalu ajukan ulang pendaftaran wajah.",
+    "The repository photo has changed since it was selected. Select the photo again and resubmit face enrollment.",
+  ],
+  REPOSITORY_REFERENCE_FAILED: [
+    "Referensi foto belum dapat disimpan atau dibaca. Administrator perlu memeriksa koneksi dan izin Firestore.",
+    "The photo reference could not be saved or read. An administrator must check the Firestore connection and permissions.",
   ],
   SERVICE_UNAVAILABLE: [
     "Layanan belum tersedia. Coba kembali atau hubungi administrator.",

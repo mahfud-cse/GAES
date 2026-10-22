@@ -1,7 +1,9 @@
 import { createServer } from "node:http";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
+import { tmpdir } from "node:os";
+import path from "node:path";
 const { chromium } = await import(
   process.env.PLAYWRIGHT_MODULE || "playwright"
 );
@@ -18,6 +20,11 @@ const { createOperationsService } = await import(
 const { MemoryDB } = await import(
   pathToFileURL(root + "/tests/helpers/seamless-db.mjs")
 );
+const { createEnrollmentMedia } = await import(pathToFileURL(root + "/lib/seamless/enrollment-media.mjs"));
+const { readRepositoryPhoto } = await import(pathToFileURL(root + "/lib/seamless/repository-media.mjs"));
+const repositoryDirectory = await mkdtemp(path.join(tmpdir(), "gaes-browser-repository-"));
+await mkdir(path.join(repositoryDirectory, "CGK"));
+const repositoryRecords = new Map();
 const db = new MemoryDB();
 db.rows.set("users/admin-1", {
   name: "Administrator",
@@ -103,7 +110,8 @@ const service = createOperationsService({
   database: () => db,
   audit: (tx, d, _, record) => tx.set(d.collection("auditLogs").doc(), record),
   provider,
-  media: {
+  media: createEnrollmentMedia({
+    storage: {
     save: async (path, image, meta) => { if (photoSaveFails) throw new Error(typeof photoSaveFails === "string" ? photoSaveFails : "STORAGE_NOT_CONNECTED"); return objects.set(path, { image, meta }); },
     validate: async (path) => objects.get(path)?.meta || {},
     readUrl: async (path) =>
@@ -115,6 +123,9 @@ const service = createOperationsService({
       });
     },
   },
+    readRepository: (folder, file) => readRepositoryPhoto(folder, file, { directory: repositoryDirectory }),
+    records: { put: async (id, value) => repositoryRecords.set(id, value), get: async id => repositoryRecords.get(id) },
+  }),
 });
 const entry = `import React,{useState} from 'react';import{createRoot}from'react-dom/client';import SeamlessAccess from './app/seamless-access';import Enrollment from './app/staff-enrollment/page';const user={getIdToken:async()=> 'BROWSER-TEST-TOKEN'};function App(){const[language,setLanguage]=useState('ID');return location.pathname==='/staff-enrollment'?<Enrollment/>:<><button id="app-language" onClick={()=>setLanguage(language==='ID'?'EN':'ID')}>Language</button><main style={{padding:'25px',maxWidth:1400,margin:'auto'}}><SeamlessAccess user={user} role="Admin" language={language} onLanguageChange={setLanguage} initialLoungeId="lounge-1" lounges={[{id:'lounge-1',airport:'CGK',name:'Garuda Executive Lounge',status:'Aktif'}]}/></main></>};createRoot(document.getElementById('root')).render(<App/>);`;
 const bundle = await build({
@@ -144,8 +155,18 @@ const bundle = await build({
 const globalCss = await readFile(root + "/app/globals.css", "utf8"),
   css = await readFile(root + "/app/seamless.css", "utf8");
 let dropResponse = false;
+const backendActions = [];
 const server = createServer(async (req, res) => {
   try {
+    if (req.url.startsWith("/face-models/")) {
+      const name = req.url.split("?")[0];
+      if (name.includes("..")) throw new Error("invalid path");
+      res.setHeader("Content-Type", name.endsWith(".mjs") ? "application/javascript" : name.endsWith(".wasm") ? "application/wasm" : name.endsWith(".json") ? "application/json" : "application/octet-stream");
+      res.end(await readFile(root + "/public" + name)); return;
+    }
+    if (req.url === "/browser-reference.jpg" && process.env.GAES_FACE_TEST_IMAGE) {
+      res.setHeader("Content-Type", "image/jpeg"); res.end(await readFile(process.env.GAES_FACE_TEST_IMAGE)); return;
+    }
     if (req.url === "/test.js") {
       res.setHeader("Content-Type", "application/javascript");
       res.end(bundle.outputFiles[0].text);
@@ -164,6 +185,7 @@ const server = createServer(async (req, res) => {
     if (req.url.startsWith("/.netlify/functions/seamless-operations")) {
       let raw = "";
       for await (const part of req) raw += part;
+      backendActions.push(JSON.parse(raw).action);
       try {
         const r = await service(
           new Request("http://localhost" + req.url, {
@@ -211,6 +233,14 @@ await context.addInitScript(() => {
     value: {
       getUserMedia: async () => {
         const c = document.createElement("canvas");
+        if (window.__useRealCamera) {
+          const image = new Image();
+          await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; image.src = "/browser-reference.jpg"; });
+          c.width = image.naturalWidth; c.height = image.naturalHeight;
+          const context = c.getContext("2d");
+          const draw = () => { context.fillStyle = "#777"; context.fillRect(0,0,c.width,c.height); if (window.__cameraFaceVisible) context.drawImage(image,0,0); requestAnimationFrame(draw); };
+          draw(); return c.captureStream(15);
+        }
         c.width = 640;
         c.height = 480;
         const g = c.getContext("2d");
@@ -479,6 +509,21 @@ try {
   await self.getByRole("heading", { name: "Foto berhasil dikirim" }).waitFor();
   await self.close();
   pass("guided self enrollment works for staff without a portal login");
+  await writeFile(path.join(repositoryDirectory, "CGK", "Staff photo.png"), Buffer.from(sample.split(",")[1], "base64"));
+  photoSaveFails = "STORAGE_NOT_CONNECTED";
+  await page.getByRole("button", {name: "Repository", exact: true}).click();
+  await page.getByLabel("Folder dalam private/staff-enrollment").fill("CGK");
+  await page.getByLabel("Nama file", {exact: true}).fill("Staff photo.png");
+  await page.getByRole("button", {name: "Impor foto", exact: true}).click();
+  await page.getByText("Foto repository siap digunakan. Ajukan verifikasi untuk melanjutkan.").waitFor();
+  await page.locator(".sa-photo-preview").waitFor();
+  assert.equal(repositoryRecords.size, 1);
+  await page.getByRole("button", {name: "Simpan dan ajukan verifikasi", exact: true}).click();
+  await page.getByText("Pengajuan terkirim.", {exact: false}).waitFor();
+  await page.getByRole("button", {name: "Lihat foto tersimpan", exact: true}).click();
+  await page.getByText("Foto ditampilkan selama sesi peninjauan.").waitFor();
+  photoSaveFails = false;
+  pass("repository import, preview and enrollment submission succeed with Storage deliberately disabled");
   await page.setViewportSize({ width: 390, height: 844 });
   await noOverflow(page);
   await page.screenshot({
@@ -570,6 +615,60 @@ try {
   pass(
     "activity loads only after explicit location selection, displays matching status and filters correctly",
   );
+  if (process.env.GAES_FACE_TEST_IMAGE) {
+    await writeFile(path.join(repositoryDirectory,"CGK","Real face demo.jpg"), await readFile(process.env.GAES_FACE_TEST_IMAGE));
+    await page.getByRole("button", {name:"Registrasi Petugas",exact:true}).click();
+    await page.getByLabel("Petugas terdaftar").selectOption({label:"Station Staff · GA999 · CGK"});
+    await page.getByLabel("Petugas menyetujui penggunaan foto untuk verifikasi wajah.", {exact:true}).check();
+    await page.getByRole("button",{name:"Repository",exact:true}).click();
+    await page.getByLabel("Folder dalam private/staff-enrollment").fill("CGK");
+    await page.getByLabel("Nama file",{exact:true}).fill("Real face demo.jpg");
+    connected=false; photoSaveFails="STORAGE_NOT_CONNECTED";
+    await page.getByRole("button",{name:"Impor foto",exact:true}).click();
+    await page.getByText("Foto repository siap digunakan. Ajukan verifikasi untuk melanjutkan.").waitFor();
+    await page.getByRole("button",{name:"Simpan dan ajukan verifikasi",exact:true}).click();
+    await page.getByText("Pengajuan terkirim.",{exact:false}).waitFor();
+    await page.getByRole("button",{name:"Uji Wajah di Browser",exact:true}).click();
+    await page.getByLabel("Station demo",{exact:true}).selectOption("CGK");
+    await page.getByLabel("Lounge demo",{exact:true}).selectOption("lounge-1");
+    await page.getByLabel("Petugas untuk pencocokan",{exact:true}).selectOption({label:"Station Staff"});
+    await page.getByLabel("Video saat siaga",{exact:true}).selectOption("video-1");
+    await page.getByRole("checkbox").check();
+    await page.evaluate(()=>{window.__useRealCamera=true;window.__cameraFaceVisible=false;});
+    const before = backendActions.length, gatesBefore=commands;
+    await page.getByRole("button",{name:"Buka kamera demo",exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('[data-browser-engine]')?.getAttribute('data-engine-ready')==='true',{}, {timeout:120000});
+    await page.locator('[data-browser-engine] .sa-idle-video').waitFor({timeout:15000});
+    await page.evaluate(()=>{
+      window.__demoPhases=[];
+      const el=document.querySelector('[data-browser-engine]');
+      new MutationObserver(()=>window.__demoPhases.push(el.dataset.phase)).observe(el,{attributes:true,attributeFilter:['data-phase']});
+      window.__cameraFaceVisible=true;
+    });
+    await page.getByRole("heading",{name:"Wajah sesuai referensi",exact:true}).waitFor({timeout:15000});
+    await page.getByRole("dialog").getByRole("heading",{name:"Station Staff",exact:true}).waitFor();
+    assert.equal(await page.getByRole("dialog").locator("input,select,button").count(),0);
+    assert.ok(await page.evaluate(()=>window.__demoPhases.includes("camera")), "idle must reveal the live camera before displaying the result");
+    await page.screenshot({path:output+"/browser-face-result.png",fullPage:false});
+    assert.equal(commands,gatesBefore);
+    assert.ok(!backendActions.slice(before).some(action=>['detect-face','verify-one-to-one','claim','registry-approve'].includes(action)));
+    pass("real WASM YuNet/SFace worker matches the reference in browser with Python engine and Firebase Storage disabled, no backend recognition or gate command");
+    await page.evaluate(()=>{window.__cameraFaceVisible=false;});
+    await page.locator('[data-browser-engine] .sa-idle-video').waitFor({timeout:15000});
+    pass("browser demo clears its real inference result and returns to idle video when the face leaves");
+    await page.evaluate(()=>{const original=Date.now;Date.now=()=>original()+601000;});
+    await page.getByText("Sesi telah berakhir. Siapkan sesi baru melalui operator.").waitFor({timeout:5000});
+    await page.keyboard.press("Escape");
+    await page.reload();
+    pass("browser reference session expires and operator Escape closes camera cleanly");
+    await page.locator("#app-language").click();
+    await page.getByRole("button",{name:"Browser Face Demo",exact:true}).click();
+    await page.getByRole("heading",{name:"Browser face comparison",exact:true}).waitFor();
+    await page.getByLabel("Demo station",{exact:true}).selectOption("CGK");
+    await page.getByLabel("Demo lounge",{exact:true}).selectOption("lounge-1");
+    await page.getByLabel("Staff reference for comparison",{exact:true}).selectOption({label:"Station Staff"});
+    pass("browser comparison instructions and reference selectors work in English");
+  }
   assert.deepEqual(errors, []);
   pass("zero uncaught browser runtime errors");
   await writeFile(
@@ -596,4 +695,5 @@ try {
 } finally {
   await browser.close();
   server.close();
+  await rm(repositoryDirectory, { recursive: true, force: true });
 }

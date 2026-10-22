@@ -19,5 +19,6 @@ export default defineConfig([
     "source/**",
     "static-build/**",
     "next-env.d.ts",
+    "public/face-models/**",
   ]),
 ]);

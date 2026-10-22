@@ -1,0 +1,145 @@
+{
+  "release": "V5 \u2014 actual in-browser 1:1 face demo",
+  "applyOn": "Seamless Access V4.3 (repository direct source)",
+  "cumulative": false,
+  "files": [
+    {
+      "path": ".gitignore",
+      "action": "ADD",
+      "previousSha256": null,
+      "sha256": "8546ecabc864fbe76737da18637a77f56d5dcf636acbb0713fbcff3775bd7b0d",
+      "size": 93
+    },
+    {
+      "path": "app/seamless-access.tsx",
+      "action": "REPLACE",
+      "previousSha256": "c484e0cf4da2c8b866a09490a5743cc75ff96a8f7c6eca02da7ecbedd9f725f6",
+      "sha256": "2a233e8a20063f85b492563a3c077d5de5cf18aa33808223f5437f6a6a847ed9",
+      "size": 28962
+    },
+    {
+      "path": "app/seamless-browser-demo.tsx",
+      "action": "ADD",
+      "previousSha256": null,
+      "sha256": "d549cb159037f9be6eed9e1a6949097b0f2d90095f7a4d37dea0430ad98a210d",
+      "size": 18505
+    },
+    {
+      "path": "app/seamless-shared.tsx",
+      "action": "REPLACE",
+      "previousSha256": "d1d7417d791ffd6dd5593a91ffd2b4b5398be205cf25a700545582aeba5a6baa",
+      "sha256": "6f4b455fbefdb7634db09c8acea987747ff997b154dcf509d9a5b9f9881a332f",
+      "size": 14481
+    },
+    {
+      "path": "app/seamless-staff.tsx",
+      "action": "REPLACE",
+      "previousSha256": "de18ca9203668473d344884347e8f8f4cc295749a05fabe370aaa277db7f184a",
+      "sha256": "2602af948c1fb5edffa7cf12d073b8dbe4c89e3273e98b2f30d817ef01d5322c",
+      "size": 35948
+    },
+    {
+      "path": "docs/BROWSER_FACE_DEMO_ID.md",
+      "action": "ADD",
+      "previousSha256": null,
+      "sha256": "91add0975a51e1105d919d580d5aeda7997104f2e3f7dd51e83445aeca77356a",
+      "size": 7422
+    },
+    {
+      "path": "eslint.config.mjs",
+      "action": "REPLACE",
+      "previousSha256": "2b8537b86439a644e70b91bb1f1804df4ed86a02f1152e182a07978b864b3d4e",
+      "sha256": "340a37c7cd27d9749399976dd7e82294207d2adcbd4558c2e3583c5376789e10",
+      "size": 638
+    },
+    {
+      "path": "lib/seamless/ONNXRUNTIME-LICENSE.txt",
+      "action": "ADD",
+      "previousSha256": null,
+      "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+      "size": 1073
+    },
+    {
+      "path": "lib/seamless/browser-face-client.ts",
+      "action": "ADD",
+      "previousSha256": null,
+      "sha256": "fc7e175007a46403184ac3518dfea8c5d1b1f1367e523cc98bf64a895b6b1fba",
+      "size": 3653
+    },
+    {
+      "path": "lib/seamless/browser-face-core.mjs",
+      "action": "ADD",
+      "previousSha256": null,
+      "sha256": "af59fd4024cb89ca6c3c83c83fd5e89ab1016dd3897042c7fff532add13bb415",
+      "size": 5709
+    },
+    {
+      "path": "lib/seamless/browser-face-worker.mjs",
+      "action": "ADD",
+      "previousSha256": null,
+      "sha256": "46094e5d19211976b1a6da0705d354685f25031b6243574ea3d62e31c5d701cc",
+      "size": 3176
+    },
+    {
+      "path": "lib/seamless/registry.mjs",
+      "action": "REPLACE",
+      "previousSha256": "afad03743c5d1c2f74f4dee2791557de9b701d92dc3e0330abb09c8904df49c7",
+      "sha256": "2ce0c25224bf9290ce60bc057c516fde806f96fe746006f2cbef422cda1e1571",
+      "size": 18062
+    },
+    {
+      "path": "netlify.toml",
+      "action": "REPLACE",
+      "previousSha256": "d9f643973f5537d9b83a1380f0b7726269b84bdcee1023f7e270cf5e474aebb3",
+      "sha256": "9c353d2ce14d39b1d7e0f21b9d299c518fed8ee384aaa82b700e2e4d4f2af48b",
+      "size": 2222
+    },
+    {
+      "path": "package-lock.json",
+      "action": "REPLACE",
+      "previousSha256": "b248ccd9c7f71d2b5c32008b12c49d1ddf21ca31edb9945b3b9567adceef5f1d",
+      "sha256": "cce74bdc140df4bb2264a83f2745c6facea698e7b619668b715235ab5e46b44f",
+      "size": 496551
+    },
+    {
+      "path": "package.json",
+      "action": "REPLACE",
+      "previousSha256": "46b22df4e010ea27531599d9d0f8e9df35ec67c5b13cd29c1cbd2dd5aeff6fa7",
+      "sha256": "026e1198333651f1d4387a0ec00831cadeaf7fb9f66c4a916b57e8fb0388a942",
+      "size": 2087
+    },
+    {
+      "path": "scripts/prepare-browser-face.mjs",
+      "action": "ADD",
+      "previousSha256": null,
+      "sha256": "d7959e77500ea183c5397428e2b21354493ab4abaa8324f088e3a8c8f90b59cd",
+      "size": 1745
+    },
+    {
+      "path": "tests/browser-face-worker.mjs",
+      "action": "ADD",
+      "previousSha256": null,
+      "sha256": "d59bc53aa00f53c11869cb56f1841c647344cb30f0a6414da64d1d42cf69e855",
+      "size": 4739
+    },
+    {
+      "path": "tests/seamless-browser.mjs",
+      "action": "REPLACE",
+      "previousSha256": "6c50be177af9afa74b171a04e5549b22b8a450c1239d6ef9608a6a2bfe8a3392",
+      "sha256": "48beb0a26313b7417431fe3b57e782d333abac12ae77648d376ac86dc3d72730",
+      "size": 30865
+    },
+    {
+      "path": "tests/seamless-enrollment-media.test.mjs",
+      "action": "REPLACE",
+      "previousSha256": "b3adec169e12ed8c5e3f432c373c57f4af5340b6931c8912eb7e72b839a8135c",
+      "sha256": "4a11809810f7bc47faa60f9cc97bdef6680778bf6db84b785814bb2bbe812816",
+      "size": 8839
+    }
+  ],
+  "delete": [],
+  "guide": "docs/BROWSER_FACE_DEMO_ID.md",
+  "validation": "170 Node tests; 25 browser workflow checks including camera transition before actual real-model comparison; 5 real WASM/model checks; final production build and TypeScript passed; no added lint errors. Model inference tested in Chromium with simulated camera portrait. No live user camera, Firebase or Netlify deployment acceptance claimed.",
+  "runtime": "onnxruntime-web 1.30.0, CPU WebAssembly, one worker, one selected reference. No Python engine or Firebase Storage required for repository-photo demo. No liveness or gate authorization.",
+  "assets": "Reuses existing face-service/models files; npm prebuild generates public model/runtime assets. No models or node_modules shipped again."
+}

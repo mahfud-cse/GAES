@@ -6,6 +6,7 @@ import QRCode from "qrcode";
 import { seamlessOperationsRequest } from "../lib/firebase/api";
 import SeamlessStaff from "./seamless-staff";
 import SeamlessDisplay from "./seamless-display";
+import SeamlessBrowserDemo from "./seamless-browser-demo";
 import { errorMessage, StatusTag, type Language } from "./seamless-shared";
 import "./seamless.css";
 type Lounge = { id: string; name: string; airport: string; status: string };
@@ -265,6 +266,7 @@ export default function SeamlessAccess({
           ...(boot.canManage
             ? [["staff", t("Registrasi Petugas", "Staff Registration")]]
             : []),
+          ...(boot.canManage ? [["browser", t("Uji Wajah di Browser", "Browser Face Demo")]] : []),
           ["activity", t("Aktivitas Akses", "Access Activity")],
         ].map(([value, label]) => (
           <button
@@ -452,7 +454,8 @@ export default function SeamlessAccess({
                   </p>
                 </section>
                 <section className="sa-panel">
-                  <h3>{t("Kesiapan layanan", "Service readiness")}</h3>
+                  <h3>{t("Kesiapan integrasi server", "Server integration readiness")}</h3>
+                  {boot.canManage && <p className="sa-help">{t("Uji pencocokan tanpa server tambahan tersedia melalui tab Uji Wajah di Browser.", "Face comparison without an additional engine server is available in the Browser Face Demo tab.")}</p>}
                   {[
                     [
                       t("Mesin wajah lokal 1:1", "Local 1:1 face engine"),
@@ -593,8 +596,10 @@ export default function SeamlessAccess({
               stations={boot.stations}
               lounges={lounges}
               identityConnected={boot.integration.identity}
+              onBrowserDemo={() => setTab("browser")}
             />
           )}
+          {tab === "browser" && boot.canManage && <SeamlessBrowserDemo api={api} language={language} stations={boot.stations} lounges={lounges} videos={boot.videos} />}
           {tab === "activity" && (
             <section className="sa-panel">
               <h2>{t("Aktivitas akses", "Access activity")}</h2>
