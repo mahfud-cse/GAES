@@ -5,7 +5,10 @@ service cloud.firestore {
     function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function active() { return signedIn() && profile().active == true; }
     function roleIs(roles) { return active() && profile().role in roles; }
-    function sameStation(data) { return profile().station == 'ALL' || data.airport == profile().station || data.station == profile().station; }
+    function globalScope() {
+      return roleIs(['Super Admin','Admin','HO Admin','HO Ancillary Coordinator','HO Ancillary Verifier','Report Viewer']);
+    }
+    function sameStation(data) { return globalScope() || data.airport == profile().station || data.station == profile().station; }
     function assignedLounge(data) { return profile().loungeId != null && profile().loungeId != '' && data.loungeId == profile().loungeId; }
 
     match /usernames/{username} { allow read, write: if false; }
@@ -15,15 +18,36 @@ service cloud.firestore {
     }
     match /visitors/{id} {
       allow read: if active() && (roleIs(['Super Admin','Admin','HO Admin','HO Ancillary Coordinator','Report Viewer']) || sameStation(resource.data));
-      allow create: if active() && sameStation(request.resource.data);
-      allow update: if active() && (roleIs(['Super Admin','Admin','BO Admin','Lounge Manager','HO Ancillary Verifier','Airline Verifier']) || sameStation(resource.data));
-      allow delete: if roleIs(['Super Admin','Admin']);
+      // Visitor mutations must pass the audited Netlify functions. This avoids
+      // bypassing duplicate, eligibility, role, and station validation.
+      allow create, update, delete: if false;
+    }
+    match /lounges/{id} {
+      allow read: if active();
+      allow create: if roleIs(['Super Admin','Admin'])
+        && (!('dataOrigin' in request.resource.data) || request.resource.data.dataOrigin != 'SYNC')
+        && (!('readOnly' in request.resource.data) || request.resource.data.readOnly != true);
+      allow update, delete: if roleIs(['Super Admin','Admin'])
+        && (!('dataOrigin' in resource.data) || resource.data.dataOrigin != 'SYNC')
+        && (!('readOnly' in resource.data) || resource.data.readOnly != true);
+    }
+    match /stations/{id} {
+      allow read: if active();
+      allow create: if roleIs(['Super Admin','Admin'])
+        && (!('dataOrigin' in request.resource.data) || request.resource.data.dataOrigin != 'SYNC')
+        && (!('readOnly' in request.resource.data) || request.resource.data.readOnly != true);
+      allow update, delete: if roleIs(['Super Admin','Admin'])
+        && (!('dataOrigin' in resource.data) || resource.data.dataOrigin != 'SYNC')
+        && (!('readOnly' in resource.data) || resource.data.readOnly != true);
     }
     match /{master}/{id} {
-      allow read: if active() && master in ['lounges','flights','stations','entitlements','airlines','monitoringRows','integrationRuns'];
-      allow write: if master in ['lounges','flights','stations','entitlements','airlines','monitoringRows'] && roleIs(['Super Admin','Admin']);
+      allow read: if active() && master in ['flights','entitlements','airlines','monitoringRows','passengerVolumes','integrationRuns']
+        && (master != 'passengerVolumes' || roleIs(['Super Admin','Admin','HO Admin','Report Viewer']) || sameStation(resource.data));
+      allow write: if master in ['flights','entitlements','airlines','monitoringRows','passengerVolumes'] && roleIs(['Super Admin','Admin']);
       allow create: if master == 'monitoringRows' && roleIs(['BO Admin']) && sameStation(request.resource.data);
       allow update: if master == 'monitoringRows' && roleIs(['BO Admin']) && sameStation(resource.data) && sameStation(request.resource.data);
+      allow create: if master == 'passengerVolumes' && roleIs(['BO Admin']) && sameStation(request.resource.data);
+      allow update: if master == 'passengerVolumes' && roleIs(['BO Admin']) && sameStation(resource.data) && sameStation(request.resource.data);
     }
     match /loungeCapacityHistory/{id} {
       allow read: if active() && (roleIs(['Super Admin','Admin','HO Admin','Report Viewer']) || assignedLounge(resource.data));
@@ -34,6 +58,142 @@ service cloud.firestore {
       allow read: if active() && (roleIs(['Super Admin','Admin','HO Admin','Report Viewer']) || assignedLounge(resource.data));
       allow create, update: if active() && (roleIs(['Super Admin','Admin']) || (roleIs(['Lounge Manager']) && assignedLounge(request.resource.data)));
       allow delete: if roleIs(['Super Admin','Admin']);
+    }
+    match /rooms/{id} {
+      allow read: if roleIs(['Super Admin','Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
+      allow create: if roleIs(['Super Admin','Admin']) && sameStation(request.resource.data);
+      allow update: if roleIs(['Super Admin','Admin']) && sameStation(resource.data) && sameStation(request.resource.data);
+      allow delete: if roleIs(['Super Admin','Admin']) && sameStation(resource.data);
+    }
+    match /roomFacilities/{id} {
+      allow read: if roleIs(['Super Admin','Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
+      allow create: if roleIs(['Super Admin','Admin']) && sameStation(request.resource.data);
+      allow update: if roleIs(['Super Admin','Admin']) && sameStation(resource.data) && sameStation(request.resource.data);
+      allow delete: if roleIs(['Super Admin','Admin']) && sameStation(resource.data);
+    }
+    match /loungeLayouts/{id} {
+      allow read: if active() &&
+        (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow create: if active() &&
+        (roleIs(['Super Admin','Admin','HO Admin']) ||
+          (roleIs(['BO Admin','Lounge Manager']) && sameStation(request.resource.data)));
+      allow update: if active() &&
+        (roleIs(['Super Admin','Admin','HO Admin']) ||
+          (roleIs(['BO Admin','Lounge Manager']) && sameStation(resource.data) && sameStation(request.resource.data)));
+      allow delete: if active() &&
+        (roleIs(['Super Admin','Admin']) ||
+          (roleIs(['BO Admin','Lounge Manager']) && sameStation(resource.data)));
+    }
+    match /roomBookings/{id} {
+      allow read: if roleIs(['Super Admin','Admin','BO Admin','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
+      allow write: if false;
+    }
+    match /roomBookingSlots/{id} {
+      allow read, write: if false;
+    }
+    match /roomBookingRequests/{id} {
+      allow read, write: if false;
+    }
+    match /roomOperations/{id} {
+      allow read: if roleIs(['Super Admin','Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
+      allow write: if false;
+    }
+    match /roomMaintenance/{id} {
+      allow read: if roleIs(['Super Admin','Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
+      allow write: if false;
+    }
+    match /roomIncidents/{id} {
+      allow read: if roleIs(['Super Admin','Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
+      allow write: if false;
+    }
+    match /roomActivityLogs/{id} {
+      allow read: if roleIs(['Super Admin','Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
+      allow write: if false;
+    }
+    match /shiftHandovers/{id} {
+      allow read: if roleIs(['Super Admin','Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin']) || sameStation(resource.data));
+      // Creation and acknowledgment must pass the audited backend workflow.
+      allow write: if false;
+    }
+    match /shiftHandoverLocks/{id} {
+      allow read, write: if false;
+    }
+    match /displayDevices/{id} {
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow create: if roleIs(['Super Admin','Admin','HO Admin']) && sameStation(request.resource.data);
+      allow update: if roleIs(['Super Admin','Admin','HO Admin']) && sameStation(resource.data) && sameStation(request.resource.data);
+      allow delete: if roleIs(['Super Admin','Admin','HO Admin']) && sameStation(resource.data);
+    }
+    match /displayChannels/{id} {
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager']);
+      allow write: if false;
+    }
+    match /displayContents/{id} {
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager']);
+      allow write: if false;
+    }
+    match /displaySchedules/{id} {
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow write: if false;
+    }
+    match /displayCommands/{id} {
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow write: if false;
+    }
+    match /displayAnnouncementTemplates/{id} {
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager']);
+      allow write: if false;
+    }
+    match /displayAnnouncements/{id} {
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow write: if false;
+    }
+    match /displayOutputGroups/{id} {
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow write: if false;
+    }
+    match /displayShareSessions/{id} {
+      allow read, write: if false;
+    }
+    match /displayShareSignals/{id} {
+      allow read, write: if false;
+    }
+    match /displayEnrollments/{id} {
+      allow read, write: if false;
+    }
+    match /displayDeviceCredentials/{id} {
+      allow read, write: if false;
+    }
+    match /displayRateLimits/{id} {
+      allow read, write: if false;
+    }
+    match /displayPilotTests/{id} {
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow write: if false;
+    }
+    match /displayRolloutApprovals/{id} {
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow write: if false;
+    }
+    match /displayActivityLogs/{id} {
+      allow read: if roleIs(['Super Admin','Admin','HO Admin','BO Admin','Lounge Officer','Lounge Manager'])
+        && (roleIs(['Super Admin','Admin','HO Admin']) || sameStation(resource.data));
+      allow write: if false;
     }
     match /roles/{id} { allow read: if active(); allow write: if roleIs(['Super Admin']); }
     match /portalConfiguration/{id} { allow read: if active(); allow write: if roleIs(['Super Admin']); }
@@ -47,5 +207,6 @@ service cloud.firestore {
       allow create, delete: if false;
     }
     match /auditLogs/{id} { allow read: if roleIs(['Super Admin','Admin']); allow write: if false; }
+    match /securityRateLimits/{id} { allow read, write: if false; }
   }
 }

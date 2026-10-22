@@ -1,5 +1,13 @@
 # Changelog
 
+## Seamless Access delta — 2026-10-21
+
+- Added Seamless Access under Lounge/Tenant Access using the existing session, shell, components and Firebase infrastructure.
+- Added explicit synthetic passenger/staff verification, separate entitlement/authorization decisions, simulated gate acknowledgements, idempotent server requests and persisted scoped demo activity/audit.
+- Added administrator-managed DEMO enrollment metadata on existing users without storing real biometrics or changing authentication roles.
+- Live recognition and physical gate control remain unavailable pending approved external contracts and production UAT.
+- Existing barcode, QR, manual visitor and unrelated modules remain in place; leaving Access Verification stops camera/scanner capture.
+
 ## v0.20.0
 
 - Dashboard KPI cards now open the corresponding Visitor List, passenger-volume detail, or Reports & Sign-off view while preserving the active dashboard scope.
@@ -97,3 +105,28 @@
 - Master Station and user CSV upload validation.
 - Access Entitlement structure for membership, partnership, EMD, and paid access.
 - Professional internal delete confirmation.
+
+## Seamless Access V2 — operational display and staff enrollment
+- Replace the simulator-first screen with operations, HO-only staff registration
+  and access history, plus a separate fullscreen guest display.
+- Use master station codes and lounge names; hide internal IDs in user labels.
+- Add private upload/camera/repository photo sources, expiring single-use guided
+  enrollment links, administrator review and deactivation.
+- Add explicit ID/EN strings and isolate these React strings from legacy DOM
+  translation. Keep existing document verification and shared Firebase setup.
+- Add fail-closed 1:1 orchestration, scoped passenger entitlement checks and
+  deduplicated physical gate acknowledgement boundary. Approved live biometric,
+  passenger and gate contracts remain required; no live integration is claimed.
+
+## Seamless Access V3 — first-stage local engine and UX corrections
+- Reuse portal facilityTabs styling; replace the interactive guest form with a
+  display-only camera/video/result surface, landscape/portrait modes, and proper
+  full-viewport portal rendering outside transformed application containers.
+- Permit scoped BO Admin registration and independent staff without portal login.
+  Load optional User & Role account links across all pages; reuse existing staff
+  enrollment and validate every lounge against the existing master.
+- Keep station/lounge filters independent on activity with explicit empty states.
+- Include project-owned Python/OpenCV inference, model weights/licenses/checksums,
+  encrypted single-reference enrollment and a private Node adapter. Real-model
+  and actual HTTP integration tests pass. Liveness remains unevaluated and cannot
+  authorize a gate; passenger and hardware integration remain pending.

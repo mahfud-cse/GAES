@@ -1,0 +1,381 @@
+{
+  "release": "Seamless Access V4.1 \u2014 repository photo filenames and actionable import errors",
+  "baseline": "GAES-V-22.2(1).zip",
+  "cumulative": true,
+  "files": [
+    {
+      "path": "GITHUB_UPLOAD.md",
+      "action": "ADD",
+      "size": 2172,
+      "sha256": "cba01c90a702f40c7e0d9a5198b49f29a19b037768b50b9c2b342fc4efb52311"
+    },
+    {
+      "path": "PATCH_NOTES.md",
+      "action": "REPLACE",
+      "size": 6905,
+      "sha256": "65d81ccc2680f0ce1d64c02f06f7096af22eda61dfffe140dddc91c8cf2f6b53"
+    },
+    {
+      "path": "TEST_REPORT.md",
+      "action": "ADD",
+      "size": 10719,
+      "sha256": "d42891d98b20c1245258d186c8ebdf4d15b2c098468e10f7d8c06dc8d30205dd"
+    },
+    {
+      "path": "app/facility-operations.tsx",
+      "action": "REPLACE",
+      "size": 357912,
+      "sha256": "c99f569f8ce53541b4e49b60a115b0b4bd41f60af7c5685696c73e5e078d50f2"
+    },
+    {
+      "path": "app/page.tsx",
+      "action": "REPLACE",
+      "size": 577949,
+      "sha256": "2524ede6ae3b4ddf284ce0c25b8c7dcd713f744c5cb50a90a5c832279fd35c81"
+    },
+    {
+      "path": "app/seamless-access.tsx",
+      "action": "ADD",
+      "size": 28310,
+      "sha256": "c484e0cf4da2c8b866a09490a5743cc75ff96a8f7c6eca02da7ecbedd9f725f6"
+    },
+    {
+      "path": "app/seamless-display.tsx",
+      "action": "ADD",
+      "size": 13048,
+      "sha256": "714d588d2f7b8d13a5ed5628ee67d57c8f44f287161267fc3f76773396f0f155"
+    },
+    {
+      "path": "app/seamless-shared.tsx",
+      "action": "ADD",
+      "size": 9876,
+      "sha256": "8d4cba9e29bcdb126d225cfb19986a5730372155d4a58eebc0e77bdc20180a48"
+    },
+    {
+      "path": "app/seamless-staff.tsx",
+      "action": "ADD",
+      "size": 35130,
+      "sha256": "7994e97e671f8d4d7f1074803d7a2b6cf3612219c96a7fb39fd1704825151c5b"
+    },
+    {
+      "path": "app/seamless.css",
+      "action": "ADD",
+      "size": 23897,
+      "sha256": "f9ab38c01f02dda7f5b6ea7c5188b7b81ff1762aa38ed3974f048cf67b612b4d"
+    },
+    {
+      "path": "app/staff-enrollment/page.tsx",
+      "action": "ADD",
+      "size": 11827,
+      "sha256": "68eb7a008fa0085238e56feb4eff00b8e4dc6e70377d6bf458d70d1e0113efae"
+    },
+    {
+      "path": "docs/CHANGELOG.md",
+      "action": "REPLACE",
+      "size": 10287,
+      "sha256": "1f19a82fb9b4fd85092da604090b67a30043ca00b2d7620f276c71f8ed826526"
+    },
+    {
+      "path": "docs/SEAMLESS_ACCESS_INTEGRATION.md",
+      "action": "ADD",
+      "size": 14045,
+      "sha256": "a9d86151d2b58020bf39cb805600f79930613070066bc4d688381d9bcbeb0558"
+    },
+    {
+      "path": "docs/SEAMLESS_OPERATIONS.md",
+      "action": "ADD",
+      "size": 9441,
+      "sha256": "424bf7811821b23bc273ee43cbaa4f4ceb8ca85b8cab9b560670d9a1054fde3e"
+    },
+    {
+      "path": "face-service/.dockerignore",
+      "action": "ADD",
+      "size": 78,
+      "sha256": "d9244e02330edf17cd124cec512b12765e212e012ffe0eaaa96edfb37869a4a9"
+    },
+    {
+      "path": "face-service/.env.example",
+      "action": "ADD",
+      "size": 269,
+      "sha256": "37a3e3ec213493239040b3d9b8923c0f67ad101fb4397213ca451b5d0290f8f7"
+    },
+    {
+      "path": "face-service/.gitignore",
+      "action": "ADD",
+      "size": 71,
+      "sha256": "162ab9566103b911624569de682fd2d916aea124bec0ef287ded47b46426ab0a"
+    },
+    {
+      "path": "face-service/Dockerfile",
+      "action": "ADD",
+      "size": 421,
+      "sha256": "540d1a62daaa96dc65b021c9c400e271eff029d481c0cb5f11114d08e69a76ac"
+    },
+    {
+      "path": "face-service/README.md",
+      "action": "ADD",
+      "size": 7615,
+      "sha256": "f2f5b90a9ed1d8ece459d56cddb1f1184d365ebf34f1bb68e94378fa3c85e6a0"
+    },
+    {
+      "path": "face-service/compose.yaml",
+      "action": "ADD",
+      "size": 464,
+      "sha256": "0c397bf04e968a26542bd8616be6cf6769536758eee636ef45fb668513ef08a7"
+    },
+    {
+      "path": "face-service/engine.py",
+      "action": "ADD",
+      "size": 6049,
+      "sha256": "ceef0dd59b46d3040496255daab632ffd0e5c6f1c8590d51a167ae9a819a67c1"
+    },
+    {
+      "path": "face-service/models/LICENSE-SFACE",
+      "action": "ADD",
+      "size": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "face-service/models/LICENSE-YUNET",
+      "action": "ADD",
+      "size": 1085,
+      "sha256": "c83b8120c50ccbd4c4f96edf53141bdd566ebb8f8e9227e415326aa1b1aba958"
+    },
+    {
+      "path": "face-service/models/MODEL_MANIFEST.json",
+      "action": "ADD",
+      "size": 1057,
+      "sha256": "7e9720df929b5be07108a0491cace2e079d4a2e504b62cb01797b1a2f202593b"
+    },
+    {
+      "path": "face-service/models/sface.onnx.part01",
+      "action": "ADD",
+      "size": 20971520,
+      "sha256": "f729ee9eb0a275a80ef0d12b1890c6bfbb57ad2600e472f52e21130e892e98b9"
+    },
+    {
+      "path": "face-service/models/sface.onnx.part02",
+      "action": "ADD",
+      "size": 17724833,
+      "sha256": "79aa121904c80659c911c37578c36a3a6fdd8c6c13149560e05c04f100e3f1b2"
+    },
+    {
+      "path": "face-service/models/yunet.onnx",
+      "action": "ADD",
+      "size": 232589,
+      "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+    },
+    {
+      "path": "face-service/prepare_models.py",
+      "action": "ADD",
+      "size": 2398,
+      "sha256": "95982b213348f1bd2ea01cf665d5ed0101b1b4d08c9a16b1521209cfa1cb9561"
+    },
+    {
+      "path": "face-service/requirements.txt",
+      "action": "ADD",
+      "size": 83,
+      "sha256": "9d4fa9d94f8ef5e24bf94b4b8fb45f61c61f63e686cb29c6350f2cd289a96e02"
+    },
+    {
+      "path": "face-service/server.py",
+      "action": "ADD",
+      "size": 2619,
+      "sha256": "76d1f10026b93b83e9d676655e8082eddb4d8ca56b8bb88eb920bba176bfa870"
+    },
+    {
+      "path": "face-service/tests/integration.mjs",
+      "action": "ADD",
+      "size": 3982,
+      "sha256": "c56bc778b4bc619c8a4f900b3462fec345895c6bf5324a060b0d64de5c477011"
+    },
+    {
+      "path": "face-service/tests/test_engine.py",
+      "action": "ADD",
+      "size": 3518,
+      "sha256": "a16e6cb006889bb74909d959a7d04018879b741621264b3348bb8dec5c7084c6"
+    },
+    {
+      "path": "face-service/tests/test_prepare_models.py",
+      "action": "ADD",
+      "size": 3148,
+      "sha256": "b9e120445ed18446ad06211cc0456c71d23c108c9664c79e917c472cbc50323f"
+    },
+    {
+      "path": "lib/firebase/api.ts",
+      "action": "REPLACE",
+      "size": 6022,
+      "sha256": "96ad63080b745a46007387dfd2c82bc74c4c0f9c8392363d1153f20979cb7b9c"
+    },
+    {
+      "path": "lib/seamless/adapters.mjs",
+      "action": "ADD",
+      "size": 3305,
+      "sha256": "cabd75b93118611f80d22c161d8ce5d89d77e59392384c9e9295fd10c952c9e9"
+    },
+    {
+      "path": "lib/seamless/core.mjs",
+      "action": "ADD",
+      "size": 5342,
+      "sha256": "33d658b59b0c8b37a1f40804fefbdcd1175d6e5d6cf638b9234f08d0abd89089"
+    },
+    {
+      "path": "lib/seamless/operations.mjs",
+      "action": "ADD",
+      "size": 36009,
+      "sha256": "4322ba63b2fb6b58be4bc7845a93525a9da0790ec19ca445f41424b48b0e4b91"
+    },
+    {
+      "path": "lib/seamless/provider.mjs",
+      "action": "ADD",
+      "size": 224,
+      "sha256": "f5e2ad956272c677370974f053bd446f6422937e1dd667408f3a6554e5fa13c8"
+    },
+    {
+      "path": "lib/seamless/registry.mjs",
+      "action": "ADD",
+      "size": 16892,
+      "sha256": "c3777efc9f212d06b9a54beef5af370e68d61fc5b8f3e4352dbbe028cb38efb8"
+    },
+    {
+      "path": "lib/seamless/repository-media.mjs",
+      "action": "ADD",
+      "size": 1816,
+      "sha256": "dc14b65bba2741e32121cdc22b7af1e9bc775a13a703e981a06f926d457d6846"
+    },
+    {
+      "path": "lib/seamless/self-hosted.mjs",
+      "action": "ADD",
+      "size": 2345,
+      "sha256": "aa045e1ced7b37a5009ddbff547a4fe35772d2e90b012e103d9aa891bf6c64cf"
+    },
+    {
+      "path": "lib/seamless/service.mjs",
+      "action": "ADD",
+      "size": 12284,
+      "sha256": "b27774422537b34919104bbbdead28aff2a3878028f649d1c83e51d6da8052ea"
+    },
+    {
+      "path": "netlify.toml",
+      "action": "REPLACE",
+      "size": 2134,
+      "sha256": "d9f643973f5537d9b83a1380f0b7726269b84bdcee1023f7e270cf5e474aebb3"
+    },
+    {
+      "path": "netlify/functions/seamless-access.mjs",
+      "action": "ADD",
+      "size": 1027,
+      "sha256": "3802cc62f3edaa4a9d06671ac284bd3ca15a00a47697ca5c256ddcac2a60dcc9"
+    },
+    {
+      "path": "netlify/functions/seamless-operations.mjs",
+      "action": "ADD",
+      "size": 2730,
+      "sha256": "4ad6922009b1ed0e7925b519fba3f8d1359303963c41af8ce513e97d494da6c5"
+    },
+    {
+      "path": "package.json",
+      "action": "REPLACE",
+      "size": 1861,
+      "sha256": "67013771203d2800d161bdf0903377a13d3c6f4059b75a9f7453e6810cc0a272"
+    },
+    {
+      "path": "private/staff-enrollment/README.md",
+      "action": "ADD",
+      "size": 1232,
+      "sha256": "1b22142cd6fcf7bf76014d3dd34f56f1d80b54c9cc2e59e51cc577d9ed27cc1a"
+    },
+    {
+      "path": "public/demo-media/README.md",
+      "action": "ADD",
+      "size": 1084,
+      "sha256": "86122d8d9d7456f38469d7aef3c699ebee8612f82b5ef9064e0c621185e34924"
+    },
+    {
+      "path": "public/demo-media/camera/illustration.svg",
+      "action": "ADD",
+      "size": 479,
+      "sha256": "6d6956fe282e80a2d0a8a4ebcad6771834c5c6e370179c8dffbfe96998271343"
+    },
+    {
+      "path": "public/demo-media/layout/access-point.svg",
+      "action": "ADD",
+      "size": 784,
+      "sha256": "5a0a521eee0f25228545e32d33976bf5a46e83f5b71ae6b833b912d83e87bc3c"
+    },
+    {
+      "path": "public/demo-media/manifest.json",
+      "action": "ADD",
+      "size": 4550,
+      "sha256": "5eacc7181c4538ac89ad23ae6d45fdc1a45b0d9aaf4ae7862ca1993dc3aafe3c"
+    },
+    {
+      "path": "public/demo-media/passenger/illustration.svg",
+      "action": "ADD",
+      "size": 482,
+      "sha256": "13a8aa1bcc92ae90fc562fb0c55c0302728705c633b33d372d72a696eca8e197"
+    },
+    {
+      "path": "public/demo-media/staff/illustration.svg",
+      "action": "ADD",
+      "size": 478,
+      "sha256": "3cc4c6c4f48f4074d047ec10b8c44531ed9d02c8bf5e0ef98badd4da8498cef8"
+    },
+    {
+      "path": "tests/fixtures/standby.mp4",
+      "action": "ADD",
+      "size": 2390,
+      "sha256": "7f9bc5913ff59efd513a5562205377938886745518d5c5fde50cf3d00b2350be"
+    },
+    {
+      "path": "tests/helpers/seamless-db.mjs",
+      "action": "ADD",
+      "size": 3096,
+      "sha256": "6ee675d47049a74f02083205ba71a51dd5bc44eafb5fed64bcd64f51481a47cd"
+    },
+    {
+      "path": "tests/seamless-access.test.mjs",
+      "action": "ADD",
+      "size": 15924,
+      "sha256": "7e2fd3549389436743cefb11ddbca19aeb680e3a81101363fe8ca11d9385f414"
+    },
+    {
+      "path": "tests/seamless-browser.mjs",
+      "action": "ADD",
+      "size": 22936,
+      "sha256": "c2dbea8e05b17f406bb040efa1fbcbfea5a4c9d6b2e7e2c6a0ab5233dc70f02a"
+    },
+    {
+      "path": "tests/seamless-operations.test.mjs",
+      "action": "ADD",
+      "size": 21523,
+      "sha256": "07cfcb6ae1606f7a52e5893d537a1f06ce3e7ac07d7e652afc60047a6b150451"
+    },
+    {
+      "path": "tests/seamless-registry.test.mjs",
+      "action": "ADD",
+      "size": 8258,
+      "sha256": "11f30205126dff873c664acd9cf2d1240c34199c4f06b8217f0ef4033b7808d0"
+    },
+    {
+      "path": "tests/seamless-repository.test.mjs",
+      "action": "ADD",
+      "size": 4432,
+      "sha256": "3cc2d3ee41d1f5919f06ab18cc86bcb0a98ed25703f7e4daae4c921ac81ffa57"
+    },
+    {
+      "path": "tests/ui-foundation.test.mjs",
+      "action": "REPLACE",
+      "size": 40862,
+      "sha256": "ed1898d706b509823bc19c73da75d902cc25d24a1cdbb78cf4925f563821b523"
+    }
+  ],
+  "manifestFile": "DELTA_MANIFEST.json",
+  "delete": [],
+  "engineStatus": "Real local detection/enrollment/1:1 comparison tested. Service deployment/configuration required. Liveness/PAD, passenger and physical gate integrations pending. No 1:N identification.",
+  "deliveryArchives": [
+    "GAES-Seamless-Access-Delta.zip",
+    "GAES-Seamless-Access-Model-Part2.zip"
+  ],
+  "uploadInstructions": "Extract BOTH ZIPs into one folder and upload extracted files preserving paths. Never upload full generated sface.onnx."
+}

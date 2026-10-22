@@ -1,6 +1,7 @@
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 const privateKey = (name) => (process.env[name] || "").replace(/\\n/g, "\n");
 
@@ -61,6 +62,62 @@ export async function requireUser(request, roles = []) {
     throw httpError(403, "User does not have permission.");
   }
   return { decoded, profile: data };
+}
+
+const requestAddress = (request) =>
+  request.headers.get("x-nf-client-connection-ip") ||
+  request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+  request.headers.get("client-ip") ||
+  "unknown";
+
+export function secretMatches(value, expected) {
+  const supplied = Buffer.from(String(value || ""));
+  const configured = Buffer.from(String(expected || ""));
+  return (
+    supplied.length === configured.length &&
+    supplied.length > 0 &&
+    timingSafeEqual(supplied, configured)
+  );
+}
+
+export async function enforceRateLimit(
+  request,
+  namespace,
+  { limit, windowMs, identity = "" },
+) {
+  const fingerprint = createHash("sha256")
+    .update(
+      [namespace, requestAddress(request), String(identity).trim().toLowerCase()]
+        .join("|")
+        .slice(0, 1000),
+    )
+    .digest("hex");
+  const db = targetDb();
+  const reference = db.collection("securityRateLimits").doc(fingerprint);
+  const now = Date.now();
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(reference);
+    const data = snapshot.data() || {};
+    const windowStartedAt = Number(data.windowStartedAt || 0);
+    const withinWindow = now - windowStartedAt < windowMs;
+    const attempts = withinWindow ? Number(data.attempts || 0) : 0;
+    if (attempts >= limit)
+      throw httpError(
+        429,
+        "Terlalu banyak permintaan. Silakan tunggu beberapa saat lalu coba kembali.",
+        "security/rate-limit",
+      );
+    transaction.set(
+      reference,
+      {
+        namespace,
+        attempts: attempts + 1,
+        windowStartedAt: withinWindow ? windowStartedAt : now,
+        lastAttemptAt: now,
+      },
+      { merge: true },
+    );
+  });
 }
 
 export const json = (status, value) =>
